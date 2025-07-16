@@ -23,10 +23,12 @@
     The output directory for backup files (defaults to "zpa_backup")
 
 .EXAMPLE
-    .\Export-ZPAConfig.ps1 -CustomerId "12345" -ClientId "client123" -ClientSecret "secret456"
+    $secureSecret = Read-Host "Enter Client Secret" -AsSecureString
+    .\Export-ZPAConfig.ps1 -CustomerId "12345" -ClientId "client123" -ClientSecret $secureSecret
 
 .EXAMPLE
-    .\Export-ZPAConfig.ps1 -CustomerId "12345" -ClientId "client123" -ClientSecret "secret456" -BaseUrl "https://config.zpabeta.net" -OutputDirectory "C:\Backups\ZPA"
+    $secureSecret = ConvertTo-SecureString "your-secret" -AsPlainText -Force
+    .\Export-ZPAConfig.ps1 -CustomerId "12345" -ClientId "client123" -ClientSecret $secureSecret -BaseUrl "https://config.zpabeta.net" -OutputDirectory "C:\Backups\ZPA"
 #>
 
 [CmdletBinding()]
@@ -38,7 +40,7 @@ param(
     [string]$ClientId,
     
     [Parameter(Mandatory = $true)]
-    [string]$ClientSecret,
+    [SecureString]$ClientSecret,
     
     [Parameter(Mandatory = $false)]
     [string]$BaseUrl = "https://config.private.zscaler.com",
@@ -50,12 +52,12 @@ param(
 class ZPABackup {
     [string]$CustomerId
     [string]$ClientId
-    [string]$ClientSecret
+    [SecureString]$ClientSecret
     [string]$BaseUrl
     [string]$AccessToken
     [Microsoft.PowerShell.Commands.WebRequestSession]$Session
 
-    ZPABackup([string]$CustomerId, [string]$ClientId, [string]$ClientSecret, [string]$BaseUrl) {
+    ZPABackup([string]$CustomerId, [string]$ClientId, [SecureString]$ClientSecret, [string]$BaseUrl) {
         $this.CustomerId = $CustomerId
         $this.ClientId = $ClientId
         $this.ClientSecret = $ClientSecret
@@ -67,9 +69,15 @@ class ZPABackup {
         try {
             $authUrl = "$($this.BaseUrl)/signin"
             
+            # Convert SecureString to plain text for API call
+            $plainSecret = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($this.ClientSecret))
+            
             # Create basic auth header
-            $credentials = "$($this.ClientId):$($this.ClientSecret)"
+            $credentials = "$($this.ClientId):$plainSecret"
             $encodedCredentials = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($credentials))
+            
+            # Clear the plain text variable for security
+            $plainSecret = $null
             
             $headers = @{
                 "Authorization" = "Basic $encodedCredentials"
