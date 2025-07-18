@@ -85,19 +85,18 @@ class ZPABackup {
                 "client_id" = $this.ClientId
                 "client_secret" = $plainSecret
             }
-            
-            # Clear the plain text variable for security
-            $plainSecret = $null
-            Write-Host "Client secret cleared from memory" -ForegroundColor Gray
-            
+                      
             Write-Host "Sending authentication request to ZPA API..." -ForegroundColor Gray
             $response = Invoke-RestMethod -Uri $authUrl -Method Post -Headers $headers -Body $body -WebSession $this.Session
             
             if ($response.access_token) {
                 Write-Host "Access token received successfully" -ForegroundColor Gray
                 $this.AccessToken = $response.access_token
-                $this.Session.Headers.Add("Authorization", "Bearer $($this.AccessToken)")
-                $this.Session.Headers.Add("Content-Type", "application/json")
+                
+                # Initialize headers properly - don't use Add() method
+                $this.Session.Headers["Authorization"] = "Bearer $($this.AccessToken)"
+                $this.Session.Headers["Content-Type"] = "application/json"
+                
                 Write-Host "Session headers configured with bearer token" -ForegroundColor Gray
                 Write-Host "ZPA Authentication successful" -ForegroundColor Green
                 return $true
