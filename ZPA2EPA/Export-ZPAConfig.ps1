@@ -20,7 +20,7 @@
     The ZPA API base URL (defaults to production cloud)
 
 .PARAMETER OutputDirectory
-    The output directory for backup files (defaults to "zpa_backup")
+    The output directory for backup files (defaults to the script directory)
 
 .EXAMPLE
     $secureSecret = Read-Host "Enter Client Secret" -AsSecureString
@@ -46,7 +46,7 @@ param(
     [string]$BaseUrl = "https://config.private.zscaler.com",
     
     [Parameter(Mandatory = $false)]
-    [string]$OutputDirectory = "zpa_backup"
+    [string]$OutputDirectory = $PSScriptRoot
 )
 
 class ZPABackup {
