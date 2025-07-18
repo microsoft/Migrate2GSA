@@ -75,25 +75,20 @@ class ZPABackup {
             # Convert SecureString to plain text for API call
             $plainSecret = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($this.ClientSecret))
             
-            Write-Host "Creating authentication credentials..." -ForegroundColor Gray
-            # Create basic auth header
-            $credentials = "$($this.ClientId):$plainSecret"
-            $encodedCredentials = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($credentials))
+            Write-Host "Preparing authentication headers..." -ForegroundColor Gray
+            $headers = @{
+                "Content-Type" = "application/x-www-form-urlencoded"
+            }
+            
+            Write-Host "Preparing authentication body..." -ForegroundColor Gray
+            $body = @{
+                "client_id" = $this.ClientId
+                "client_secret" = $plainSecret
+            }
             
             # Clear the plain text variable for security
             $plainSecret = $null
             Write-Host "Client secret cleared from memory" -ForegroundColor Gray
-            
-            Write-Host "Preparing authentication headers..." -ForegroundColor Gray
-            $headers = @{
-                "Authorization" = "Basic $encodedCredentials"
-                "Content-Type" = "application/x-www-form-urlencoded"
-            }
-            
-            $body = @{
-                "grant_type" = "client_credentials"
-                "scope" = "read"
-            }
             
             Write-Host "Sending authentication request to ZPA API..." -ForegroundColor Gray
             $response = Invoke-RestMethod -Uri $authUrl -Method Post -Headers $headers -Body $body -WebSession $this.Session
