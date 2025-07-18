@@ -504,7 +504,6 @@ try {
             # Extract port ranges
             $tcpPorts = @()
             $udpPorts = @()
-            $hasValidPortConfig = $false
             
             # Process TCP port ranges (only if the property exists)
             if ($segment.PSObject.Properties.Name -contains 'tcpPortRange' -and $segment.tcpPortRange -and $segment.tcpPortRange.Count -gt 0) {
@@ -524,7 +523,6 @@ try {
                         } else {
                             $tcpPorts += "$fromPort-$toPort"
                         }
-                        $hasValidPortConfig = $true
                     }
                     catch {
                         Write-Log "Error processing TCP port range for segment '$($segment.name)': $_" -Level "ERROR"
@@ -552,7 +550,6 @@ try {
                         } else {
                             $udpPorts += "$fromPort-$toPort"
                         }
-                        $hasValidPortConfig = $true
                     }
                     catch {
                         Write-Log "Error processing UDP port range for segment '$($segment.name)': $_" -Level "ERROR"
@@ -562,8 +559,8 @@ try {
                 }
             }
             
-            # Skip segment if no valid port configuration
-            if (-not $hasValidPortConfig) {
+            # Skip segment if no port configuration
+            if ($tcpPorts.Count -eq 0 -and $udpPorts.Count -eq 0) {
                 Write-Log "Segment '$($segment.name)' has no valid port configuration. Skipping." -Level "WARN"
                 continue
             }
@@ -733,7 +730,6 @@ try {
                             DestinationType = $destinationType
                             Protocol = $combo.Protocol
                             Ports = $combo.Port
-                            HasPortConfig = $hasValidPortConfig
                             SegmentGroup = if ($segment.segmentGroupName) { $segment.segmentGroupName } else { "Unknown" }
                             ServerGroups = $serverGroupsString
                             ConditionalAccessPolicy = "Placeholder_Replace_Me"
@@ -741,6 +737,7 @@ try {
                             ConnectorGroup = "Placeholder_Replace_Me"
                             Conflict = if ($hasConflict) { "Yes" } else { "No" }
                             ConflictingEnterpriseApp = if ($conflictingApps.Count -gt 0) { ($conflictingApps | Sort-Object -Unique) -join ", " } else { "" }
+                            Provision = if ($hasConflict) { "No" } else { "Yes" }
                         }
                         
                         $allResults += $resultObj
@@ -784,7 +781,6 @@ try {
             DestinationType = $firstItem.DestinationType
             Protocol = $firstItem.Protocol
             Ports = $uniquePorts
-            HasPortConfig = $firstItem.HasPortConfig
             SegmentGroup = $firstItem.SegmentGroup
             ServerGroups = $firstItem.ServerGroups
             ConditionalAccessPolicy = $firstItem.ConditionalAccessPolicy
@@ -792,6 +788,7 @@ try {
             ConnectorGroup = $firstItem.ConnectorGroup
             Conflict = $firstItem.Conflict
             ConflictingEnterpriseApp = $firstItem.ConflictingEnterpriseApp
+            Provision = $firstItem.Provision
         }
     }
     #endregion
