@@ -12,7 +12,7 @@ param(
         if (Test-Path $_ -PathType Container) { return $true }
         else { throw "Directory not found: $_" }
     })]
-    [string]$OutputBasePath = $PSScriptRoot,
+    [string]$OutputBasePath = $PWD,
     
     [Parameter(HelpMessage = "Specific segment name for exact match processing")]
     [string]$TargetAppSegmentName,
@@ -377,10 +377,30 @@ try {
     
     try {
         $appSegmentsJson = Get-Content -Path $AppSegmentPath -Raw -Encoding UTF8
-        $appSegments = $appSegmentsJson | ConvertFrom-Json
+        $appSegmentsData = $appSegmentsJson | ConvertFrom-Json
         
-        if ($null -eq $appSegments) {
+        if ($null -eq $appSegmentsData) {
             Write-Log "Failed to parse JSON from file: $AppSegmentPath" -Level "ERROR"
+            exit 1
+        }
+        
+        # Handle different JSON formats: direct array or nested under 'list' property
+        if ($appSegmentsData.PSObject.Properties.Name -contains 'list') {
+            Write-Log "Detected paginated format with 'list' property" -Level "DEBUG"
+            $appSegments = $appSegmentsData.list
+            if ($appSegmentsData.PSObject.Properties.Name -contains 'totalCount') {
+                Write-Log "Total count from API: $($appSegmentsData.totalCount)" -Level "DEBUG"
+            }
+        } elseif ($appSegmentsData -is [array]) {
+            Write-Log "Detected direct array format" -Level "DEBUG"
+            $appSegments = $appSegmentsData
+        } else {
+            Write-Log "Unknown JSON format. Expected either an array or object with 'list' property" -Level "ERROR"
+            exit 1
+        }
+        
+        if ($null -eq $appSegments -or $appSegments.Count -eq 0) {
+            Write-Log "No application segments found in the JSON data" -Level "ERROR"
             exit 1
         }
         
