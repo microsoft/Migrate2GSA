@@ -26,6 +26,14 @@ param(
     [Parameter(HelpMessage = "Comma-separated list of wildcard patterns for segment names to skip")]
     [string]$SkipAppSegmentNamePattern,
     
+    [Parameter(HelpMessage = "Path to ZPA Segment Groups JSON export (optional)")]
+    [ValidateScript({
+        if ([string]::IsNullOrEmpty($_)) { return $true }
+        if (Test-Path $_) { return $true }
+        else { throw "File not found: $_" }
+    })]
+    [string]$SegmentGroupPath,
+    
     [Parameter(HelpMessage = "Enable verbose debug logging")]
     [switch]$EnableDebugLogging
 )
@@ -338,6 +346,251 @@ function Clean-Domain {
     }
 }
 
+function Load-SegmentGroups {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath
+    )
+    
+    try {
+        Write-Log "Loading ZPA segment groups from: $FilePath" -Level "INFO"
+        
+        if (-not (Test-Path $FilePath)) {
+            Write-Log "Segment groups file not found: $FilePath" -Level "ERROR"
+            return @()
+        }
+        
+        $segmentGroupsJson = Get-Content -Path $FilePath -Raw -Encoding UTF8
+        $segmentGroupsData = $segmentGroupsJson | ConvertFrom-Json
+        
+        if ($null -eq $segmentGroupsData) {
+            Write-Log "Failed to parse JSON from segment groups file: $FilePath" -Level "ERROR"
+            return @()
+        }
+        
+        # Handle different JSON formats: direct array or nested under 'list' property
+        $segmentGroups = @()
+        if ($segmentGroupsData.PSObject.Properties.Name -contains 'list') {
+            Write-Log "Detected paginated format with 'list' property in segment groups" -Level "DEBUG"
+            $segmentGroups = $segmentGroupsData.list
+            if ($segmentGroupsData.PSObject.Properties.Name -contains 'totalCount') {
+                Write-Log "Total segment groups count from API: $($segmentGroupsData.totalCount)" -Level "DEBUG"
+            }
+        } elseif ($segmentGroupsData -is [array]) {
+            Write-Log "Detected direct array format in segment groups" -Level "DEBUG"
+            $segmentGroups = $segmentGroupsData
+        } else {
+            Write-Log "Unknown JSON format in segment groups file. Expected either an array or object with 'list' property" -Level "ERROR"
+            return @()
+        }
+        
+        if ($null -eq $segmentGroups -or $segmentGroups.Count -eq 0) {
+            Write-Log "No segment groups found in the JSON data" -Level "WARN"
+            return @()
+        }
+        
+        Write-Log "Loaded $($segmentGroups.Count) segment groups" -Level "INFO"
+        
+        # Extract application segments from segment groups
+        $extractedSegments = @()
+        $totalApplications = 0
+        
+        foreach ($segmentGroup in $segmentGroups) {
+            if ($segmentGroup.PSObject.Properties.Name -contains 'applications' -and $segmentGroup.applications -and $segmentGroup.applications.Count -gt 0) {
+                $segmentGroupName = if ($segmentGroup.PSObject.Properties.Name -contains 'name' -and $segmentGroup.name) { $segmentGroup.name } else { "Unknown" }
+                
+                Write-Log "Processing segment group '$segmentGroupName' with $($segmentGroup.applications.Count) applications" -Level "DEBUG"
+                
+                foreach ($app in $segmentGroup.applications) {
+                    # Add segment group name to the application segment
+                    $app | Add-Member -NotePropertyName 'segmentGroupName' -NotePropertyValue $segmentGroupName -Force
+                    $extractedSegments += $app
+                    $totalApplications++
+                }
+            } else {
+                $segmentGroupName = if ($segmentGroup.PSObject.Properties.Name -contains 'name' -and $segmentGroup.name) { $segmentGroup.name } else { "Unknown" }
+                Write-Log "Segment group '$segmentGroupName' has no applications or applications array is empty" -Level "DEBUG"
+            }
+        }
+        
+        Write-Log "Extracted $totalApplications application segments from $($segmentGroups.Count) segment groups" -Level "INFO"
+        return $extractedSegments
+    }
+    catch {
+        Write-Log "Error loading segment groups: $_" -Level "ERROR"
+        return @()
+    }
+}
+
+function Merge-ApplicationSegments {
+    param(
+        [Parameter(Mandatory = $true)]
+        [array]$StandaloneSegments,
+        
+        [Parameter(Mandatory = $false)]
+        [array]$SegmentGroupSegments = @()
+    )
+    
+    try {
+        Write-Log "Merging application segments and removing duplicates" -Level "INFO"
+        
+        # Ensure arrays are properly initialized
+        if ($null -eq $StandaloneSegments) { $StandaloneSegments = @() }
+        if ($null -eq $SegmentGroupSegments) { $SegmentGroupSegments = @() }
+        
+        # Convert to arrays if they're not already
+        if ($StandaloneSegments -isnot [array]) { $StandaloneSegments = @($StandaloneSegments) }
+        if ($SegmentGroupSegments -isnot [array]) { $SegmentGroupSegments = @($SegmentGroupSegments) }
+        
+        Write-Log "Standalone segments: $($StandaloneSegments.Count)" -Level "DEBUG"
+        Write-Log "Segment group segments: $($SegmentGroupSegments.Count)" -Level "DEBUG"
+        
+        # Create hashtable with segment ID as key for deduplication
+        $segmentLookup = @{}
+        $duplicateCount = 0
+        $uniqueFromStandalone = 0
+        $uniqueFromSegmentGroups = 0
+        
+        # Add standalone segments first (they take priority)
+        foreach ($segment in $StandaloneSegments) {
+            if ($segment.PSObject.Properties.Name -contains 'id' -and $segment.id) {
+                $segmentId = $segment.id.ToString()
+                if (-not $segmentLookup.ContainsKey($segmentId)) {
+                    $segmentLookup[$segmentId] = $segment
+                    $uniqueFromStandalone++
+                } else {
+                    Write-Log "Duplicate ID found in standalone segments: $segmentId" -Level "WARN"
+                }
+            } else {
+                Write-Log "Standalone segment missing ID property, skipping: $($segment.name)" -Level "WARN"
+            }
+        }
+        
+        # Add segment group segments only if ID doesn't already exist
+        foreach ($segment in $SegmentGroupSegments) {
+            if ($segment.PSObject.Properties.Name -contains 'id' -and $segment.id) {
+                $segmentId = $segment.id.ToString()
+                if (-not $segmentLookup.ContainsKey($segmentId)) {
+                    $segmentLookup[$segmentId] = $segment
+                    $uniqueFromSegmentGroups++
+                } else {
+                    $duplicateCount++
+                    $existingSegment = $segmentLookup[$segmentId]
+                    Write-Log "Duplicate segment found (ID: $segmentId): '$($segment.name)' from segment group conflicts with standalone segment '$($existingSegment.name)'. Keeping standalone version." -Level "DEBUG"
+                }
+            } else {
+                Write-Log "Segment group segment missing ID property, skipping: $($segment.name)" -Level "WARN"
+            }
+        }
+        
+        # Convert hashtable values back to array
+        $mergedSegments = $segmentLookup.Values | Sort-Object -Property name
+        
+        Write-Log "Deduplication complete:" -Level "INFO"
+        Write-Log "  Total unique segments: $($mergedSegments.Count)" -Level "INFO"
+        Write-Log "  Duplicates removed: $duplicateCount" -Level "INFO"
+        Write-Log "  Unique segments from standalone file: $uniqueFromStandalone" -Level "INFO"
+        Write-Log "  Unique segments from segment groups: $uniqueFromSegmentGroups" -Level "INFO"
+        Write-Log "  Total segments in standalone file: $($StandaloneSegments.Count)" -Level "INFO"
+        Write-Log "  Total segments in segment groups: $($SegmentGroupSegments.Count)" -Level "INFO"
+        
+        # Return stats along with segments for use in final summary
+        $result = @{
+            Segments = $mergedSegments
+            Stats = @{
+                TotalUnique = $mergedSegments.Count
+                DuplicatesRemoved = $duplicateCount
+                UniqueFromStandalone = $uniqueFromStandalone
+                UniqueFromSegmentGroups = $uniqueFromSegmentGroups
+                TotalFromStandalone = $StandaloneSegments.Count
+                TotalFromSegmentGroups = $SegmentGroupSegments.Count
+            }
+        }
+        
+        return $result
+    }
+    catch {
+        Write-Log "Error merging application segments: $_" -Level "ERROR"
+        return @{
+            Segments = $StandaloneSegments
+            Stats = @{
+                TotalUnique = $StandaloneSegments.Count
+                DuplicatesRemoved = 0
+                UniqueFromStandalone = $StandaloneSegments.Count
+                UniqueFromSegmentGroups = 0
+                TotalFromStandalone = $StandaloneSegments.Count
+                TotalFromSegmentGroups = 0
+            }
+        }
+    }
+}
+
+function Load-ApplicationSegments {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AppSegmentPath,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$SegmentGroupPath
+    )
+    
+    try {
+        # Load standalone application segments
+        Write-Log "Loading standalone application segments from: $AppSegmentPath" -Level "INFO"
+        
+        if (-not (Test-Path $AppSegmentPath)) {
+            Write-Log "Application segments file not found: $AppSegmentPath" -Level "ERROR"
+            throw "Application segments file not found"
+        }
+        
+        $appSegmentsJson = Get-Content -Path $AppSegmentPath -Raw -Encoding UTF8
+        $appSegmentsData = $appSegmentsJson | ConvertFrom-Json
+        
+        if ($null -eq $appSegmentsData) {
+            Write-Log "Failed to parse JSON from file: $AppSegmentPath" -Level "ERROR"
+            throw "Failed to parse application segments JSON"
+        }
+        
+        # Handle different JSON formats: direct array or nested under 'list' property
+        $standaloneSegments = @()
+        if ($appSegmentsData.PSObject.Properties.Name -contains 'list') {
+            Write-Log "Detected paginated format with 'list' property" -Level "DEBUG"
+            $standaloneSegments = $appSegmentsData.list
+            if ($appSegmentsData.PSObject.Properties.Name -contains 'totalCount') {
+                Write-Log "Total count from API: $($appSegmentsData.totalCount)" -Level "DEBUG"
+            }
+        } elseif ($appSegmentsData -is [array]) {
+            Write-Log "Detected direct array format" -Level "DEBUG"
+            $standaloneSegments = $appSegmentsData
+        } else {
+            Write-Log "Unknown JSON format. Expected either an array or object with 'list' property" -Level "ERROR"
+            throw "Unknown JSON format in application segments file"
+        }
+        
+        if ($null -eq $standaloneSegments -or $standaloneSegments.Count -eq 0) {
+            Write-Log "No application segments found in the JSON data" -Level "ERROR"
+            throw "No application segments found"
+        }
+        
+        Write-Log "Loaded $($standaloneSegments.Count) standalone application segments" -Level "INFO"
+        
+        # Load segment groups if provided
+        $segmentGroupSegments = @()
+        if (-not [string]::IsNullOrEmpty($SegmentGroupPath)) {
+            $segmentGroupSegments = Load-SegmentGroups -FilePath $SegmentGroupPath
+        }
+        
+        # Merge and deduplicate
+        $mergeResult = Merge-ApplicationSegments -StandaloneSegments $standaloneSegments -SegmentGroupSegments $segmentGroupSegments
+        
+        return $mergeResult
+    }
+    catch {
+        Write-Log "Error loading application segments: $_" -Level "ERROR"
+        throw
+    }
+}
+
 #endregion
 
 #region Main Script Logic
@@ -367,44 +620,15 @@ try {
         Write-Log "Skip segment patterns: $SkipAppSegmentNamePattern" -Level "INFO"
     }
     
-    #region Data Loading Phase
-    Write-Log "Loading ZPA application segments from: $AppSegmentPath" -Level "INFO"
-    
-    if (-not (Test-Path $AppSegmentPath)) {
-        Write-Log "Application segments file not found: $AppSegmentPath" -Level "ERROR"
-        exit 1
+    if ($SegmentGroupPath) {
+        Write-Log "Segment groups file: $SegmentGroupPath" -Level "INFO"
     }
     
+    #region Data Loading Phase
     try {
-        $appSegmentsJson = Get-Content -Path $AppSegmentPath -Raw -Encoding UTF8
-        $appSegmentsData = $appSegmentsJson | ConvertFrom-Json
-        
-        if ($null -eq $appSegmentsData) {
-            Write-Log "Failed to parse JSON from file: $AppSegmentPath" -Level "ERROR"
-            exit 1
-        }
-        
-        # Handle different JSON formats: direct array or nested under 'list' property
-        if ($appSegmentsData.PSObject.Properties.Name -contains 'list') {
-            Write-Log "Detected paginated format with 'list' property" -Level "DEBUG"
-            $appSegments = $appSegmentsData.list
-            if ($appSegmentsData.PSObject.Properties.Name -contains 'totalCount') {
-                Write-Log "Total count from API: $($appSegmentsData.totalCount)" -Level "DEBUG"
-            }
-        } elseif ($appSegmentsData -is [array]) {
-            Write-Log "Detected direct array format" -Level "DEBUG"
-            $appSegments = $appSegmentsData
-        } else {
-            Write-Log "Unknown JSON format. Expected either an array or object with 'list' property" -Level "ERROR"
-            exit 1
-        }
-        
-        if ($null -eq $appSegments -or $appSegments.Count -eq 0) {
-            Write-Log "No application segments found in the JSON data" -Level "ERROR"
-            exit 1
-        }
-        
-        Write-Log "Loaded $($appSegments.Count) application segments" -Level "INFO"
+        $loadResult = Load-ApplicationSegments -AppSegmentPath $AppSegmentPath -SegmentGroupPath $SegmentGroupPath
+        $appSegments = $loadResult.Segments
+        $loadingStats = $loadResult.Stats
     }
     catch {
         Write-Log "Error loading application segments: $_" -Level "ERROR"
@@ -832,7 +1056,14 @@ try {
     #region Statistics and Summary
     Write-Log "" -Level "INFO"
     Write-Log "=== TRANSFORMATION SUMMARY ===" -Level "INFO"
-    Write-Log "Original segments loaded: $originalCount" -Level "INFO"
+    Write-Log "Total segments loaded: $originalCount" -Level "INFO"
+    if (-not [string]::IsNullOrEmpty($SegmentGroupPath)) {
+        Write-Log "  Standalone segments file: $($loadingStats.TotalFromStandalone) segments" -Level "INFO"
+        Write-Log "  Segment groups file: $($loadingStats.TotalFromSegmentGroups) segments" -Level "INFO"
+        Write-Log "  Unique from standalone: $($loadingStats.UniqueFromStandalone)" -Level "INFO"
+        Write-Log "  Unique from segment groups: $($loadingStats.UniqueFromSegmentGroups)" -Level "INFO"
+        Write-Log "  Duplicates removed: $($loadingStats.DuplicatesRemoved)" -Level "INFO"
+    }
     Write-Log "Segments processed: $($filteredSegments.Count)" -Level "INFO"
     Write-Log "Total result records: $($allResults.Count)" -Level "INFO"
     Write-Log "Grouped result records: $($groupedResults.Count)" -Level "INFO"
