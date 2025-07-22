@@ -706,12 +706,13 @@ try {
     
     #region Initialize Conflict Detection Data Structures
     # GSA-style conflict detection using efficient interval-based approach
-    $ipRangeToProtocolToPorts = @{}      # IP ranges (as integer tuples) -> protocols -> port ranges
-    $hostToProtocolToPorts = @{}         # FQDNs -> protocols -> port ranges
-    $dnsSuffixes = @{}                   # Wildcard domain suffixes
+    $ipRangeToProtocolToPorts = @{}      # IP ranges (as integer tuples) -> protocols -> port ranges -> app info
+    $hostToProtocolToPorts = @{}         # FQDNs -> protocols -> port ranges -> app info
+    $dnsSuffixes = @{}                   # Wildcard domain suffixes -> protocols -> port ranges -> app info
     $allResults = @()
     $conflictCount = 0
     $processedCount = 0
+    $segmentIdCounter = 1                # Counter for unique segment IDs
     #endregion
     
     #region Main Processing Phase
@@ -871,6 +872,12 @@ try {
                         $hasConflict = $false
                         $conflictingApps = @()
                         
+                        # Create app info object for tracking
+                        $currentAppInfo = @{
+                            Name = $enterpriseAppName
+                            SegmentId = "SEG-{0:D6}" -f $segmentIdCounter
+                        }
+                        
                         # Conflict detection logic
                         if ($destinationType -eq "IP" -or $destinationType -eq "Subnet") {
                             # Convert to IP range for comparison
@@ -891,9 +898,10 @@ try {
                                             foreach ($existingPort in $protocolData[$combo.Protocol].Keys) {
                                                 if (Test-PortRangeOverlap -PortRange1 $combo.Port -PortRange2 $existingPort) {
                                                     $hasConflict = $true
-                                                    $existingApp = $protocolData[$combo.Protocol][$existingPort]
-                                                    $conflictingApps += $existingApp
-                                                    Write-Log "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with existing app: $existingApp" -Level "WARN"
+                                                    $existingAppInfo = $protocolData[$combo.Protocol][$existingPort]
+                                                    $conflictReference = "$($existingAppInfo.Name):$($existingAppInfo.SegmentId)"
+                                                    $conflictingApps += $conflictReference
+                                                    Write-Log "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with existing app: $conflictReference" -Level "WARN"
                                                 }
                                             }
                                         }
@@ -907,7 +915,7 @@ try {
                                 if (-not $ipRangeToProtocolToPorts[$currentRange].ContainsKey($combo.Protocol)) {
                                     $ipRangeToProtocolToPorts[$currentRange][$combo.Protocol] = @{}
                                 }
-                                $ipRangeToProtocolToPorts[$currentRange][$combo.Protocol][$combo.Port] = $enterpriseAppName
+                                $ipRangeToProtocolToPorts[$currentRange][$combo.Protocol][$combo.Port] = $currentAppInfo
                             }
                         } else {
                             # FQDN conflict detection
@@ -916,9 +924,10 @@ try {
                                     foreach ($existingPort in $hostToProtocolToPorts[$cleanDomain][$combo.Protocol].Keys) {
                                         if (Test-PortRangeOverlap -PortRange1 $combo.Port -PortRange2 $existingPort) {
                                             $hasConflict = $true
-                                            $existingApp = $hostToProtocolToPorts[$cleanDomain][$combo.Protocol][$existingPort]
-                                            $conflictingApps += $existingApp
-                                            Write-Log "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with existing app: $existingApp" -Level "WARN"
+                                            $existingAppInfo = $hostToProtocolToPorts[$cleanDomain][$combo.Protocol][$existingPort]
+                                            $conflictReference = "$($existingAppInfo.Name):$($existingAppInfo.SegmentId)"
+                                            $conflictingApps += $conflictReference
+                                            Write-Log "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with existing app: $conflictReference" -Level "WARN"
                                         }
                                     }
                                 }
@@ -932,9 +941,10 @@ try {
                                         foreach ($existingPort in $suffixData[$combo.Protocol].Keys) {
                                             if (Test-PortRangeOverlap -PortRange1 $combo.Port -PortRange2 $existingPort) {
                                                 $hasConflict = $true
-                                                $existingApp = $suffixData[$combo.Protocol][$existingPort]
-                                                $conflictingApps += $existingApp
-                                                Write-Log "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with wildcard app: $existingApp (pattern: $suffix)" -Level "WARN"
+                                                $existingAppInfo = $suffixData[$combo.Protocol][$existingPort]
+                                                $conflictReference = "$($existingAppInfo.Name):$($existingAppInfo.SegmentId)"
+                                                $conflictingApps += $conflictReference
+                                                Write-Log "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with wildcard app: $conflictReference (pattern: $suffix)" -Level "WARN"
                                             }
                                         }
                                     }
@@ -948,7 +958,7 @@ try {
                             if (-not $hostToProtocolToPorts[$cleanDomain].ContainsKey($combo.Protocol)) {
                                 $hostToProtocolToPorts[$cleanDomain][$combo.Protocol] = @{}
                             }
-                            $hostToProtocolToPorts[$cleanDomain][$combo.Protocol][$combo.Port] = $enterpriseAppName
+                            $hostToProtocolToPorts[$cleanDomain][$combo.Protocol][$combo.Port] = $currentAppInfo
                             
                             # Handle wildcard domains
                             if ($cleanDomain.StartsWith('*.')) {
@@ -958,7 +968,7 @@ try {
                                 if (-not $dnsSuffixes[$cleanDomain].ContainsKey($combo.Protocol)) {
                                     $dnsSuffixes[$cleanDomain][$combo.Protocol] = @{}
                                 }
-                                $dnsSuffixes[$cleanDomain][$combo.Protocol][$combo.Port] = $enterpriseAppName
+                                $dnsSuffixes[$cleanDomain][$combo.Protocol][$combo.Port] = $currentAppInfo
                             }
                         }
                         
@@ -968,6 +978,7 @@ try {
                         
                         # Create result object
                         $resultObj = [PSCustomObject]@{
+                            SegmentId = "SEG-{0:D6}" -f $segmentIdCounter
                             OriginalAppName = $segment.name
                             EnterpriseAppName = $enterpriseAppName
                             destinationHost = $cleanDomain
@@ -985,6 +996,7 @@ try {
                         }
                         
                         $allResults += $resultObj
+                        $segmentIdCounter++
                     }
                 }
                 catch {
@@ -1019,6 +1031,7 @@ try {
         $uniquePorts = ($group | ForEach-Object { $_.Ports } | Sort-Object -Unique) -join ", "
         
         [PSCustomObject]@{
+            SegmentId = $firstItem.SegmentId
             OriginalAppName = $firstItem.OriginalAppName
             EnterpriseAppName = $firstItem.EnterpriseAppName
             destinationHost = $firstItem.destinationHost
