@@ -147,8 +147,11 @@ function Connect-ToMicrosoftGraph {
         
         $context = Get-MgContext
         Write-Log "Connected to Microsoft Graph successfully" -Level "SUCCESS" -Component "Authentication"
-        Write-Log "Tenant: $($context.TenantId)" -Level "DEBUG" -Component "Authentication"
-        Write-Log "Account: $($context.Account)" -Level "DEBUG" -Component "Authentication"
+        
+        if ($context) {
+            Write-Log "Tenant: $($context.TenantId)" -Level "DEBUG" -Component "Authentication"
+            Write-Log "Account: $($context.Account)" -Level "DEBUG" -Component "Authentication"
+        }
         
         return $true
     }
@@ -281,8 +284,12 @@ function Test-CSVValidation {
         }
     }
     
-    $validRows = ($validationResults | Where-Object { $_.IsValid }).Count
-    $invalidRows = ($validationResults | Where-Object { -not $_.IsValid }).Count
+    # Count valid and invalid rows safely
+    $validRowsArray = @($validationResults | Where-Object { $_.IsValid })
+    $invalidRowsArray = @($validationResults | Where-Object { -not $_.IsValid })
+    
+    $validRows = $validRowsArray.Count
+    $invalidRows = $invalidRowsArray.Count
     
     Write-Log "Validation complete: $validRows valid, $invalidRows invalid" -Level "INFO" -Component "Validation"
     
@@ -569,7 +576,7 @@ try {
     
     # Validate CSV structure and content
     $validationResults = Test-CSVValidation -CSVData $csvData
-    $invalidRows = $validationResults | Where-Object { -not $_.IsValid }
+    $invalidRows = @($validationResults | Where-Object { -not $_.IsValid })
     
     if ($invalidRows.Count -gt 0) {
         Write-Log "CSV validation failed. Please fix errors and try again." -Level "ERROR"
