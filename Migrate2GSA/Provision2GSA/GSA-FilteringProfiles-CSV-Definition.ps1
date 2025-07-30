@@ -1,6 +1,7 @@
 # GSA Filtering Profiles CSV Definition
 # This script defines the CSV column structure for creating Global Secure Access
 # filtering profiles, policies, and rules via Microsoft Graph PowerShell
+## This file is part of the Migration2GSA project, which aims to facilitate the migration
 
 <#
 .SYNOPSIS
