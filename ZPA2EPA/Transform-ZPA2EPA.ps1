@@ -82,7 +82,7 @@ function Write-Log {
         }
         
         # Write to log file
-        $logFilePath = Join-Path $OutputBasePath "script.log"
+        $logFilePath = Join-Path $OutputBasePath "Transform-ZPA2EPA.log"
         try {
             if ([string]::IsNullOrEmpty($Message)) {
                 "" | Out-File -FilePath $logFilePath -Append -Encoding UTF8
@@ -296,12 +296,12 @@ function Get-DestinationType {
     
     # Check if it's an IP address
     if ($Destination -match '^\d{1,3}(\.\d{1,3}){3}$') {
-        return "IP"
+        return "ipAddress"
     }
     
     # Check if it's a CIDR notation
     if ($Destination -match '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$') {
-        return "Subnet"
+        return "ipRangeCidr"
     }
     
     # Otherwise, it's an FQDN

@@ -50,7 +50,7 @@ class ZIABackup {
     [SecureString]$Password
     [string]$ApiKey
     [string]$BaseUrl
-    [Microsoft.PowerShell.Commands.WebRequestSession]$Session
+    [object]$Session
 
     ZIABackup([string]$Username, [SecureString]$Password, [string]$ApiKey, [string]$BaseUrl) {
         $this.Username = $Username
@@ -60,7 +60,7 @@ class ZIABackup {
         $this.Session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
     }
 
-    function ObfuscateApiKey([string]$apiKey, [string]$timestamp) {
+    [string] ObfuscateApiKey([string]$apiKey, [string]$timestamp) {
         $high = $timestamp.Substring($timestamp.Length - 6)
         $low = ([int]$high -shr 1).ToString()
         while ($low.Length -lt 6) {

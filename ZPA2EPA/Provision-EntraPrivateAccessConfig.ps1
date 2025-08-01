@@ -1,5 +1,5 @@
 #Requires -Version 7.0
-#Requires -Modules Microsoft.Graph, Microsoft.Graph.Beta.Identity.DirectoryManagement
+
 
 <#
 .SYNOPSIS
@@ -35,7 +35,7 @@
     .\Provision-EntraPrivateAccessConfig.ps1 -ProvisioningConfigPath ".\config.csv" -AppNamePrefix "GSA-" -WhatIf
 
 .NOTES
-    Author: GitHub Copilot
+    Author: Andres Canello
     Version: 1.0
     Requires: PowerShell 7+, Microsoft Graph PowerShell SDK, Entra PowerShell
 #>
@@ -53,7 +53,7 @@ param (
     [string]$ConnectorGroupFilter = "",
      
     [Parameter(HelpMessage="Log file path")]
-    [string]$LogPath = ".\GSA_Provisioning.log",
+    [string]$LogPath = ".\Provision-EntraPrivateAccessConfig.log",
     
     [Parameter(HelpMessage="Enable WhatIf mode")]
     [switch]$WhatIf,
@@ -178,7 +178,7 @@ function Validate-MicrosoftGraph {
         if (-not $context) {
             Write-LogMessage "No active Microsoft Graph connection found." -Level WARN -Component "Auth"
             Write-LogMessage "Please connect to Microsoft Graph with the following command:" -Level INFO -Component "Auth"
-            Write-LogMessage "Connect-MgGraph -Scopes 'Application.ReadWrite.All', 'Group.Read.All', 'Directory.Read.All'" -Level INFO -Component "Auth"
+            Write-LogMessage "Connect-MgGraph -Scopes 'Application.ReadWrite.All', 'Group.Read.All', 'Directory.Read.All' -ContextScope Process" -Level INFO -Component "Auth"
             throw "Microsoft Graph connection required"
         }
         
@@ -202,7 +202,7 @@ function Validate-MicrosoftGraph {
         
         if ($missingScopes.Count -gt 0) {
             Write-LogMessage "Missing required scopes: $($missingScopes -join ', ')" -Level ERROR -Component "Auth"
-            Write-LogMessage "Please reconnect with: Connect-MgGraph -Scopes '$($requiredScopes -join "', '")'" -Level INFO -Component "Auth"
+            Write-LogMessage "Please reconnect with: Connect-MgGraph -Scopes '$($requiredScopes -join "', '")' -ContextScope Process" -Level INFO -Component "Auth"
             throw "Insufficient permissions"
         }
         
@@ -340,6 +340,18 @@ function Show-ProvisioningPlan {
         $connectorGroups = $appGroup.Group | Select-Object -ExpandProperty ConnectorGroup -Unique
         Write-LogMessage "    Connector Groups: $($connectorGroups -join ', ')" -Level INFO -Component "Plan"
         
+        # Validate connector group consistency
+        if ($connectorGroups.Count -gt 1) {
+            Write-LogMessage "    ⚠️  WARNING: Application '$($appGroup.Name)' has segments with different connector groups!" -Level WARN -Component "Plan"
+            Write-LogMessage "    ⚠️  Only the first connector group '$($connectorGroups[0])' will be used for the entire application." -Level WARN -Component "Plan"
+            
+            # Show breakdown by connector group
+            $cgBreakdown = $appGroup.Group | Group-Object -Property ConnectorGroup
+            foreach ($cgGroup in $cgBreakdown) {
+                Write-LogMessage "      - $($cgGroup.Name): $($cgGroup.Count) segments" -Level WARN -Component "Plan"
+            }
+        }
+        
         $protocols = $appGroup.Group | Select-Object -ExpandProperty Protocol -Unique
         Write-LogMessage "    Protocols: $($protocols -join ', ')" -Level INFO -Component "Plan"
     }
@@ -368,15 +380,35 @@ function Resolve-ConnectorGroups {
         
         Write-LogMessage "Found $($connectorGroupNames.Count) unique connector groups to resolve" -Level INFO -Component "ConnectorGroups"
         
+        if ($connectorGroupNames.Count -eq 0) {
+            Write-LogMessage "No valid connector groups found in configuration data. All entries appear to be placeholders." -Level WARN -Component "ConnectorGroups"
+            Write-LogMessage "Please replace 'Placeholder_Replace_Me' values with actual connector group names in your CSV." -Level WARN -Component "ConnectorGroups"
+            Write-LogMessage "Provisioning will fail without valid connector groups." -Level ERROR -Component "ConnectorGroups"
+            throw "No valid connector groups found in configuration"
+        }
+        
         # Get all connector groups from Entra
-        $allConnectorGroups = Get-EntraBetaApplicationProxyConnectorGroup
+        $allConnectorGroups = Invoke-GraphRequest -Method GET -Uri "/beta/onPremisesPublishingProfiles/applicationProxy/connectorGroups"
+        
+        # Extract applicationProxy connector groups from the response
+        $applicationProxyConnectorGroups = $allConnectorGroups.value | Where-Object { $_.connectorGroupType -eq "applicationProxy" }
+        
+        # Display all applicationProxy connector groups found in tenant
+        if ($applicationProxyConnectorGroups -and $applicationProxyConnectorGroups.Count -gt 0) {
+            Write-LogMessage "Found $($applicationProxyConnectorGroups.Count) Application Proxy connector groups in tenant:" -Level INFO -Component "ConnectorGroups"
+            foreach ($cg in $applicationProxyConnectorGroups) {
+                Write-LogMessage "  - $($cg.name) (ID: $($cg.id)) [Default: $($cg.isDefault)]" -Level INFO -Component "ConnectorGroups"
+            }
+        } else {
+            Write-LogMessage "No Application Proxy connector groups found in tenant" -Level WARN -Component "ConnectorGroups"
+        }
         
         foreach ($groupName in $connectorGroupNames) {
-            $connectorGroup = $allConnectorGroups | Where-Object { $_.Name -eq $groupName }
+            $connectorGroup = $applicationProxyConnectorGroups | Where-Object { $_.name -eq $groupName }
             
             if ($connectorGroup) {
-                $Global:ConnectorGroupCache[$groupName] = $connectorGroup.Id
-                Write-LogMessage "Resolved connector group '$groupName' to ID: $($connectorGroup.Id)" -Level SUCCESS -Component "ConnectorGroups"
+                $Global:ConnectorGroupCache[$groupName] = $connectorGroup.id
+                Write-LogMessage "Resolved connector group '$groupName' to ID: $($connectorGroup.id)" -Level SUCCESS -Component "ConnectorGroups"
             } else {
                 Write-LogMessage "Connector group '$groupName' not found in tenant" -Level ERROR -Component "ConnectorGroups"
                 $Global:ConnectorGroupCache[$groupName] = $null
@@ -442,6 +474,86 @@ function Resolve-EntraGroups {
         throw
     }
 }
+
+function Validate-ApplicationDependencies {
+    <#
+    .SYNOPSIS
+        Validates that all applications have their required dependencies resolved.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [array]$ConfigData
+    )
+    
+    Write-LogMessage "Validating application dependencies..." -Level INFO -Component "Validation"
+    
+    $validApplications = @()
+    $skippedApplications = @()
+    
+    # Group by application to check each one
+    $appGroups = $ConfigData | Group-Object -Property EnterpriseAppName
+    
+    foreach ($appGroup in $appGroups) {
+        $appName = $appGroup.Name
+        $segments = $appGroup.Group
+        $hasUnresolvedDependencies = $false
+        
+        # Check connector groups for this application
+        $connectorGroups = $segments | Select-Object -ExpandProperty ConnectorGroup -Unique
+        $unresolvedConnectorGroups = @()
+        
+        foreach ($cgName in $connectorGroups) {
+            if ($cgName -eq "Placeholder_Replace_Me") {
+                $unresolvedConnectorGroups += $cgName
+            } elseif (-not $Global:ConnectorGroupCache.ContainsKey($cgName) -or -not $Global:ConnectorGroupCache[$cgName]) {
+                $unresolvedConnectorGroups += $cgName
+            }
+        }
+        
+        if ($unresolvedConnectorGroups.Count -gt 0) {
+            $hasUnresolvedDependencies = $true
+            Write-LogMessage "❌ Skipping application '$appName': Unresolved connector groups found" -Level ERROR -Component "Validation"
+            
+            foreach ($unresolvedCG in $unresolvedConnectorGroups) {
+                if ($unresolvedCG -eq "Placeholder_Replace_Me") {
+                    Write-LogMessage "   - '$unresolvedCG' (placeholder - replace with actual connector group name)" -Level ERROR -Component "Validation"
+                } else {
+                    Write-LogMessage "   - '$unresolvedCG' (not found in tenant)" -Level ERROR -Component "Validation"
+                }
+            }
+            
+            # Mark all segments of this application as skipped
+            foreach ($segment in $segments) {
+                $resultRecord = $Global:ProvisioningResults | Where-Object { 
+                    $_.EnterpriseAppName -eq $segment.EnterpriseAppName -and 
+                    $_.destinationHost -eq $segment.destinationHost -and 
+                    $_.Protocol -eq $segment.Protocol 
+                }
+                
+                if ($resultRecord) {
+                    $resultRecord.ProvisioningResult = "Skipped: Unresolved connector groups - $($unresolvedConnectorGroups -join ', ')"
+                }
+            }
+            
+            $skippedApplications += $appName
+        } else {
+            # Application has all dependencies resolved
+            $validApplications += $segments
+        }
+    }
+    
+    if ($skippedApplications.Count -gt 0) {
+        Write-LogMessage "⚠️  Skipped $($skippedApplications.Count) applications due to unresolved dependencies:" -Level WARN -Component "Validation"
+        foreach ($skippedApp in $skippedApplications) {
+            Write-LogMessage "   - $skippedApp" -Level WARN -Component "Validation"
+        }
+    }
+    
+    Write-LogMessage "Validation completed: $($validApplications.Count) segments from valid applications will be processed" -Level SUCCESS -Component "Validation"
+    
+    return $validApplications
+}
 #endregion
 
 #region Application Provisioning
@@ -463,7 +575,7 @@ function New-PrivateAccessApplication {
     
     try {
         # Check if application already exists
-        $existingApp = Get-EntraBetaPrivateAccessApplication -Filter "displayName eq '$AppName'" -ErrorAction SilentlyContinue
+        $existingApp = Get-EntraBetaPrivateAccessApplication -ApplicationName $AppName -ErrorAction SilentlyContinue
         
         if ($existingApp) {
             Write-LogMessage "Application '$AppName' already exists. Will add segments to existing app." -Level INFO -Component "AppProvisioning"
@@ -484,14 +596,19 @@ function New-PrivateAccessApplication {
         
         # Create new application
         $appParams = @{
-            DisplayName = $AppName
+            ApplicationName = $AppName
+            ConnectorGroupId = $connectorGroupId
             # Add other required parameters for Private Access application
         }
         
-        $newApp = New-EntraBetaPrivateAccessApplication @appParams
+        New-EntraBetaPrivateAccessApplication @appParams
         
-        # Associate with connector group
-        # Note: This may require additional API calls depending on the specific Entra implementation
+        # Get the created application to retrieve the actual object with ID
+        $newApp = Get-EntraBetaPrivateAccessApplication -ApplicationName $AppName -ErrorAction Stop
+        
+        if (-not $newApp) {
+            throw "Failed to retrieve created application '$AppName' after creation"
+        }
         
         $Global:ApplicationCache[$AppName] = $newApp.Id
         Write-LogMessage "Successfully created Private Access application: $AppName (ID: $($newApp.Id))" -Level SUCCESS -Component "AppProvisioning"
@@ -518,7 +635,7 @@ function New-ApplicationSegments {
         [PSCustomObject]$SegmentConfig
     )
     
-    $segmentName = "$($SegmentConfig.EnterpriseAppName)-$($SegmentConfig.destinationHost)-$($SegmentConfig.Protocol)"
+    $segmentName = $SegmentConfig.SegmentId
     Write-LogMessage "Creating application segment: $segmentName" -Level INFO -Component "SegmentProvisioning"
     
     try {
@@ -527,29 +644,24 @@ function New-ApplicationSegments {
             throw "Invalid segment configuration: missing required fields"
         }
         
-        # Parse ports
-        $portRanges = @()
+        # Parse ports - convert to string array format expected by Entra API
+        $portArray = @()
         $portString = $SegmentConfig.Ports -replace '\s', ''
         $portParts = $portString -split ','
         
         foreach ($portPart in $portParts) {
             if ($portPart -match '(\d+)-(\d+)') {
-                $portRanges += @{
-                    StartPort = [int]$matches[1]
-                    EndPort = [int]$matches[2]
-                }
+                # Port range format: "8080-8090"
+                $portArray += $portPart
             } elseif ($portPart -match '^\d+$') {
-                $port = [int]$portPart
-                $portRanges += @{
-                    StartPort = $port
-                    EndPort = $port
-                }
+                # Single port format: "443"
+                $portArray += $portPart
             } else {
                 Write-LogMessage "Invalid port specification: $portPart" -Level WARN -Component "SegmentProvisioning"
             }
         }
         
-        if ($portRanges.Count -eq 0) {
+        if ($portArray.Count -eq 0) {
             throw "No valid ports found in configuration: $($SegmentConfig.Ports)"
         }
         
@@ -564,11 +676,10 @@ function New-ApplicationSegments {
         # Create segment parameters
         $segmentParams = @{
             ApplicationId = $AppId
-            DisplayName = $segmentName
             DestinationHost = $SegmentConfig.destinationHost
             DestinationType = $SegmentConfig.DestinationType
             Protocol = $SegmentConfig.Protocol
-            PortRanges = $portRanges
+            Ports = $portArray
         }
         
         # Create the segment
@@ -626,7 +737,7 @@ function Set-ApplicationGroupAssignments {
         }
         
         # This would be the actual assignment call - implementation may vary
-        # New-MgGroupAppRoleAssignment -GroupId $groupId -BodyParameter $assignmentParams
+        New-MgGroupAppRoleAssignment -GroupId $groupId -BodyParameter $assignmentParams
         
         Write-LogMessage "Successfully assigned group '$GroupName' to application" -Level SUCCESS -Component "GroupAssignment"
         
@@ -743,8 +854,21 @@ function Invoke-ProvisioningProcess {
         Resolve-ConnectorGroups -ConfigData $configData
         Resolve-EntraGroups -ConfigData $configData
         
-        # Group configuration by application
-        $appGroups = $configData | Group-Object -Property EnterpriseAppName
+        # Validate dependencies and filter out applications with unresolved dependencies
+        $validConfigData = Validate-ApplicationDependencies -ConfigData $configData
+        
+        if ($validConfigData.Count -eq 0) {
+            Write-LogMessage "No applications can be processed due to unresolved dependencies. Exiting." -Level ERROR -Component "Main"
+            return
+        }
+        
+        if ($validConfigData.Count -lt $configData.Count) {
+            Write-LogMessage "Proceeding with $($validConfigData.Count) segments from applications with resolved dependencies" -Level INFO -Component "Main"
+            Write-LogMessage "$(($configData.Count - $validConfigData.Count)) segments were skipped due to dependency issues" -Level WARN -Component "Main"
+        }
+        
+        # Group configuration by application (now using filtered data)
+        $appGroups = $validConfigData | Group-Object -Property EnterpriseAppName
         
         foreach ($appGroup in $appGroups) {
             $appName = $appGroup.Name
