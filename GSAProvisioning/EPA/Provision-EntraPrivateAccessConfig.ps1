@@ -811,6 +811,26 @@ function Set-ApplicationGroupAssignments {
             $appRoleId = $userAppRole.Id
             Write-LogMessage "Found User app role ID: $appRoleId for application" -Level INFO -Component "GroupAssignment"
         }
+        
+        # Check if the group is already assigned to the application with this role
+        Write-LogMessage "Checking for existing group assignment..." -Level INFO -Component "GroupAssignment"
+        try {
+            $existingAssignments = Get-EntraBetaServicePrincipalAppRoleAssignment -ServicePrincipalId $servicePrincipal.Id -ErrorAction Stop
+            
+            $existingAssignment = $existingAssignments | Where-Object { 
+                $_.PrincipalId -eq $groupId -and $_.AppRoleId -eq $appRoleId 
+            }
+            
+            if ($existingAssignment) {
+                Write-LogMessage "Group '$GroupName' is already assigned to application with role ID '$appRoleId'" -Level INFO -Component "GroupAssignment"
+                return @{ Success = $true; Action = "AlreadyAssigned" }
+            }
+            
+            Write-LogMessage "No existing assignment found for group '$GroupName' with role ID '$appRoleId'" -Level INFO -Component "GroupAssignment"
+        }
+        catch {
+            Write-LogMessage "Warning: Could not check existing assignments: $_. Proceeding with assignment attempt." -Level WARN -Component "GroupAssignment"
+        }
 
         # Create app role assignment
         $assignmentParams = @{
