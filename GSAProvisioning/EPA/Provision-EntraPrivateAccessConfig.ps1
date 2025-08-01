@@ -74,7 +74,6 @@ $Global:ProvisioningStats = @{
 
 $Global:ConnectorGroupCache = @{}
 $Global:EntraGroupCache = @{}
-$Global:ApplicationCache = @{}
 $Global:ProvisioningResults = @()
 #endregion
 
@@ -651,8 +650,7 @@ function New-PrivateAccessApplication {
         
         if ($existingApp) {
             Write-LogMessage "Application '$AppName' already exists. Will add segments to existing app." -Level INFO -Component "AppProvisioning"
-            $Global:ApplicationCache[$AppName] = $existingApp.Id
-            return @{ Success = $true; AppId = $existingApp.Id; Action = "ExistingApp" }
+            return @{ Success = $true; AppId = $existingApp.AppId; AppObjectId = $existingApp.Id; Action = "ExistingApp" }
         }
         
         # Get connector group ID
@@ -682,10 +680,9 @@ function New-PrivateAccessApplication {
             throw "Failed to retrieve created application '$AppName' after creation"
         }
         
-        $Global:ApplicationCache[$AppName] = $newApp.Id
         Write-LogMessage "Successfully created Private Access application: $AppName (ID: $($newApp.Id))" -Level SUCCESS -Component "AppProvisioning"
         
-        return @{ Success = $true; AppId = $newApp.Id; Action = "Created" }
+        return @{ Success = $true; AppId = $newApp.AppId; AppObjectId = $newApp.Id; Action = "Created" }
     }
     catch {
         Write-LogMessage "Failed to create Private Access application '$AppName': $_" -Level ERROR -Component "AppProvisioning"
@@ -1000,7 +997,7 @@ function Invoke-ProvisioningProcess {
                 foreach ($segment in $segments) {
                     Write-ProgressUpdate -Current $Global:ProvisioningStats.ProcessedRecords -Total $Global:ProvisioningStats.TotalRecords -Activity "Provisioning Segments" -Status "Processing $($segment.EnterpriseAppName)"
                     
-                    $segmentResult = New-ApplicationSegments -AppId $appResult.AppId -SegmentConfig $segment
+                    $segmentResult = New-ApplicationSegments -AppId $appResult.AppObjectId -SegmentConfig $segment
                     
                     if ($segmentResult.Success) {
                         $Global:ProvisioningStats.SuccessfulSegments++
