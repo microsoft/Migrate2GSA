@@ -765,6 +765,25 @@ function Set-ApplicationGroupAssignments {
     <#
     .SYNOPSIS
         Assigns Entra ID groups to Private Access applications.
+    
+    .DESCRIPTION
+        Assigns an Entra ID group to a Private Access application. The function includes
+        duplicate assignment checking to prevent assigning the same group multiple times
+        to the same application with the same role.
+    
+    .PARAMETER AppId
+        The application ID of the Private Access application.
+    
+    .PARAMETER GroupName
+        The display name of the Entra ID group to assign to the application.
+    
+    .OUTPUTS
+        Returns a hashtable with Success (boolean), Action (string), and optional Error (string).
+        Action values: "Assigned", "AlreadyAssigned", "Skipped", "Failed"
+    
+    .EXAMPLE
+        Set-ApplicationGroupAssignments -AppId "app-123" -GroupName "MyGroup"
+        Assigns the group "MyGroup" to application "app-123" if not already assigned.
     #>
     [CmdletBinding()]
     param(
