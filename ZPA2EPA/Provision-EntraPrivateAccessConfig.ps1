@@ -1,6 +1,3 @@
-#Requires -Version 7.0
-
-
 <#
 .SYNOPSIS
     Provisions Microsoft Entra Private Access applications from CSV configuration data.
@@ -37,7 +34,7 @@
 .NOTES
     Author: Andres Canello
     Version: 1.0
-    Requires: PowerShell 7+, Microsoft Graph PowerShell SDK, Entra PowerShell
+    Requires: PowerShell 7+, Entra PowerShell Beta Modules
 #>
 
 [CmdletBinding()]
@@ -161,36 +158,99 @@ function Write-ProgressUpdate {
 #endregion
 
 #region Authentication Functions
-function Validate-MicrosoftGraph {
+function Test-RequiredModules {
     <#
     .SYNOPSIS
-        Validates Microsoft Graph connection and required permissions.
+        Validates that all required PowerShell modules are installed.
     #>
     [CmdletBinding()]
     param()
     
-    Write-LogMessage "Validating Microsoft Graph connection..." -Level INFO -Component "Auth"
+    Write-LogMessage "Validating required PowerShell modules..." -Level INFO -Component "ModuleCheck"
+    
+    $requiredModules = @(
+        'Microsoft.Entra.Beta.Groups',
+        'Microsoft.Entra.Beta.Authentication',
+        'Microsoft.Entra.Beta.NetworkAccess'
+    )
+    
+    $missingModules = @()
+    $installedModules = @()
+    
+    foreach ($moduleName in $requiredModules) {
+        try {
+            $module = Get-Module -Name $moduleName -ListAvailable -ErrorAction Stop
+            if ($module) {
+                $installedModules += $moduleName
+                $latestVersion = ($module | Sort-Object Version -Descending | Select-Object -First 1).Version
+                Write-LogMessage "✅ $moduleName (v$latestVersion) - Available" -Level SUCCESS -Component "ModuleCheck"
+            } else {
+                $missingModules += $moduleName
+            }
+        }
+        catch {
+            $missingModules += $moduleName
+        }
+    }
+    
+    if ($missingModules.Count -gt 0) {
+        Write-LogMessage "❌ Missing required PowerShell modules:" -Level ERROR -Component "ModuleCheck"
+        foreach ($missingModule in $missingModules) {
+            Write-LogMessage "   - $missingModule" -Level ERROR -Component "ModuleCheck"
+        }
+        
+        Write-LogMessage "Please install missing modules using the following commands:" -Level INFO -Component "ModuleCheck"
+        Write-LogMessage "Install-Module -Name Microsoft.Entra.Beta -Force -AllowClobber" -Level INFO -Component "ModuleCheck"
+        
+        throw "Required PowerShell modules are missing: $($missingModules -join ', ')"
+    }
+    
+    Write-LogMessage "All required PowerShell modules are installed" -Level SUCCESS -Component "ModuleCheck"
+    
+    # Check PowerShell version requirement
+    $psVersion = $PSVersionTable.PSVersion
+    if ($psVersion.Major -lt 7) {
+        Write-LogMessage "❌ PowerShell version $psVersion detected. PowerShell 7.0 or later is required." -Level ERROR -Component "ModuleCheck"
+        Write-LogMessage "Please upgrade to PowerShell 7+ and try again." -Level ERROR -Component "ModuleCheck"
+        Write-LogMessage "Download PowerShell 7+ from: https://github.com/PowerShell/PowerShell/releases" -Level INFO -Component "ModuleCheck"
+        throw "PowerShell 7.0 or later is required. Current version: $psVersion"
+    } else {
+        Write-LogMessage "✅ PowerShell version $psVersion - Compatible" -Level SUCCESS -Component "ModuleCheck"
+    }
+    
+    return $true
+}
+
+function Validate-EntraConnection {
+    <#
+    .SYNOPSIS
+        Validates Entra PowerShell connection and required permissions.
+    #>
+    [CmdletBinding()]
+    param()
+    
+    Write-LogMessage "Validating Entra PowerShell connection..." -Level INFO -Component "Auth"
     
     try {
         # Check if already connected
-        $context = Get-MgContext
+        $context = Get-EntraContext -ErrorAction SilentlyContinue
         
         if (-not $context) {
-            Write-LogMessage "No active Microsoft Graph connection found." -Level WARN -Component "Auth"
-            Write-LogMessage "Please connect to Microsoft Graph with the following command:" -Level INFO -Component "Auth"
-            Write-LogMessage "Connect-MgGraph -Scopes 'Application.ReadWrite.All', 'Group.Read.All', 'Directory.Read.All' -ContextScope Process" -Level INFO -Component "Auth"
-            throw "Microsoft Graph connection required"
+            Write-LogMessage "No active Entra PowerShell connection found." -Level WARN -Component "Auth"
+            Write-LogMessage "Please connect to Entra PowerShell with the following command:" -Level INFO -Component "Auth"
+            Write-LogMessage "Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrite.All', 'NetworkAccess.ReadWrite.All' -ContextScope Process" -Level INFO -Component "Auth"
+            throw "Entra PowerShell connection required"
         }
         
-        # Validate tenant
-        Write-LogMessage "Connected to tenant: $($context.TenantId)" -Level INFO -Component "Auth"
+        # Validate tenant and account
+        Write-LogMessage "Entra PowerShell connected to tenant: $($context.TenantId)" -Level INFO -Component "Auth"
         Write-LogMessage "Connected as: $($context.Account)" -Level INFO -Component "Auth"
         
         # Check required scopes
         $requiredScopes = @(
+            'NetworkAccessPolicy.ReadWrite.All',
             'Application.ReadWrite.All',
-            'Group.Read.All',
-            'Directory.Read.All'
+            'NetworkAccess.ReadWrite.All'
         )
         
         $missingScopes = @()
@@ -202,15 +262,15 @@ function Validate-MicrosoftGraph {
         
         if ($missingScopes.Count -gt 0) {
             Write-LogMessage "Missing required scopes: $($missingScopes -join ', ')" -Level ERROR -Component "Auth"
-            Write-LogMessage "Please reconnect with: Connect-MgGraph -Scopes '$($requiredScopes -join "', '")' -ContextScope Process" -Level INFO -Component "Auth"
-            throw "Insufficient permissions"
+            Write-LogMessage "Please reconnect with: Connect-Entra -Scopes '$($requiredScopes -join "', '")' -ContextScope Process" -Level INFO -Component "Auth"
+            throw "Insufficient Entra permissions"
         }
         
-        Write-LogMessage "Microsoft Graph connection validated successfully" -Level SUCCESS -Component "Auth"
+        Write-LogMessage "Entra PowerShell connection validated successfully" -Level SUCCESS -Component "Auth"
         return $true
     }
     catch {
-        Write-LogMessage "Failed to validate Microsoft Graph connection: $_" -Level ERROR -Component "Auth"
+        Write-LogMessage "Failed to validate Entra PowerShell connection: $_" -Level ERROR -Component "Auth"
         throw
     }
 }
@@ -333,27 +393,30 @@ function Show-ProvisioningPlan {
     Write-LogMessage "Applications to provision: $($appGroups.Count)" -Level SUMMARY -Component "Plan"
     Write-LogMessage "Total segments to create: $($ConfigData.Count)" -Level SUMMARY -Component "Plan"
     
-    foreach ($appGroup in $appGroups) {
-        Write-LogMessage "  App: $($appGroup.Name)" -Level INFO -Component "Plan"
-        Write-LogMessage "    Segments: $($appGroup.Count)" -Level INFO -Component "Plan"
-        
-        $connectorGroups = $appGroup.Group | Select-Object -ExpandProperty ConnectorGroup -Unique
-        Write-LogMessage "    Connector Groups: $($connectorGroups -join ', ')" -Level INFO -Component "Plan"
-        
-        # Validate connector group consistency
-        if ($connectorGroups.Count -gt 1) {
-            Write-LogMessage "    ⚠️  WARNING: Application '$($appGroup.Name)' has segments with different connector groups!" -Level WARN -Component "Plan"
-            Write-LogMessage "    ⚠️  Only the first connector group '$($connectorGroups[0])' will be used for the entire application." -Level WARN -Component "Plan"
+    # Only show detailed plan information when WhatIf is enabled
+    if ($WhatIf) {
+        foreach ($appGroup in $appGroups) {
+            Write-LogMessage "  App: $($appGroup.Name)" -Level INFO -Component "Plan"
+            Write-LogMessage "    Segments: $($appGroup.Count)" -Level INFO -Component "Plan"
             
-            # Show breakdown by connector group
-            $cgBreakdown = $appGroup.Group | Group-Object -Property ConnectorGroup
-            foreach ($cgGroup in $cgBreakdown) {
-                Write-LogMessage "      - $($cgGroup.Name): $($cgGroup.Count) segments" -Level WARN -Component "Plan"
+            $connectorGroups = $appGroup.Group | Select-Object -ExpandProperty ConnectorGroup -Unique
+            Write-LogMessage "    Connector Groups: $($connectorGroups -join ', ')" -Level INFO -Component "Plan"
+            
+            # Validate connector group consistency
+            if ($connectorGroups.Count -gt 1) {
+                Write-LogMessage "    ⚠️  WARNING: Application '$($appGroup.Name)' has segments with different connector groups!" -Level WARN -Component "Plan"
+                Write-LogMessage "    ⚠️  Only the first connector group '$($connectorGroups[0])' will be used for the entire application." -Level WARN -Component "Plan"
+                
+                # Show breakdown by connector group
+                $cgBreakdown = $appGroup.Group | Group-Object -Property ConnectorGroup
+                foreach ($cgGroup in $cgBreakdown) {
+                    Write-LogMessage "      - $($cgGroup.Name): $($cgGroup.Count) segments" -Level WARN -Component "Plan"
+                }
             }
+            
+            $protocols = $appGroup.Group | Select-Object -ExpandProperty Protocol -Unique
+            Write-LogMessage "    Protocols: $($protocols -join ', ')" -Level INFO -Component "Plan"
         }
-        
-        $protocols = $appGroup.Group | Select-Object -ExpandProperty Protocol -Unique
-        Write-LogMessage "    Protocols: $($protocols -join ', ')" -Level INFO -Component "Plan"
     }
     
     $Global:ProvisioningStats.TotalRecords = $ConfigData.Count
@@ -388,10 +451,10 @@ function Resolve-ConnectorGroups {
         }
         
         # Get all connector groups from Entra
-        $allConnectorGroups = Invoke-GraphRequest -Method GET -Uri "/beta/onPremisesPublishingProfiles/applicationProxy/connectorGroups"
+        $allConnectorGroups = Get-EntraBetaApplicationProxyConnectorGroup
         
         # Extract applicationProxy connector groups from the response
-        $applicationProxyConnectorGroups = $allConnectorGroups.value | Where-Object { $_.connectorGroupType -eq "applicationProxy" }
+        $applicationProxyConnectorGroups = $allConnectorGroups | Where-Object { $_.connectorGroupType -eq "applicationProxy" }
         
         # Display all applicationProxy connector groups found in tenant
         if ($applicationProxyConnectorGroups -and $applicationProxyConnectorGroups.Count -gt 0) {
@@ -437,21 +500,30 @@ function Resolve-EntraGroups {
     Write-LogMessage "Resolving Entra ID groups..." -Level INFO -Component "EntraGroups"
     
     try {
-        # Get unique group names (excluding placeholders)
-        $groupNames = $ConfigData | 
-            Select-Object -ExpandProperty EntraGroup -Unique | 
-            Where-Object { $_ -and $_ -ne "Placeholder_Replace_Me" -and $_ -ne "" }
+        # Group by application and get EntraGroup from first segment only (like connector groups)
+        $appGroups = $ConfigData | Group-Object -Property EnterpriseAppName
+        $groupNames = @()
+        
+        foreach ($appGroup in $appGroups) {
+            $firstSegmentGroup = $appGroup.Group[0].EntraGroup
+            if ($firstSegmentGroup -and $firstSegmentGroup -ne "Placeholder_Replace_Me" -and $firstSegmentGroup -ne "") {
+                $groupNames += $firstSegmentGroup
+            }
+        }
+        
+        # Remove duplicates in case multiple apps use the same group
+        $groupNames = $groupNames | Select-Object -Unique
         
         if ($groupNames.Count -eq 0) {
-            Write-LogMessage "No Entra groups to resolve (all placeholders)" -Level INFO -Component "EntraGroups"
+            Write-LogMessage "No Entra groups to resolve (all placeholders or empty)" -Level INFO -Component "EntraGroups"
             return
         }
         
-        Write-LogMessage "Found $($groupNames.Count) unique Entra groups to resolve" -Level INFO -Component "EntraGroups"
+        Write-LogMessage "Found $($groupNames.Count) unique Entra groups to resolve (from first segments only)" -Level INFO -Component "EntraGroups"
         
         foreach ($groupName in $groupNames) {
             try {
-                $group = Get-MgGroup -Filter "displayName eq '$groupName'" -ErrorAction Stop
+                $group = Get-EntraBetaGroup -Filter "displayName eq '$groupName'" -ErrorAction Stop
                 
                 if ($group) {
                     $Global:EntraGroupCache[$groupName] = $group.Id
@@ -667,9 +739,6 @@ function New-ApplicationSegments {
         
         if ($WhatIf) {
             Write-LogMessage "[WHATIF] Would create segment: $segmentName" -Level INFO -Component "SegmentProvisioning"
-            Write-LogMessage "[WHATIF]   Destination: $($SegmentConfig.destinationHost)" -Level INFO -Component "SegmentProvisioning"
-            Write-LogMessage "[WHATIF]   Protocol: $($SegmentConfig.Protocol)" -Level INFO -Component "SegmentProvisioning"
-            Write-LogMessage "[WHATIF]   Ports: $($SegmentConfig.Ports)" -Level INFO -Component "SegmentProvisioning"
             return @{ Success = $true; Action = "WhatIf" }
         }
         
@@ -727,17 +796,34 @@ function Set-ApplicationGroupAssignments {
             return @{ Success = $true; Action = "WhatIf" }
         }
         
-        # Create app role assignment
-        # Note: This is a simplified example. The actual implementation may require
-        # specific role IDs and additional parameters depending on the Entra configuration
-        $assignmentParams = @{
-            PrincipalId = $groupId
-            ResourceId = $AppId
-            AppRoleId = "00000000-0000-0000-0000-000000000000" # Default role
+        # Get the service principal for the application
+        $servicePrincipal = Get-EntraBetaServicePrincipal -Filter "appId eq '$AppId'"
+        
+        if (-not $servicePrincipal) {
+            throw "Service principal not found for application ID: $AppId"
         }
         
-        # This would be the actual assignment call - implementation may vary
-        New-MgGroupAppRoleAssignment -GroupId $groupId -BodyParameter $assignmentParams
+        # Find the User app role from the service principal's app roles
+        $userAppRole = $servicePrincipal.AppRoles | Where-Object { $_.DisplayName -eq "User" -and $_.IsEnabled -eq $true }
+        
+        if (-not $userAppRole) {
+            # Fallback to default role if User role not found
+            Write-LogMessage "User app role not found for application, using default role" -Level WARN -Component "GroupAssignment"
+            $appRoleId = "00000000-0000-0000-0000-000000000000"
+        } else {
+            $appRoleId = $userAppRole.Id
+            Write-LogMessage "Found User app role ID: $appRoleId for application" -Level INFO -Component "GroupAssignment"
+        }
+
+        # Create app role assignment
+        $assignmentParams = @{
+            GroupId = $groupId
+            PrincipalId = $groupId
+            ResourceId = $servicePrincipal.Id
+            AppRoleId = $appRoleId
+        }
+        
+        New-EntraBetaGroupAppRoleAssignment @assignmentParams
         
         Write-LogMessage "Successfully assigned group '$GroupName' to application" -Level SUCCESS -Component "GroupAssignment"
         
@@ -827,8 +913,11 @@ function Invoke-ProvisioningProcess {
         Write-LogMessage "Starting Entra Private Access provisioning process..." -Level INFO -Component "Main"
         Write-LogMessage "WhatIf Mode: $WhatIf" -Level INFO -Component "Main"
         
-        # Validate authentication
-        Validate-MicrosoftGraph
+        # Validate required PowerShell modules are installed
+        Test-RequiredModules
+        
+        # Validate Entra authentication
+        Validate-EntraConnection
         
         # Import and validate configuration
         $configData = Import-ProvisioningConfig -ConfigPath $ProvisioningConfigPath -AppFilter $AppNamePrefix -ConnectorFilter $ConnectorGroupFilter
@@ -869,15 +958,25 @@ function Invoke-ProvisioningProcess {
         
         # Group configuration by application (now using filtered data)
         $appGroups = $validConfigData | Group-Object -Property EnterpriseAppName
+        $currentAppNumber = 0
         
         foreach ($appGroup in $appGroups) {
             $appName = $appGroup.Name
             $segments = $appGroup.Group
+            $currentAppNumber++
             
-            Write-LogMessage "Processing application: $appName ($($segments.Count) segments)" -Level INFO -Component "Main"
+            # Add visual separator and enhanced app header
+            Write-LogMessage " " -Level INFO -Component "Main"
+            Write-LogMessage "╔═══════════════════════════════════════════════════════════════════════════════════════" -Level SUMMARY -Component "Main"
+            Write-LogMessage "║ 📱 APPLICATION [$currentAppNumber/$($appGroups.Count)]: $appName" -Level SUMMARY -Component "Main"
+            Write-LogMessage "║ 🔗 Segments: $($segments.Count) | Connector: $($segments[0].ConnectorGroup) | Group: $($segments[0].EntraGroup)" -Level SUMMARY -Component "Main"
+            Write-LogMessage "╚═══════════════════════════════════════════════════════════════════════════════════════" -Level SUMMARY -Component "Main"
             
             # Get connector group for first segment (assuming all segments for an app use same connector group)
             $connectorGroupName = $segments[0].ConnectorGroup
+            
+            # Get Entra group from first segment (assuming all segments for an app use same group)
+            $entraGroupName = $segments[0].EntraGroup
             
             # Create or get application
             $appResult = New-PrivateAccessApplication -AppName $appName -ConnectorGroupName $connectorGroupName
@@ -887,7 +986,17 @@ function Invoke-ProvisioningProcess {
                     $Global:ProvisioningStats.SuccessfulApps++
                 }
                 
+                # Assign group to the application (once per app, using first segment's group)
+                if ($entraGroupName -and $entraGroupName -ne "Placeholder_Replace_Me") {
+                    Write-LogMessage "Assigning group '$entraGroupName' to application '$appName'" -Level INFO -Component "Main"
+                    $assignmentResult = Set-ApplicationGroupAssignments -AppId $appResult.AppId -GroupName $entraGroupName
+                    if (-not $assignmentResult.Success) {
+                        Write-LogMessage "Failed to assign group '$entraGroupName' to application '$appName': $($assignmentResult.Error)" -Level WARN -Component "Main"
+                    }
+                }
+                
                 # Process segments for this application
+                Write-LogMessage "🔧 Processing $($segments.Count) segments for application '$appName'..." -Level INFO -Component "Main"
                 foreach ($segment in $segments) {
                     Write-ProgressUpdate -Current $Global:ProvisioningStats.ProcessedRecords -Total $Global:ProvisioningStats.TotalRecords -Activity "Provisioning Segments" -Status "Processing $($segment.EnterpriseAppName)"
                     
@@ -895,11 +1004,6 @@ function Invoke-ProvisioningProcess {
                     
                     if ($segmentResult.Success) {
                         $Global:ProvisioningStats.SuccessfulSegments++
-                        
-                        # Assign groups if specified
-                        if ($segment.EntraGroup -and $segment.EntraGroup -ne "Placeholder_Replace_Me") {
-                            $assignmentResult = Set-ApplicationGroupAssignments -AppId $appResult.AppId -GroupName $segment.EntraGroup
-                        }
                         
                         # Update result status
                         $resultRecord = $Global:ProvisioningResults | Where-Object { 
@@ -934,6 +1038,9 @@ function Invoke-ProvisioningProcess {
                     
                     $Global:ProvisioningStats.ProcessedRecords++
                 }
+                
+                # Application completed successfully
+                Write-LogMessage "✅ Application '$appName' completed: $($segments.Count) segments processed" -Level SUCCESS -Component "Main"
             } else {
                 $Global:ProvisioningStats.FailedApps++
                 
@@ -952,6 +1059,9 @@ function Invoke-ProvisioningProcess {
                     
                     $Global:ProvisioningStats.ProcessedRecords++
                 }
+                
+                # Application failed
+                Write-LogMessage "❌ Application '$appName' failed: $($appResult.Error)" -Level ERROR -Component "Main"
             }
         }
         
