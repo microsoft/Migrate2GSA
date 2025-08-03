@@ -834,7 +834,7 @@ function Set-ApplicationGroupAssignments {
         # Check if the group is already assigned to the application with this role
         Write-LogMessage "Checking for existing group assignment..." -Level INFO -Component "GroupAssignment"
         try {
-            $existingAssignments = Get-EntraBetaServicePrincipalAppRoleAssignment -ServicePrincipalId $servicePrincipal.Id -ErrorAction Stop
+            $existingAssignments = Get-EntraBetaServicePrincipalAppRoleAssignedTo -ServicePrincipalId $servicePrincipal.Id -ErrorAction Stop
             
             $existingAssignment = $existingAssignments | Where-Object { 
                 $_.PrincipalId -eq $groupId -and $_.AppRoleId -eq $appRoleId 
