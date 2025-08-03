@@ -765,6 +765,25 @@ function Set-ApplicationGroupAssignments {
     <#
     .SYNOPSIS
         Assigns Entra ID groups to Private Access applications.
+    
+    .DESCRIPTION
+        Assigns an Entra ID group to a Private Access application. The function includes
+        duplicate assignment checking to prevent assigning the same group multiple times
+        to the same application with the same role.
+    
+    .PARAMETER AppId
+        The application ID of the Private Access application.
+    
+    .PARAMETER GroupName
+        The display name of the Entra ID group to assign to the application.
+    
+    .OUTPUTS
+        Returns a hashtable with Success (boolean), Action (string), and optional Error (string).
+        Action values: "Assigned", "AlreadyAssigned", "Skipped", "Failed"
+    
+    .EXAMPLE
+        Set-ApplicationGroupAssignments -AppId "app-123" -GroupName "MyGroup"
+        Assigns the group "MyGroup" to application "app-123" if not already assigned.
     #>
     [CmdletBinding()]
     param(
@@ -810,6 +829,26 @@ function Set-ApplicationGroupAssignments {
         } else {
             $appRoleId = $userAppRole.Id
             Write-LogMessage "Found User app role ID: $appRoleId for application" -Level INFO -Component "GroupAssignment"
+        }
+        
+        # Check if the group is already assigned to the application with this role
+        Write-LogMessage "Checking for existing group assignment..." -Level INFO -Component "GroupAssignment"
+        try {
+            $existingAssignments = Get-EntraBetaServicePrincipalAppRoleAssignment -ServicePrincipalId $servicePrincipal.Id -ErrorAction Stop
+            
+            $existingAssignment = $existingAssignments | Where-Object { 
+                $_.PrincipalId -eq $groupId -and $_.AppRoleId -eq $appRoleId 
+            }
+            
+            if ($existingAssignment) {
+                Write-LogMessage "Group '$GroupName' is already assigned to application with role ID '$appRoleId'" -Level INFO -Component "GroupAssignment"
+                return @{ Success = $true; Action = "AlreadyAssigned" }
+            }
+            
+            Write-LogMessage "No existing assignment found for group '$GroupName' with role ID '$appRoleId'" -Level INFO -Component "GroupAssignment"
+        }
+        catch {
+            Write-LogMessage "Warning: Could not check existing assignments: $_. Proceeding with assignment attempt." -Level WARN -Component "GroupAssignment"
         }
 
         # Create app role assignment
