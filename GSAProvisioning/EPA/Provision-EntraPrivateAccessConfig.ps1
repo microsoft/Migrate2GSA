@@ -749,7 +749,7 @@ function New-ApplicationSegments {
         }
         
         # Create the segment
-        $newSegment = New-EntraBetaPrivateAccessApplicationSegment @segmentParams
+        $newSegment = New-EntraBetaPrivateAccessApplicationSegment @segmentParams -ErrorAction Stop
         
         Write-LogMessage "Successfully created application segment: $segmentName (ID: $($newSegment.Id))" -Level SUCCESS -Component "SegmentProvisioning"
         
