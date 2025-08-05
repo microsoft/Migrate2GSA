@@ -145,7 +145,12 @@ class ZPABackup {
 
     [object] BackupAccessPolicies() {
         Write-Host "Backing up Access Policies..." -ForegroundColor Gray
-        return $this.InvokeZPAApi("/mgmtconfig/v1/admin/customers/$($this.CustomerId)/policySet/rules")
+        return $this.InvokeZPAApi("/mgmtconfig/v1/admin/customers/$($this.CustomerId)/policySet/rules/policyType/ACCESS_POLICY")
+    }
+
+    [object] BackupClientForwardingPolicy() {
+        Write-Host "Backing up Client Forwarding Policy..." -ForegroundColor Gray
+        return $this.InvokeZPAApi("/mgmtconfig/v1/admin/customers/$($this.CustomerId)/policySet/rules/policyType/CLIENT_FORWARDING_POLICY")
     }
 
     [object] BackupPolicySets() {
@@ -165,7 +170,7 @@ class ZPABackup {
 
     [object] BackupIdpControllers() {
         Write-Host "Backing up IDP Controllers..." -ForegroundColor Gray
-        return $this.InvokeZPAApi("/mgmtconfig/v1/admin/customers/$($this.CustomerId)/idp")
+        return $this.InvokeZPAApi("/mgmtconfig/v2/admin/customers/$($this.CustomerId)/idp")
     }
 
     [object] BackupScimGroups() {
@@ -260,6 +265,7 @@ class ZPABackup {
             "app_connectors" = $this.BackupAppConnectors()
             "connector_groups" = $this.BackupConnectorGroups()
             "access_policies" = $this.BackupAccessPolicies()
+            "client_forwarding_policy" = $this.BackupClientForwardingPolicy()
             "policy_sets" = $this.BackupPolicySets()
             "service_edges" = $this.BackupServiceEdges()
             "service_edge_groups" = $this.BackupServiceEdgeGroups()
