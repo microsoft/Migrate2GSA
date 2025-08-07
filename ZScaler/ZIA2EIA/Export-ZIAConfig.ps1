@@ -103,19 +103,60 @@ class ZIABackup {
             } | ConvertTo-Json
 
             Write-Host "Sending authentication request to ZIA API..." -ForegroundColor Gray
-            $response = Invoke-RestMethod -Uri $authUrl -Method Post -Headers $headers -Body $body -WebSession $this.Session
+            
+            # Initialize session variable and use Invoke-WebRequest to access response headers
+            $tempSession = $null
+            $response = Invoke-WebRequest -Uri $authUrl -Method Post -Headers $headers -Body $body -SessionVariable tempSession
 
-            if ($response.success -or $response.sessionId) {
+            if ($response.StatusCode -eq 200) {
                 Write-Host "Session created successfully" -ForegroundColor Gray
-                $this.Session.Headers["Cookie"] = "JSESSIONID=$($response.sessionId)"
-                $this.Session.Headers["Content-Type"] = "application/json"
-                Write-Host "Session headers configured with session cookie" -ForegroundColor Gray
-                Write-Host "ZIA Authentication successful" -ForegroundColor Green
-                return $true
+                
+                # Extract JSESSIONID from Set-Cookie header
+                $jsessionId = $null
+                $cookies = $response.Headers['Set-Cookie']
+                
+                Write-Host "Received Set-Cookie headers: $($cookies -join '; ')" -ForegroundColor Gray
+                
+                if ($cookies) {
+                    foreach ($cookie in $cookies) {
+                        Write-Host "Processing cookie: $cookie" -ForegroundColor Gray
+                        
+                        # More flexible regex to handle various cookie formats
+                        if ($cookie -match 'JSESSIONID=([^;,\s]+)') {
+                            $jsessionId = $Matches[1].Trim()
+                            Write-Host "JSESSIONID extracted successfully" -ForegroundColor Gray
+                            break
+                        }
+                    }
+                }
+                
+                if ($jsessionId -and $jsessionId.Length -gt 0) {
+                    Write-Host "JSESSIONID extracted successfully" -ForegroundColor Green
+                    $this.Session = $tempSession
+                    
+                    # Set the cookie header - ensure proper format
+                    $this.Session.Headers["Cookie"] = "JSESSIONID=$jsessionId"
+                    $this.Session.Headers["Content-Type"] = "application/json"
+                    
+                    Write-Host "Session headers configured with session cookie" -ForegroundColor Gray
+                    Write-Host "ZIA Authentication successful" -ForegroundColor Green
+                    return $true
+                } else {
+                    Write-Error "ZIA Authentication failed: No valid JSESSIONID found in Set-Cookie header"
+                    Write-Host "Available Set-Cookie headers:" -ForegroundColor Red
+                    if ($cookies) {
+                        foreach ($cookie in $cookies) {
+                            Write-Host "  - $cookie" -ForegroundColor Red
+                        }
+                    } else {
+                        Write-Host "  - No Set-Cookie headers found" -ForegroundColor Red
+                    }
+                    return $false
+                }
             }
             else {
-                Write-Error "ZIA Authentication failed: No sessionId received"
-                Write-Host "Response received but no sessionId found" -ForegroundColor Red
+                Write-Error "ZIA Authentication failed: HTTP Status $($response.StatusCode)"
+                Write-Host "Response status: $($response.StatusDescription)" -ForegroundColor Red
                 return $false
             }
         }
