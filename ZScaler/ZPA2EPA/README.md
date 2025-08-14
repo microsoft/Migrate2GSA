@@ -2,11 +2,16 @@
 
 This is experimental code, use it at your own risk.
 
-## Export-ZPAConfig.ps1 - ZPA Configuration Export Tool
+## Table of Contents
+
+1. [ZPA Configuration Export Tool](#export-zpaconfigps1---zpa-configuration-export-tool)
+2. [ZPA to Entra Private Access (EPA) Configuration Transformer](#zpa-to-entra-private-access-epa-configuration-transformer)
+
+## ZPA Configuration Export Tool
 
 ### Overview
 
-This PowerShell script provides a comprehensive backup solution for your Zscaler Private Access (ZPA) environment. It connects to the ZPA management API and exports all critical configuration elements to JSON files, ensuring you have a complete snapshot of your ZPA setup for backup, auditing, or migration purposes.
+This PowerShell script (Export-ZPAConfig.ps1) provides a comprehensive backup solution for your Zscaler Private Access (ZPA) environment. It connects to the ZPA management API and exports all critical configuration elements to JSON files, ensuring you have a complete snapshot of your ZPA setup for backup, auditing, or migration purposes.
 
 ### What It Does
 
@@ -67,10 +72,9 @@ The script creates a timestamped directory containing:
 
 The backup is stored in a timestamped folder format: `backup_YYYYMMDD_HHMMSS/` within your specified output directory.
 
+## ZPA to Entra Private Access (EPA) Configuration Transformer
 
-# ZPA to Entra Private Access (EPA) Configuration Transformer
-
-## Overview
+### Overview
 
 This PowerShell script (`Transform-ZPA2EPA.ps1`) transforms exported Zscaler Private Access (ZPA) application segment configurations into a format suitable for Microsoft Entra Private Access (EPA). It processes JSON export files from ZPA and generates CSV files containing Enterprise Application configurations that can be imported into Microsoft's Global Secure Access (GSA) solution.
 
