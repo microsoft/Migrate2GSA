@@ -272,7 +272,8 @@ function Get-ZPAScimGroups {
     )
     
     Write-Host "Backing up SCIM Groups for IDP ID: $IdpId..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/userconfig/v1/customers/$CustomerId/scimgroup/idpId/$IdpId"
+    $endpoint = "/userconfig/v1/customers/$CustomerId/scimgroup/idpId/$IdpId" + "?allEntries=true"
+    return Invoke-ZPAApi -Endpoint $endpoint
 }
 
 function Get-AllZPAScimGroups {
