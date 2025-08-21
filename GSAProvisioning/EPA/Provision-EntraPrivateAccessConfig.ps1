@@ -75,6 +75,7 @@ $Global:ProvisioningStats = @{
 $Global:ConnectorGroupCache = @{}
 $Global:EntraGroupCache = @{}
 $Global:ProvisioningResults = @()
+$Global:RecordLookup = @{}
 #endregion
 
 #region Logging Functions
@@ -346,6 +347,15 @@ function Import-ProvisioningConfig {
         # Update configData to use filtered version
         $configData = $filteredConfigData
         
+        # Add unique record IDs for efficient lookup
+        $recordId = 1
+        foreach ($row in $configData) {
+            $row | Add-Member -MemberType NoteProperty -Name 'UniqueRecordId' -Value $recordId -Force
+            $recordId++
+        }
+        
+        Write-LogMessage "Added unique record IDs to $($configData.Count) records" -Level INFO -Component "Config"
+        
         Write-LogMessage "Configuration data filtered to include only required columns" -Level INFO -Component "Config"        # Filter data
         $filteredData = $configData | Where-Object {
             $includeRecord = $true
@@ -379,6 +389,14 @@ function Import-ProvisioningConfig {
         
         # Store all records (including filtered) for results export
         $Global:ProvisioningResults = $configData
+        
+        # Create global lookup hashtable for O(1) record access
+        $Global:RecordLookup = @{}
+        foreach ($record in $configData) {
+            $Global:RecordLookup[$record.UniqueRecordId] = $record
+        }
+        
+        Write-LogMessage "Created lookup hashtable with $($Global:RecordLookup.Count) record mappings" -Level INFO -Component "Config"
         
         return $filteredData
     }
@@ -611,22 +629,10 @@ function Validate-ApplicationDependencies {
             
             # Mark all segments of this application as skipped
             foreach ($segment in $segments) {
-                $resultRecord = $Global:ProvisioningResults | Where-Object { 
-                    $_.EnterpriseAppName -eq $segment.EnterpriseAppName -and 
-                    $_.destinationHost -eq $segment.destinationHost -and 
-                    $_.Protocol -eq $segment.Protocol -and
-                    $_.Ports -eq $segment.Ports
-                }
+                # Direct lookup instead of filtering
+                $resultRecord = $Global:RecordLookup[$segment.UniqueRecordId]
                 
-                Write-LogMessage "DEBUG: Found $(@($resultRecord).Count) matching records" -Level DEBUG -Component "Main"
-
-                if ($resultRecord) {
-                    # Ensure we have a single object, not an array
-                    if ($resultRecord -is [Array] -and $resultRecord.Count -gt 1) {
-                        Write-LogMessage "WARNING: Multiple records found, using first match" -Level WARN -Component "Main"
-                        $resultRecord = $resultRecord[0]
-                    }
-                }
+                Write-LogMessage "DEBUG: Found record with UniqueRecordId: $($segment.UniqueRecordId)" -Level DEBUG -Component "Main"
 
                 if ($resultRecord) {
                     $resultRecord.ProvisioningResult = "Skipped: Unresolved connector groups - $($unresolvedConnectorGroups -join ', ')"
@@ -1071,13 +1077,8 @@ function Invoke-ProvisioningProcess {
                     if ($segmentResult.Success) {
                         $Global:ProvisioningStats.SuccessfulSegments++
                         
-                        # Update result status
-                        $resultRecord = $Global:ProvisioningResults | Where-Object { 
-                            $_.EnterpriseAppName -eq $segment.EnterpriseAppName -and 
-                            $_.destinationHost -eq $segment.destinationHost -and 
-                            $_.Protocol -eq $segment.Protocol -and
-                            $_.Ports -eq $segment.Ports
-                        }
+                        # Direct lookup instead of filtering
+                        $resultRecord = $Global:RecordLookup[$segment.UniqueRecordId]
                         
                         if ($resultRecord) {
                             if ($appResult.Action -eq "ExistingApp") {
@@ -1090,13 +1091,8 @@ function Invoke-ProvisioningProcess {
                     } else {
                         $Global:ProvisioningStats.FailedSegments++
                         
-                        # Update result status
-                        $resultRecord = $Global:ProvisioningResults | Where-Object { 
-                            $_.EnterpriseAppName -eq $segment.EnterpriseAppName -and 
-                            $_.destinationHost -eq $segment.destinationHost -and 
-                            $_.Protocol -eq $segment.Protocol -and
-                            $_.Ports -eq $segment.Ports
-                        }
+                        # Direct lookup instead of filtering
+                        $resultRecord = $Global:RecordLookup[$segment.UniqueRecordId]
                         
                         if ($resultRecord) {
                             $resultRecord.ProvisioningResult = "Error: $($segmentResult.Error)"
@@ -1114,12 +1110,8 @@ function Invoke-ProvisioningProcess {
                 
                 # Mark all segments for this app as failed
                 foreach ($segment in $segments) {
-                    $resultRecord = $Global:ProvisioningResults | Where-Object { 
-                        $_.EnterpriseAppName -eq $segment.EnterpriseAppName -and 
-                        $_.destinationHost -eq $segment.destinationHost -and 
-                        $_.Protocol -eq $segment.Protocol -and
-                        $_.Ports -eq $segment.Ports
-                    }
+                    # Direct lookup instead of filtering
+                    $resultRecord = $Global:RecordLookup[$segment.UniqueRecordId]
                     
                     if ($resultRecord) {
                         $resultRecord.ProvisioningResult = "Skipped: App creation failed - $($appResult.Error)"
