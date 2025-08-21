@@ -599,9 +599,20 @@ function Validate-ApplicationDependencies {
                 $resultRecord = $Global:ProvisioningResults | Where-Object { 
                     $_.EnterpriseAppName -eq $segment.EnterpriseAppName -and 
                     $_.destinationHost -eq $segment.destinationHost -and 
-                    $_.Protocol -eq $segment.Protocol 
+                    $_.Protocol -eq $segment.Protocol -and
+                    $_.Ports -eq $segment.Ports
                 }
                 
+                Write-LogMessage "DEBUG: Found $(@($resultRecord).Count) matching records" -Level DEBUG -Component "Main"
+
+                if ($resultRecord) {
+                    # Ensure we have a single object, not an array
+                    if ($resultRecord -is [Array] -and $resultRecord.Count -gt 1) {
+                        Write-LogMessage "WARNING: Multiple records found, using first match" -Level WARN -Component "Main"
+                        $resultRecord = $resultRecord[0]
+                    }
+                }
+
                 if ($resultRecord) {
                     $resultRecord.ProvisioningResult = "Skipped: Unresolved connector groups - $($unresolvedConnectorGroups -join ', ')"
                 }
@@ -1049,7 +1060,8 @@ function Invoke-ProvisioningProcess {
                         $resultRecord = $Global:ProvisioningResults | Where-Object { 
                             $_.EnterpriseAppName -eq $segment.EnterpriseAppName -and 
                             $_.destinationHost -eq $segment.destinationHost -and 
-                            $_.Protocol -eq $segment.Protocol 
+                            $_.Protocol -eq $segment.Protocol -and
+                            $_.Ports -eq $segment.Ports
                         }
                         
                         if ($resultRecord) {
@@ -1067,7 +1079,8 @@ function Invoke-ProvisioningProcess {
                         $resultRecord = $Global:ProvisioningResults | Where-Object { 
                             $_.EnterpriseAppName -eq $segment.EnterpriseAppName -and 
                             $_.destinationHost -eq $segment.destinationHost -and 
-                            $_.Protocol -eq $segment.Protocol 
+                            $_.Protocol -eq $segment.Protocol -and
+                            $_.Ports -eq $segment.Ports
                         }
                         
                         if ($resultRecord) {
@@ -1089,7 +1102,8 @@ function Invoke-ProvisioningProcess {
                     $resultRecord = $Global:ProvisioningResults | Where-Object { 
                         $_.EnterpriseAppName -eq $segment.EnterpriseAppName -and 
                         $_.destinationHost -eq $segment.destinationHost -and 
-                        $_.Protocol -eq $segment.Protocol 
+                        $_.Protocol -eq $segment.Protocol -and
+                        $_.Ports -eq $segment.Ports
                     }
                     
                     if ($resultRecord) {
