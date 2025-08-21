@@ -308,30 +308,45 @@ function Import-ProvisioningConfig {
         # Validate required columns
         $requiredColumns = @(
             'EnterpriseAppName',
+            'SegmentId',
             'destinationHost',
             'DestinationType',
             'Protocol',
             'Ports',
             'ConnectorGroup',
-            'Provision'
+            'Provision',
+            'EntraGroup'
         )
-        
+
         $actualColumns = $configData[0].PSObject.Properties.Name
         $missingColumns = $requiredColumns | Where-Object { $_ -notin $actualColumns }
-        
+
         if ($missingColumns.Count -gt 0) {
             throw "Missing required columns: $($missingColumns -join ', ')"
         }
+
+        Write-LogMessage "All required columns found. Filtering to include only required columns..." -Level INFO -Component "Config"
         
-        # Add ProvisioningResult column if it doesn't exist
-        if ('ProvisioningResult' -notin $actualColumns) {
-            Write-LogMessage "Adding ProvisioningResult column to configuration data" -Level INFO -Component "Config"
-            $configData | ForEach-Object {
-                $_ | Add-Member -MemberType NoteProperty -Name 'ProvisioningResult' -Value '' -Force
+        # Filter to only include required columns and add ProvisioningResult for tracking
+        $filteredConfigData = @()
+        foreach ($row in $configData) {
+            $filteredRow = New-Object PSObject
+            
+            # Add only required columns
+            foreach ($column in $requiredColumns) {
+                $filteredRow | Add-Member -MemberType NoteProperty -Name $column -Value $row.$column
             }
+            
+            # Add ProvisioningResult column for tracking
+            $filteredRow | Add-Member -MemberType NoteProperty -Name 'ProvisioningResult' -Value '' -Force
+            
+            $filteredConfigData += $filteredRow
         }
         
-        # Filter data
+        # Update configData to use filtered version
+        $configData = $filteredConfigData
+        
+        Write-LogMessage "Configuration data filtered to include only required columns" -Level INFO -Component "Config"        # Filter data
         $filteredData = $configData | Where-Object {
             $includeRecord = $true
             
