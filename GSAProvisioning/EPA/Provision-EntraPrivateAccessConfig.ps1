@@ -705,11 +705,37 @@ function New-PrivateAccessApplication {
         
         New-EntraBetaPrivateAccessApplication @appParams
         
-        # Get the created application to retrieve the actual object with ID
-        $newApp = Get-EntraBetaPrivateAccessApplication -ApplicationName $AppName -ErrorAction Stop
+        # Retry logic to retrieve the created application with exponential backoff
+        $maxRetries = 5
+        $baseDelay = 2  # seconds
+        $newApp = $null
+        
+        for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+            try {
+                Write-LogMessage "Attempting to retrieve created application '$AppName' (attempt $attempt/$maxRetries)" -Level INFO -Component "AppProvisioning"
+                
+                $newApp = Get-EntraBetaPrivateAccessApplication -ApplicationName $AppName -ErrorAction Stop
+                
+                if ($newApp) {
+                    Write-LogMessage "Successfully retrieved created application '$AppName' on attempt $attempt" -Level SUCCESS -Component "AppProvisioning"
+                    break
+                }
+            }
+            catch {
+                $delay = $baseDelay * [math]::Pow(2, $attempt - 1)  # Exponential backoff: 2, 4 seconds
+                
+                if ($attempt -eq $maxRetries) {
+                    Write-LogMessage "Failed to retrieve application '$AppName' after $maxRetries attempts. Final error: $_" -Level ERROR -Component "AppProvisioning"
+                    throw "Failed to retrieve created application '$AppName' after $maxRetries retry attempts"
+                }
+                
+                Write-LogMessage "Failed to retrieve application '$AppName' on attempt $attempt. Retrying in $delay seconds... Error: $_" -Level WARN -Component "AppProvisioning"
+                Start-Sleep -Seconds $delay
+            }
+        }
         
         if (-not $newApp) {
-            throw "Failed to retrieve created application '$AppName' after creation"
+            throw "Failed to retrieve created application '$AppName' after creation and $maxRetries retry attempts"
         }
         
         Write-LogMessage "Successfully created Private Access application: $AppName (ID: $($newApp.Id))" -Level SUCCESS -Component "AppProvisioning"
@@ -725,7 +751,26 @@ function New-PrivateAccessApplication {
 function New-ApplicationSegments {
     <#
     .SYNOPSIS
-        Creates network segments for Private Access applications.
+        Creates network segments for Private Access applications with duplicate detection.
+    
+    .DESCRIPTION
+        Creates network segments for Entra Private Access applications. If a segment with the same
+        host and port already exists on the application, the function will detect the duplicate
+        error and return success with an "AlreadyExists" action instead of failing.
+    
+    .PARAMETER AppId
+        The application ID where the segment will be created.
+    
+    .PARAMETER SegmentConfig
+        PSCustomObject containing segment configuration including destinationHost, Protocol, Ports, etc.
+    
+    .OUTPUTS
+        Returns a hashtable with Success (boolean), Action (string), and optional Error or SegmentId.
+        Action values: "Created", "AlreadyExists", "WhatIf", "Failed"
+    
+    .EXAMPLE
+        New-ApplicationSegments -AppId "app-123" -SegmentConfig $segmentObject
+        Creates a new segment or detects if it already exists.
     #>
     [CmdletBinding()]
     param(
@@ -788,6 +833,30 @@ function New-ApplicationSegments {
         return @{ Success = $true; SegmentId = $newSegment.Id; Action = "Created" }
     }
     catch {
+        # Check if the error is due to duplicate application segment
+        $errorMessage = $_.Exception.Message
+        $isDuplicateSegment = $false
+        
+        # Check specific patterns for duplicate segment detection
+        if ($errorMessage -match 'Invalid_AppSegments_Duplicate' -or 
+            $errorMessage -match 'Application segment host and port already exists') {
+            $isDuplicateSegment = $true
+        }
+        
+        # Also check the inner exception and response content for the error code
+        if (-not $isDuplicateSegment -and $_.Exception.InnerException) {
+            $innerMessage = $_.Exception.InnerException.Message
+            if ($innerMessage -match 'Invalid_AppSegments_Duplicate' -or 
+                $innerMessage -match 'Application segment host and port already exists') {
+                $isDuplicateSegment = $true
+            }
+        }
+        
+        if ($isDuplicateSegment) {
+            Write-LogMessage "Application segment '$segmentName' already exists on application. Marking as existing." -Level INFO -Component "SegmentProvisioning"
+            return @{ Success = $true; Action = "AlreadyExists" }
+        }
+        
         Write-LogMessage "Failed to create application segment '$segmentName': $_" -Level ERROR -Component "SegmentProvisioning"
         return @{ Success = $false; Error = $_.Exception.Message; Action = "Failed" }
     }
@@ -1081,12 +1150,16 @@ function Invoke-ProvisioningProcess {
                         $resultRecord = $Global:RecordLookup[$segment.UniqueRecordId]
                         
                         if ($resultRecord) {
-                            if ($appResult.Action -eq "ExistingApp") {
+                            if ($segmentResult.Action -eq "AlreadyExists") {
+                                $resultRecord.ProvisioningResult = "AlreadyExists"
+                                $resultRecord.Provision = "No"  # Mark as completed since segment already exists
+                            } elseif ($appResult.Action -eq "ExistingApp") {
                                 $resultRecord.ProvisioningResult = "AddedToExisting"
+                                $resultRecord.Provision = "No"  # Mark as completed
                             } else {
                                 $resultRecord.ProvisioningResult = "Provisioned"
+                                $resultRecord.Provision = "No"  # Mark as completed
                             }
-                            $resultRecord.Provision = "No"  # Mark as completed
                         }
                     } else {
                         $Global:ProvisioningStats.FailedSegments++

@@ -41,14 +41,15 @@ The script expects a CSV file with the following required columns:
 
 | Column | Description | Example |
 |--------|-------------|---------|
+| `SegmentId` | Segment identifier, can be a number or a string, only for reporting/logging. | `DomainController1`
 | `EnterpriseAppName` | Name of the Private Access application | `GSA-WebApp-Production` |
 | `destinationHost` | Target host/IP address/range | `webapp.internal.com`, `10.1.2.3`, or `192.168.1.0/24` |
-| `DestinationType` | Type of destination (`fqdn`, `ipAddress`, `ipRangeCidr`, `ipRange`, or `dnsSuffix`) | `fqdn` |
+| `DestinationType` | Type of destination (`fqdn`, `ipAddress`, `ipRangeCidr`, `ipRange`) | `fqdn` |
 | `Protocol` | Network protocol (`tcp` or `udp`) | `tcp` |
 | `Ports` | Port specification (single, range, or comma-separated) | `443`, `8080-8090`, `80,443,8080` |
 | `ConnectorGroup` | Name of the Application Proxy connector group | `Production-Connectors` |
 | `Provision` | Whether to provision this entry (`Yes` or `No`) | `Yes` |
-| `EntraGroup` | Entra ID group to assign to the application (optional) | `WebApp-Users` |
+| `EntraGroup` | Entra ID group to assign to the application (optional, ignored if blank). Only support single groups. | `WebApp-Users` |
 
 ### DestinationType Values
 
@@ -60,17 +61,10 @@ The `DestinationType` field supports the following values:
 | `ipAddress` | Single IPv4 address | `10.1.2.100` |
 | `ipRangeCidr` | IP range in CIDR notation | `192.168.1.0/24` |
 | `ipRange` | IP range from start to end | `192.168.1.1-192.168.1.50` |
-| `dnsSuffix` | DNS suffix (wildcard domain) | `*.internal.com` |
 
 ### Sample CSV Content
 
-```csv
-EnterpriseAppName,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,EntraGroup
-GSA-WebApp-Production,webapp.internal.com,fqdn,tcp,443,Production-Connectors,Yes,WebApp-Users
-GSA-API-Service,api.internal.com,fqdn,tcp,"80,443",Production-Connectors,Yes,API-Users
-GSA-Database,10.1.2.100,ipAddress,tcp,1433,Database-Connectors,Yes,DB-Admins
-GSA-Network-Range,192.168.1.0/24,ipRangeCidr,tcp,"80,443",Production-Connectors,Yes,Network-Users
-```
+Check sample provided, Sample-EntraPrivateAccessConfig.rename_to_csv.
 
 ## Usage Examples
 
