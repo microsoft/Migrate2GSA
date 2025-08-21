@@ -968,7 +968,7 @@ function Invoke-ProvisioningProcess {
         
         # Send script execution as a custom header for reporting
         $customHeaders = New-EntraBetaCustomHeaders Provision-EntraPrivateAccessConfig
-        Invoke-GraphRequest -Method GET -Headers $customHeaders -OutputType PSObject -Uri "/beta/networkAccess/tenantStatus"
+        $null = Invoke-GraphRequest -Method GET -Headers $customHeaders -OutputType PSObject -Uri "/beta/networkAccess/tenantStatus"
 
         # Import and validate configuration
         $configData = Import-ProvisioningConfig -ConfigPath $ProvisioningConfigPath -AppFilter $AppNamePrefix -ConnectorFilter $ConnectorGroupFilter
