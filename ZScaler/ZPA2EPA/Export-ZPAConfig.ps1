@@ -261,7 +261,7 @@ function Get-ZPAIdpControllers {
 function Get-ZPAScimGroups {
     <#
     .SYNOPSIS
-        Backs up ZPA SCIM Groups for a specific IDP
+        Backs up ZPA SCIM Groups for a specific IDP with pagination support
     
     .PARAMETER IdpId
         The IDP ID to retrieve SCIM groups for
@@ -272,8 +272,72 @@ function Get-ZPAScimGroups {
     )
     
     Write-Host "Backing up SCIM Groups for IDP ID: $IdpId..." -ForegroundColor Green
-    $endpoint = "/userconfig/v1/customers/$CustomerId/scimgroup/idpId/$IdpId" + "?allEntries=true"
-    return Invoke-ZPAApi -Endpoint $endpoint
+    
+    $allGroups = @()
+    $currentPage = 1
+    $pageSize = 100  # Default page size
+    $totalPages = 1
+    
+    do {
+        try {
+            # Construct endpoint with pagination parameters
+            $endpoint = "/userconfig/v1/customers/$CustomerId/scimgroup/idpId/$IdpId" + "?page=$currentPage&pageSize=$pageSize"
+            
+            Write-Host "  Retrieving page $currentPage of $totalPages for IDP ID: $IdpId..." -ForegroundColor Gray
+            
+            $response = Invoke-ZPAApi -Endpoint $endpoint
+            
+            if ($response -and $response.PSObject.Properties['list']) {
+                # Update total pages from response
+                if ($response.PSObject.Properties['totalPages'] -and $response.totalPages -gt 0) {
+                    $totalPages = $response.totalPages
+                }
+                
+                # Add groups from this page
+                if ($response.list -and $response.list.Count -gt 0) {
+                    $allGroups += $response.list
+                    Write-Host "  Page $currentPage`: Retrieved $($response.list.Count) SCIM groups" -ForegroundColor Gray
+                } else {
+                    Write-Host "  Page $currentPage`: No SCIM groups found on this page" -ForegroundColor Yellow
+                }
+                
+                # Check if we have more pages
+                if ($currentPage -ge $totalPages) {
+                    break
+                }
+                
+                # Add delay between requests to avoid rate limiting
+                if ($currentPage -lt $totalPages) {
+                    Write-Host "  Waiting 2 seconds before next page request..." -ForegroundColor Gray
+                    Start-Sleep -Seconds 2
+                }
+                
+                $currentPage++
+            } else {
+                Write-Warning "No valid response received for page $currentPage of IDP ID: $IdpId"
+                break
+            }
+        }
+        catch {
+            Write-Warning "Failed to retrieve page $currentPage for IDP ID $IdpId : $($_.Exception.Message)"
+            # Continue with next page on error
+            $currentPage++
+            
+            # Add delay even on error to avoid rapid retry
+            if ($currentPage -le $totalPages) {
+                Start-Sleep -Seconds 2
+            }
+        }
+    } while ($currentPage -le $totalPages)
+    
+    Write-Host "Completed pagination for IDP ID $IdpId - Total groups retrieved: $($allGroups.Count)" -ForegroundColor Green
+    
+    # Return in the same format as other API calls
+    return @{
+        "totalCount" = $allGroups.Count
+        "totalPages" = $totalPages
+        "list" = $allGroups
+    }
 }
 
 function Get-AllZPAScimGroups {
