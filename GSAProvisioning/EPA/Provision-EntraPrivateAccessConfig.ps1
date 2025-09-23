@@ -483,7 +483,11 @@ function Resolve-ConnectorGroups {
         }
         
         # Get all connector groups from Entra
-        $allConnectorGroups = Get-EntraBetaApplicationProxyConnectorGroup
+        $connectorGroupParams = @{}
+        if ($DebugPreference -eq 'Continue') {
+            $connectorGroupParams['Debug'] = $true
+        }
+        $allConnectorGroups = Get-EntraBetaApplicationProxyConnectorGroup @connectorGroupParams
         
         # Extract applicationProxy connector groups from the response
         $applicationProxyConnectorGroups = $allConnectorGroups | Where-Object { $_.connectorGroupType -eq "applicationProxy" }
@@ -555,7 +559,14 @@ function Resolve-EntraGroups {
         
         foreach ($groupName in $groupNames) {
             try {
-                $group = Get-EntraBetaGroup -Filter "displayName eq '$groupName'" -ErrorAction Stop
+                $groupParams = @{
+                    Filter = "displayName eq '$groupName'"
+                    ErrorAction = 'Stop'
+                }
+                if ($DebugPreference -eq 'Continue') {
+                    $groupParams['Debug'] = $true
+                }
+                $group = Get-EntraBetaGroup @groupParams
                 
                 if ($group) {
                     $Global:EntraGroupCache[$groupName] = $group.Id
@@ -678,7 +689,14 @@ function New-PrivateAccessApplication {
     
     try {
         # Check if application already exists
-        $existingApp = Get-EntraBetaPrivateAccessApplication -ApplicationName $AppName -ErrorAction SilentlyContinue
+        $checkAppParams = @{
+            ApplicationName = $AppName
+            ErrorAction = 'SilentlyContinue'
+        }
+        if ($DebugPreference -eq 'Continue') {
+            $checkAppParams['Debug'] = $true
+        }
+        $existingApp = Get-EntraBetaPrivateAccessApplication @checkAppParams
         
         if ($existingApp) {
             Write-LogMessage "Application '$AppName' already exists. Will add segments to existing app." -Level INFO -Component "AppProvisioning"
@@ -703,6 +721,11 @@ function New-PrivateAccessApplication {
             # Add other required parameters for Private Access application
         }
         
+        # Add Debug parameter if script was called with -Debug
+        if ($DebugPreference -eq 'Continue') {
+            $appParams['Debug'] = $true
+        }
+        
         New-EntraBetaPrivateAccessApplication @appParams
         
         # Retry logic to retrieve the created application with exponential backoff
@@ -714,7 +737,14 @@ function New-PrivateAccessApplication {
             try {
                 Write-LogMessage "Attempting to retrieve created application '$AppName' (attempt $attempt/$maxRetries)" -Level INFO -Component "AppProvisioning"
                 
-                $newApp = Get-EntraBetaPrivateAccessApplication -ApplicationName $AppName -ErrorAction Stop
+                $getAppParams = @{
+                    ApplicationName = $AppName
+                    ErrorAction = 'Stop'
+                }
+                if ($DebugPreference -eq 'Continue') {
+                    $getAppParams['Debug'] = $true
+                }
+                $newApp = Get-EntraBetaPrivateAccessApplication @getAppParams
                 
                 if ($newApp) {
                     Write-LogMessage "Successfully retrieved created application '$AppName' on attempt $attempt" -Level SUCCESS -Component "AppProvisioning"
@@ -823,10 +853,16 @@ function New-ApplicationSegments {
             DestinationType = $SegmentConfig.DestinationType
             Protocol = $SegmentConfig.Protocol
             Ports = $portArray
+            ErrorAction = 'Stop'
+        }
+        
+        # Add Debug parameter if script was called with -Debug
+        if ($DebugPreference -eq 'Continue') {
+            $segmentParams['Debug'] = $true
         }
         
         # Create the segment
-        $newSegment = New-EntraBetaPrivateAccessApplicationSegment @segmentParams -ErrorAction Stop
+        $newSegment = New-EntraBetaPrivateAccessApplicationSegment @segmentParams
         
         Write-LogMessage "Successfully created application segment: $segmentName (ID: $($newSegment.Id))" -Level SUCCESS -Component "SegmentProvisioning"
         
@@ -914,7 +950,13 @@ function Set-ApplicationGroupAssignments {
         }
         
         # Get the service principal for the application
-        $servicePrincipal = Get-EntraBetaServicePrincipal -Filter "appId eq '$AppId'"
+        $servicePrincipalParams = @{
+            Filter = "appId eq '$AppId'"
+        }
+        if ($DebugPreference -eq 'Continue') {
+            $servicePrincipalParams['Debug'] = $true
+        }
+        $servicePrincipal = Get-EntraBetaServicePrincipal @servicePrincipalParams
         
         if (-not $servicePrincipal) {
             throw "Service principal not found for application ID: $AppId"
@@ -935,7 +977,14 @@ function Set-ApplicationGroupAssignments {
         # Check if the group is already assigned to the application with this role
         Write-LogMessage "Checking for existing group assignment..." -Level INFO -Component "GroupAssignment"
         try {
-            $existingAssignments = Get-EntraBetaServicePrincipalAppRoleAssignedTo -ServicePrincipalId $servicePrincipal.Id -ErrorAction Stop
+            $assignmentCheckParams = @{
+                ServicePrincipalId = $servicePrincipal.Id
+                ErrorAction = 'Stop'
+            }
+            if ($DebugPreference -eq 'Continue') {
+                $assignmentCheckParams['Debug'] = $true
+            }
+            $existingAssignments = Get-EntraBetaServicePrincipalAppRoleAssignedTo @assignmentCheckParams
             
             $existingAssignment = $existingAssignments | Where-Object { 
                 $_.PrincipalId -eq $groupId -and $_.AppRoleId -eq $appRoleId 
@@ -958,6 +1007,11 @@ function Set-ApplicationGroupAssignments {
             PrincipalId = $groupId
             ResourceId = $servicePrincipal.Id
             AppRoleId = $appRoleId
+        }
+        
+        # Add Debug parameter if script was called with -Debug
+        if ($DebugPreference -eq 'Continue') {
+            $assignmentParams['Debug'] = $true
         }
         
         New-EntraBetaGroupAppRoleAssignment @assignmentParams
@@ -1057,7 +1111,13 @@ function Invoke-ProvisioningProcess {
         Validate-EntraConnection
         
         # Send script execution as a custom header for reporting
-        $customHeaders = New-EntraBetaCustomHeaders Provision-EntraPrivateAccessConfig
+        $customHeaderParams = @{
+            Command = 'Provision-EntraPrivateAccessConfig'
+        }
+        if ($DebugPreference -eq 'Continue') {
+            $customHeaderParams['Debug'] = $true
+        }
+        $customHeaders = New-EntraBetaCustomHeaders @customHeaderParams
         $null = Invoke-GraphRequest -Method GET -Headers $customHeaders -OutputType PSObject -Uri "/beta/networkAccess/tenantStatus"
 
         # Import and validate configuration

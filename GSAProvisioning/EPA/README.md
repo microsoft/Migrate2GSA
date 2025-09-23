@@ -60,7 +60,7 @@ The `DestinationType` field supports the following values:
 | `fqdn` | Fully qualified domain name | `webapp.internal.com` |
 | `ipAddress` | Single IPv4 address | `10.1.2.100` |
 | `ipRangeCidr` | IP range in CIDR notation | `192.168.1.0/24` |
-| `ipRange` | IP range from start to end | `192.168.1.1-192.168.1.50` |
+| `ipRange` | IP range from start to end | `192.168.1.1..192.168.1.50` |
 
 ### Sample CSV Content
 

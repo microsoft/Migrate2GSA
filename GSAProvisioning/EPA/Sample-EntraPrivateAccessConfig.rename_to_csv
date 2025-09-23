@@ -2,8 +2,8 @@ EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,Conne
 GSA-WebPortal,Portal-Main,portal.contoso.local,fqdn,tcp,443,On-Premises-Connectors,GSA-Portal-Users,Yes
 GSA-WebPortal,Portal-Admin,admin.portal.contoso.local,fqdn,tcp,"4,438,443",On-Premises-Connectors,GSA-Portal-Admins,Yes
 GSA-WebPortal,Portal-API,api.portal.contoso.local,fqdn,tcp,"80,808,081",On-Premises-Connectors,GSA-Portal-Users,Yes
-GSA-DatabaseServices,DB-Primary,10.1.100.10,ipAddress,tcp,1433,Database-Connectors,GSA-Database-Users,Yes
-GSA-DatabaseServices,DB-Replica,10.1.100.11,ipAddress,tcp,1433,Database-Connectors,GSA-Database-Users,Yes
+GSA-DatabaseServices,DB-Primary,10.1.100.9..10.1.100.10,ipRange,tcp,1433,Database-Connectors,GSA-Database-Users,Yes
+GSA-DatabaseServices,DB-Replica,10.1.100.11..10.1.100.12,ipRange,tcp,1433,Database-Connectors,GSA-Database-Users,Yes
 GSA-DatabaseServices,DB-Analytics,analytics.db.contoso.local,fqdn,tcp,5432,Database-Connectors,GSA-Analytics-Team,Yes
 GSA-FileServices,FileShare-Main,files.contoso.local,fqdn,tcp,445,File-Connectors,GSA-File-Users,Yes
 GSA-FileServices,FileShare-Archive,archive.files.contoso.local,fqdn,tcp,445,File-Connectors,GSA-File-Users,Yes
