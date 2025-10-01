@@ -34,6 +34,12 @@ param(
     })]
     [string]$SegmentGroupPath,
     
+    [Parameter(HelpMessage = "Path to ZPA Access Policies JSON export (optional)")]
+    [string]$AccessPolicyPath = (Join-Path $PSScriptRoot "access_policies.json"),
+    
+    [Parameter(HelpMessage = "Path to SCIM Groups JSON export (optional)")]
+    [string]$ScimGroupPath = (Join-Path $PSScriptRoot "scim_groups.json"),
+    
     [Parameter(HelpMessage = "Enable verbose debug logging")]
     [switch]$EnableDebugLogging
 )
@@ -391,21 +397,37 @@ function Load-SegmentGroups {
         
         Write-Log "Loaded $($segmentGroups.Count) segment groups" -Level "INFO"
         
-        # Extract application segments from segment groups
+        # Extract application segments from segment groups and build membership hashtable
         $extractedSegments = @()
+        $segmentGroupMembership = @{}
         $totalApplications = 0
         
         foreach ($segmentGroup in $segmentGroups) {
             if ($segmentGroup.PSObject.Properties.Name -contains 'applications' -and $segmentGroup.applications -and $segmentGroup.applications.Count -gt 0) {
                 $segmentGroupName = if ($segmentGroup.PSObject.Properties.Name -contains 'name' -and $segmentGroup.name) { $segmentGroup.name } else { "Unknown" }
+                $segmentGroupId = if ($segmentGroup.PSObject.Properties.Name -contains 'id' -and $segmentGroup.id) { $segmentGroup.id.ToString() } else { $null }
                 
                 Write-Log "Processing segment group '$segmentGroupName' with $($segmentGroup.applications.Count) applications" -Level "DEBUG"
+                
+                # Build membership list for this APP_GROUP
+                $appIds = @()
                 
                 foreach ($app in $segmentGroup.applications) {
                     # Add segment group name to the application segment
                     $app | Add-Member -NotePropertyName 'segmentGroupName' -NotePropertyValue $segmentGroupName -Force
                     $extractedSegments += $app
                     $totalApplications++
+                    
+                    # Track APP ID for membership hashtable
+                    if ($app.PSObject.Properties.Name -contains 'id' -and $app.id) {
+                        $appIds += $app.id.ToString()
+                    }
+                }
+                
+                # Store APP_GROUP membership
+                if ($segmentGroupId -and $appIds.Count -gt 0) {
+                    $segmentGroupMembership[$segmentGroupId] = $appIds
+                    Write-Log "  APP_GROUP '$segmentGroupId' contains $($appIds.Count) APPs" -Level "DEBUG"
                 }
             } else {
                 $segmentGroupName = if ($segmentGroup.PSObject.Properties.Name -contains 'name' -and $segmentGroup.name) { $segmentGroup.name } else { "Unknown" }
@@ -414,7 +436,12 @@ function Load-SegmentGroups {
         }
         
         Write-Log "Extracted $totalApplications application segments from $($segmentGroups.Count) segment groups" -Level "INFO"
-        return $extractedSegments
+        Write-Log "Built membership map for $($segmentGroupMembership.Count) APP_GROUPs" -Level "DEBUG"
+        
+        return @{
+            Segments = $extractedSegments
+            Membership = $segmentGroupMembership
+        }
     }
     catch {
         Write-Log "Error loading segment groups: $_" -Level "ERROR"
@@ -428,7 +455,10 @@ function Merge-ApplicationSegments {
         [array]$StandaloneSegments,
         
         [Parameter(Mandatory = $false)]
-        [array]$SegmentGroupSegments = @()
+        [array]$SegmentGroupSegments = @(),
+        
+        [Parameter(Mandatory = $false)]
+        [hashtable]$SegmentGroupMembership = @{}
     )
     
     try {
@@ -505,6 +535,7 @@ function Merge-ApplicationSegments {
                 TotalFromStandalone = $StandaloneSegments.Count
                 TotalFromSegmentGroups = $SegmentGroupSegments.Count
             }
+            SegmentGroupMembership = $SegmentGroupMembership
         }
         
         return $result
@@ -521,6 +552,7 @@ function Merge-ApplicationSegments {
                 TotalFromStandalone = $StandaloneSegments.Count
                 TotalFromSegmentGroups = 0
             }
+            SegmentGroupMembership = @{}
         }
     }
 }
@@ -576,18 +608,579 @@ function Load-ApplicationSegments {
         
         # Load segment groups if provided
         $segmentGroupSegments = @()
+        $segmentGroupMembership = @{}
         if (-not [string]::IsNullOrEmpty($SegmentGroupPath)) {
-            $segmentGroupSegments = Load-SegmentGroups -FilePath $SegmentGroupPath
+            $segmentGroupResult = Load-SegmentGroups -FilePath $SegmentGroupPath
+            $segmentGroupSegments = $segmentGroupResult.Segments
+            $segmentGroupMembership = $segmentGroupResult.Membership
         }
         
         # Merge and deduplicate
-        $mergeResult = Merge-ApplicationSegments -StandaloneSegments $standaloneSegments -SegmentGroupSegments $segmentGroupSegments
+        $mergeResult = Merge-ApplicationSegments -StandaloneSegments $standaloneSegments -SegmentGroupSegments $segmentGroupSegments -SegmentGroupMembership $segmentGroupMembership
         
         return $mergeResult
     }
     catch {
         Write-Log "Error loading application segments: $_" -Level "ERROR"
         throw
+    }
+}
+
+function Load-AccessPolicies {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath
+    )
+    
+    try {
+        Write-Log "Loading ZPA access policies from: $FilePath" -Level "INFO"
+        
+        if (-not (Test-Path $FilePath)) {
+            Write-Log "Access policies file not found: $FilePath" -Level "DEBUG"
+            return $null
+        }
+        
+        $accessPoliciesJson = Get-Content -Path $FilePath -Raw -Encoding UTF8 -ErrorAction Stop
+        $accessPoliciesData = $accessPoliciesJson | ConvertFrom-Json -ErrorAction Stop
+        
+        if ($null -eq $accessPoliciesData) {
+            Write-Log "Failed to parse JSON from access policies file: $FilePath" -Level "ERROR"
+            throw "Failed to parse access policies JSON"
+        }
+        
+        # Handle different JSON formats: direct array or nested under 'list' property
+        $accessPolicies = @()
+        if ($accessPoliciesData.PSObject.Properties.Name -contains 'list') {
+            Write-Log "Detected paginated format with 'list' property in access policies" -Level "DEBUG"
+            $accessPolicies = $accessPoliciesData.list
+            if ($accessPoliciesData.PSObject.Properties.Name -contains 'totalPages') {
+                Write-Log "Total pages from API: $($accessPoliciesData.totalPages)" -Level "DEBUG"
+            }
+        } elseif ($accessPoliciesData -is [array]) {
+            Write-Log "Detected direct array format in access policies" -Level "DEBUG"
+            $accessPolicies = $accessPoliciesData
+        } else {
+            Write-Log "Unknown JSON format in access policies file. Expected either an array or object with 'list' property" -Level "ERROR"
+            throw "Unknown JSON format in access policies file"
+        }
+        
+        if ($null -eq $accessPolicies -or $accessPolicies.Count -eq 0) {
+            Write-Log "No access policies found in the JSON data" -Level "WARN"
+            return @()
+        }
+        
+        Write-Log "Loaded $($accessPolicies.Count) access policies" -Level "INFO"
+        return $accessPolicies
+    }
+    catch {
+        Write-Log "Error loading access policies: $_" -Level "ERROR"
+        throw
+    }
+}
+
+function Load-ScimGroups {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath
+    )
+    
+    try {
+        Write-Log "Loading SCIM groups from: $FilePath" -Level "INFO"
+        
+        if (-not (Test-Path $FilePath)) {
+            Write-Log "SCIM groups file not found: $FilePath" -Level "DEBUG"
+            return $null
+        }
+        
+        $scimGroupsJson = Get-Content -Path $FilePath -Raw -Encoding UTF8 -ErrorAction Stop
+        $scimGroupsData = $scimGroupsJson | ConvertFrom-Json -ErrorAction Stop
+        
+        if ($null -eq $scimGroupsData) {
+            Write-Log "Failed to parse JSON from SCIM groups file: $FilePath" -Level "ERROR"
+            throw "Failed to parse SCIM groups JSON"
+        }
+        
+        # Handle different JSON formats: direct array or nested under 'list' property
+        $scimGroups = @()
+        if ($scimGroupsData.PSObject.Properties.Name -contains 'list') {
+            Write-Log "Detected paginated format with 'list' property in SCIM groups" -Level "DEBUG"
+            $scimGroups = $scimGroupsData.list
+            if ($scimGroupsData.PSObject.Properties.Name -contains 'totalCount') {
+                Write-Log "Total SCIM groups count from API: $($scimGroupsData.totalCount)" -Level "DEBUG"
+            }
+        } elseif ($scimGroupsData -is [array]) {
+            Write-Log "Detected direct array format in SCIM groups" -Level "DEBUG"
+            $scimGroups = $scimGroupsData
+        } else {
+            Write-Log "Unknown JSON format in SCIM groups file. Expected either an array or object with 'list' property" -Level "ERROR"
+            throw "Unknown JSON format in SCIM groups file"
+        }
+        
+        if ($null -eq $scimGroups -or $scimGroups.Count -eq 0) {
+            Write-Log "No SCIM groups found in the JSON data" -Level "WARN"
+            return @()
+        }
+        
+        Write-Log "Loaded $($scimGroups.Count) SCIM groups" -Level "INFO"
+        return $scimGroups
+    }
+    catch {
+        Write-Log "Error loading SCIM groups: $_" -Level "ERROR"
+        throw
+    }
+}
+
+function Test-ValidAccessPolicy {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Policy
+    )
+    
+    try {
+        # Check policyType == "1" (Access Policy)
+        if ($Policy.PSObject.Properties.Name -notcontains 'policyType' -or $Policy.policyType -ne "1") {
+            Write-Log "  Policy '$($Policy.name)' skipped: policyType is not '1' (got: $($Policy.policyType))" -Level "DEBUG"
+            return $false
+        }
+        
+        # Check action == "ALLOW"
+        if ($Policy.PSObject.Properties.Name -notcontains 'action' -or $Policy.action -ne "ALLOW") {
+            Write-Log "  Policy '$($Policy.name)' skipped: action is not 'ALLOW' (got: $($Policy.action))" -Level "DEBUG"
+            return $false
+        }
+        
+        # Check root operator == "AND"
+        if ($Policy.PSObject.Properties.Name -notcontains 'operator' -or $Policy.operator -ne "AND") {
+            Write-Log "  Policy '$($Policy.name)' skipped: root operator is not 'AND' (got: $($Policy.operator))" -Level "DEBUG"
+            return $false
+        }
+        
+        # Check has conditions
+        if ($Policy.PSObject.Properties.Name -notcontains 'conditions' -or $null -eq $Policy.conditions -or $Policy.conditions.Count -eq 0) {
+            Write-Log "  Policy '$($Policy.name)' skipped: no conditions found" -Level "DEBUG"
+            return $false
+        }
+        
+        # Check for negated conditions
+        foreach ($condition in $Policy.conditions) {
+            if ($condition.PSObject.Properties.Name -contains 'negated' -and $condition.negated -eq $true) {
+                Write-Log "  Policy '$($Policy.name)' skipped: contains negated conditions" -Level "DEBUG"
+                return $false
+            }
+        }
+        
+        # Check has at least one APP or APP_GROUP operand
+        $hasAppTarget = $false
+        foreach ($condition in $Policy.conditions) {
+            if ($condition.PSObject.Properties.Name -contains 'operands' -and $condition.operands) {
+                foreach ($operand in $condition.operands) {
+                    if ($operand.PSObject.Properties.Name -contains 'objectType' -and 
+                        ($operand.objectType -eq "APP" -or $operand.objectType -eq "APP_GROUP")) {
+                        $hasAppTarget = $true
+                        break
+                    }
+                }
+            }
+            if ($hasAppTarget) { break }
+        }
+        
+        if (-not $hasAppTarget) {
+            Write-Log "  Policy '$($Policy.name)' skipped: no APP or APP_GROUP targets found" -Level "DEBUG"
+            return $false
+        }
+        
+        # Check has at least one SCIM_GROUP operand
+        $hasScimGroup = $false
+        foreach ($condition in $Policy.conditions) {
+            if ($condition.PSObject.Properties.Name -contains 'operands' -and $condition.operands) {
+                foreach ($operand in $condition.operands) {
+                    if ($operand.PSObject.Properties.Name -contains 'objectType' -and $operand.objectType -eq "SCIM_GROUP") {
+                        $hasScimGroup = $true
+                        break
+                    }
+                }
+            }
+            if ($hasScimGroup) { break }
+        }
+        
+        if (-not $hasScimGroup) {
+            Write-Log "  Policy '$($Policy.name)' skipped: no SCIM_GROUP conditions found" -Level "DEBUG"
+            return $false
+        }
+        
+        return $true
+    }
+    catch {
+        Write-Log "Error validating policy '$($Policy.name)': $_" -Level "WARN"
+        return $false
+    }
+}
+
+function Get-AppTargetsFromPolicy {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Policy
+    )
+    
+    try {
+        $appIds = @()
+        $appGroupIds = @()
+        
+        if ($Policy.PSObject.Properties.Name -notcontains 'conditions' -or $null -eq $Policy.conditions) {
+            return @{ AppIds = @($appIds); AppGroupIds = @($appGroupIds) }
+        }
+        
+        foreach ($condition in $Policy.conditions) {
+            if ($condition.PSObject.Properties.Name -contains 'operands' -and $condition.operands) {
+                # Ensure operands is treated as an array
+                $operandsList = @($condition.operands)
+                foreach ($operand in $operandsList) {
+                    if ($operand.PSObject.Properties.Name -contains 'objectType') {
+                        if ($operand.objectType -eq "APP" -and $operand.PSObject.Properties.Name -contains 'rhs') {
+                            $appIds += $operand.rhs.ToString()
+                            Write-Log "    Found APP target: $($operand.rhs) ($($operand.name))" -Level "DEBUG"
+                        }
+                        elseif ($operand.objectType -eq "APP_GROUP" -and $operand.PSObject.Properties.Name -contains 'rhs') {
+                            $appGroupIds += $operand.rhs.ToString()
+                            Write-Log "    Found APP_GROUP target: $($operand.rhs) ($($operand.name))" -Level "DEBUG"
+                        }
+                    }
+                }
+            }
+        }
+        
+        # Ensure arrays are returned
+        return @{
+            AppIds = @($appIds | Select-Object -Unique)
+            AppGroupIds = @($appGroupIds | Select-Object -Unique)
+        }
+    }
+    catch {
+        Write-Log "Error extracting app targets from policy '$($Policy.name)': $_" -Level "WARN"
+        return @{ AppIds = @(); AppGroupIds = @() }
+    }
+}
+
+function Get-ScimGroupsFromPolicy {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Policy,
+        
+        [Parameter(Mandatory = $true)]
+        [hashtable]$ScimGroupLookup
+    )
+    
+    try {
+        $scimGroupNames = @()
+        
+        if ($Policy.PSObject.Properties.Name -notcontains 'conditions' -or $null -eq $Policy.conditions) {
+            return @($scimGroupNames)
+        }
+        
+        foreach ($condition in $Policy.conditions) {
+            if ($condition.PSObject.Properties.Name -contains 'operands' -and $condition.operands) {
+                # Ensure operands is treated as an array
+                $operandsList = @($condition.operands)
+                foreach ($operand in $operandsList) {
+                    if ($operand.PSObject.Properties.Name -contains 'objectType' -and $operand.objectType -eq "SCIM_GROUP") {
+                        if ($operand.PSObject.Properties.Name -contains 'rhs') {
+                            $scimGroupId = $operand.rhs.ToString()
+                            
+                            if ($ScimGroupLookup.ContainsKey($scimGroupId)) {
+                                $groupName = $ScimGroupLookup[$scimGroupId]
+                                $scimGroupNames += $groupName
+                                Write-Log "    Found SCIM_GROUP: $scimGroupId -> $groupName" -Level "DEBUG"
+                            }
+                            else {
+                                Write-Log "    SCIM_GROUP ID $scimGroupId not found in SCIM groups lookup" -Level "WARN"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return @($scimGroupNames | Select-Object -Unique)
+    }
+    catch {
+        Write-Log "Error extracting SCIM groups from policy '$($Policy.name)': $_" -Level "WARN"
+        return @()
+    }
+}
+
+function Expand-AppGroupToApps {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$AppGroupIds,
+        
+        [Parameter(Mandatory = $true)]
+        [hashtable]$SegmentGroupMembership
+    )
+    
+    try {
+        $expandedAppIds = @()
+        
+        foreach ($appGroupId in $AppGroupIds) {
+            if ($SegmentGroupMembership.ContainsKey($appGroupId)) {
+                $memberAppIds = @($SegmentGroupMembership[$appGroupId])
+                $expandedAppIds += $memberAppIds
+                Write-Log "    Expanded APP_GROUP $appGroupId to $($memberAppIds.Count) APPs" -Level "DEBUG"
+            }
+            else {
+                Write-Log "    APP_GROUP $appGroupId not found in segment group membership" -Level "WARN"
+            }
+        }
+        
+        return @($expandedAppIds | Select-Object -Unique)
+    }
+    catch {
+        Write-Log "Error expanding APP_GROUP to APPs: $_" -Level "WARN"
+        return @()
+    }
+}
+
+function Build-AppToScimGroupLookup {
+    <#
+    .SYNOPSIS
+        Builds a lookup table mapping APP IDs to SCIM groups with access.
+    
+    .PARAMETER AccessPolicyPath
+        Path to ZPA Access Policies JSON file.
+    
+    .PARAMETER ScimGroupPath
+        Path to SCIM Groups JSON file.
+    
+    .PARAMETER SegmentGroupMembership
+        Hashtable containing APP_GROUP to APP IDs mapping (from Load-ApplicationSegments).
+    
+    .PARAMETER EnableDebugLogging
+        Enable verbose debug logging.
+    
+    .OUTPUTS
+        Hashtable with APP IDs as keys and arrays of SCIM group names as values.
+        Returns $null if files not found or prerequisites not met.
+    
+    .EXAMPLE
+        $lookup = Build-AppToScimGroupLookup `
+            -AccessPolicyPath "c:\path\to\access_policies.json" `
+            -ScimGroupPath "c:\path\to\scim_groups.json" `
+            -SegmentGroupMembership $loadResult.SegmentGroupMembership `
+            -EnableDebugLogging:$EnableDebugLogging
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AccessPolicyPath,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$ScimGroupPath,
+        
+        [Parameter(Mandatory = $true)]
+        [hashtable]$SegmentGroupMembership,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$EnableDebugLogging
+    )
+    
+    try {
+        Write-Log "" -Level "INFO"
+        Write-Log "=== LOADING ACCESS POLICY DATA ===" -Level "INFO"
+        
+        # Step 1: Load SCIM Groups
+        $scimGroups = $null
+        try {
+            $scimGroups = Load-ScimGroups -FilePath $ScimGroupPath
+        }
+        catch {
+            Write-Log "Failed to load SCIM groups: $_" -Level "ERROR"
+            throw
+        }
+        
+        # Step 2: Load Access Policies
+        $accessPolicies = $null
+        try {
+            $accessPolicies = Load-AccessPolicies -FilePath $AccessPolicyPath
+        }
+        catch {
+            Write-Log "Failed to load access policies: $_" -Level "ERROR"
+            throw
+        }
+        
+        # Step 3: Validate Prerequisites
+        if ($null -eq $scimGroups -or $null -eq $accessPolicies) {
+            Write-Log "Access policy files not provided or not found. Using placeholder values for EntraGroup." -Level "INFO"
+            return $null
+        }
+        
+        if ($scimGroups.Count -eq 0 -or $accessPolicies.Count -eq 0) {
+            Write-Log "Access policy files are empty. Using placeholder values for EntraGroup." -Level "WARN"
+            return $null
+        }
+        
+        # Build SCIM group lookup: ID -> Name
+        Write-Log "" -Level "INFO"
+        $scimGroupLookup = @{}
+        foreach ($group in $scimGroups) {
+            if ($group.PSObject.Properties.Name -contains 'id' -and $group.PSObject.Properties.Name -contains 'name') {
+                $scimGroupLookup[$group.id.ToString()] = $group.name
+            }
+        }
+        Write-Log "Built SCIM group lookup with $($scimGroupLookup.Count) groups" -Level "DEBUG"
+        
+        # Step 4 & 5: Filter and Process Policies
+        Write-Log "" -Level "INFO"
+        Write-Log "=== PROCESSING ACCESS POLICIES ===" -Level "INFO"
+        Write-Log "Processing $($accessPolicies.Count) access policies..." -Level "INFO"
+        
+        $validPolicies = @()
+        $skipReasons = @{
+            'No SCIM_GROUP conditions' = 0
+            'No APP/APP_GROUP targets' = 0
+            'Negated conditions' = 0
+            'Complex OR logic at root' = 0
+            'Wrong policyType' = 0
+            'Wrong action' = 0
+            'Malformed' = 0
+        }
+        
+        foreach ($policy in $accessPolicies) {
+            try {
+                if (Test-ValidAccessPolicy -Policy $policy) {
+                    $validPolicies += $policy
+                    Write-Log "  Valid policy: $($policy.name) (ID: $($policy.id))" -Level "DEBUG"
+                }
+                else {
+                    # Count skip reasons (basic categorization)
+                    if ($policy.PSObject.Properties.Name -notcontains 'policyType' -or $policy.policyType -ne "1") {
+                        $skipReasons['Wrong policyType']++
+                    }
+                    elseif ($policy.PSObject.Properties.Name -notcontains 'action' -or $policy.action -ne "ALLOW") {
+                        $skipReasons['Wrong action']++
+                    }
+                    elseif ($policy.PSObject.Properties.Name -notcontains 'operator' -or $policy.operator -ne "AND") {
+                        $skipReasons['Complex OR logic at root']++
+                    }
+                    else {
+                        # Check if negated
+                        $hasNegated = $false
+                        if ($policy.PSObject.Properties.Name -contains 'conditions') {
+                            foreach ($condition in $policy.conditions) {
+                                if ($condition.PSObject.Properties.Name -contains 'negated' -and $condition.negated -eq $true) {
+                                    $hasNegated = $true
+                                    break
+                                }
+                            }
+                        }
+                        
+                        if ($hasNegated) {
+                            $skipReasons['Negated conditions']++
+                        }
+                        else {
+                            # Must be missing targets or groups
+                            $skipReasons['No SCIM_GROUP conditions']++
+                        }
+                    }
+                }
+            }
+            catch {
+                $skipReasons['Malformed']++
+                Write-Log "  Malformed policy (ID: $($policy.id)): $_" -Level "DEBUG"
+            }
+        }
+        
+        Write-Log "  Valid policies: $($validPolicies.Count)" -Level "INFO"
+        Write-Log "  Skipped policies: $($accessPolicies.Count - $validPolicies.Count)" -Level "INFO"
+        foreach ($reason in $skipReasons.Keys | Sort-Object) {
+            if ($skipReasons[$reason] -gt 0) {
+                Write-Log "    - ${reason}: $($skipReasons[$reason])" -Level "INFO"
+            }
+        }
+        
+        # Step 5b & 5c & 5d: Extract targets, expand APP_GROUPs, build mappings
+        Write-Log "" -Level "INFO"
+        Write-Log "Expanding APP_GROUP targets using segment group membership..." -Level "INFO"
+        
+        $appToScimGroupsLookup = @{}
+        $totalDirectApps = 0
+        $totalAppGroups = 0
+        $totalExpandedFromAppGroups = 0
+        $scimGroupsNotFound = @()
+        
+        foreach ($policy in $validPolicies) {
+            try {
+                Write-Log "  Processing policy: $($policy.name) (ID: $($policy.id))" -Level "DEBUG"
+                
+                # Get APP and APP_GROUP targets
+                $targets = Get-AppTargetsFromPolicy -Policy $policy
+                $directAppIds = @($targets.AppIds)
+                $appGroupIds = @($targets.AppGroupIds)
+                
+                $totalDirectApps += $directAppIds.Count
+                $totalAppGroups += $appGroupIds.Count
+                
+                # Expand APP_GROUPs to APPs
+                $expandedAppIds = @()
+                if ($appGroupIds.Count -gt 0) {
+                    $expandedAppIds = @(Expand-AppGroupToApps -AppGroupIds $appGroupIds -SegmentGroupMembership $SegmentGroupMembership)
+                    $totalExpandedFromAppGroups += $expandedAppIds.Count
+                }
+                
+                # Combine direct and expanded APP IDs
+                $allAppIds = @(($directAppIds + $expandedAppIds) | Select-Object -Unique)
+                
+                # Get SCIM groups
+                $scimGroupNames = @(Get-ScimGroupsFromPolicy -Policy $policy -ScimGroupLookup $scimGroupLookup)
+                
+                if ($scimGroupNames.Count -eq 0) {
+                    Write-Log "    No valid SCIM groups found for policy '$($policy.name)'" -Level "DEBUG"
+                    continue
+                }
+                
+                # Build mappings
+                foreach ($appId in $allAppIds) {
+                    if (-not $appToScimGroupsLookup.ContainsKey($appId)) {
+                        $appToScimGroupsLookup[$appId] = @()
+                    }
+                    
+                    foreach ($groupName in $scimGroupNames) {
+                        if ($appToScimGroupsLookup[$appId] -notcontains $groupName) {
+                            $appToScimGroupsLookup[$appId] += $groupName
+                        }
+                    }
+                }
+            }
+            catch {
+                Write-Log "  Error processing policy '$($policy.name)': $_" -Level "WARN"
+                continue
+            }
+        }
+        
+        # Step 6: Deduplication & Aggregation (already done in step 5d)
+        # Sort group names alphabetically for each APP
+        # Create a copy of keys to avoid collection modification during enumeration
+        $appIds = @($appToScimGroupsLookup.Keys)
+        foreach ($appId in $appIds) {
+            $appToScimGroupsLookup[$appId] = @($appToScimGroupsLookup[$appId] | Sort-Object)
+        }
+        
+        # Step 7: Summary Logging
+        Write-Log "  Total APP targets (direct): $totalDirectApps" -Level "INFO"
+        Write-Log "  Total APP_GROUP targets: $totalAppGroups" -Level "INFO"
+        Write-Log "  APP_GROUPs expanded to: $totalExpandedFromAppGroups APPs" -Level "INFO"
+        Write-Log "  Total unique APPs with access policies: $($appToScimGroupsLookup.Count)" -Level "INFO"
+        
+        if ($scimGroupsNotFound.Count -gt 0) {
+            Write-Log "  Warnings:" -Level "INFO"
+            Write-Log "    - SCIM Groups not found: $($scimGroupsNotFound.Count)" -Level "INFO"
+        }
+        
+        Write-Log "" -Level "INFO"
+        Write-Log "Access policy lookup built successfully" -Level "INFO"
+        
+        return $appToScimGroupsLookup
+    }
+    catch {
+        Write-Log "Error building APP to SCIM group lookup: $_" -Level "ERROR"
+        return $null
     }
 }
 
@@ -598,10 +1191,17 @@ function Load-ApplicationSegments {
 try {
     Write-Log "Starting ZPA to GSA transformation script" -Level "INFO"
     Write-Log "Script version: 1.0" -Level "INFO"
-    Write-Log "Parameters: AppSegmentPath=$AppSegmentPath, OutputBasePath=$OutputBasePath" -Level "INFO"
+    Write-Log "Parameters:" -Level "INFO"
+    Write-Log "  AppSegmentPath: $AppSegmentPath" -Level "INFO"
+    Write-Log "  OutputBasePath: $OutputBasePath" -Level "INFO"
+    if (-not [string]::IsNullOrEmpty($SegmentGroupPath)) {
+        Write-Log "  SegmentGroupPath: $SegmentGroupPath" -Level "INFO"
+    }
+    Write-Log "  AccessPolicyPath: $AccessPolicyPath" -Level "INFO"
+    Write-Log "  ScimGroupPath: $ScimGroupPath" -Level "INFO"
     
     if ($EnableDebugLogging) {
-        Write-Log "Debug logging is enabled" -Level "INFO"
+        Write-Log "  EnableDebugLogging: True" -Level "INFO"
     }
     
     if ($TargetAppSegmentName) {
@@ -629,10 +1229,36 @@ try {
         $loadResult = Load-ApplicationSegments -AppSegmentPath $AppSegmentPath -SegmentGroupPath $SegmentGroupPath
         $appSegments = $loadResult.Segments
         $loadingStats = $loadResult.Stats
+        $segmentGroupMembership = $loadResult.SegmentGroupMembership
     }
     catch {
         Write-Log "Error loading application segments: $_" -Level "ERROR"
         exit 1
+    }
+    
+    # Build access policy lookup if files are provided
+    $appToScimGroupLookup = $null
+    $accessPolicyStats = @{
+        FilesProvided = $false
+        AppsWithGroups = 0
+        AppsWithoutPolicies = 0
+        AppsUsingPlaceholder = 0
+    }
+    
+    try {
+        $appToScimGroupLookup = Build-AppToScimGroupLookup `
+            -AccessPolicyPath $AccessPolicyPath `
+            -ScimGroupPath $ScimGroupPath `
+            -SegmentGroupMembership $segmentGroupMembership `
+            -EnableDebugLogging:$EnableDebugLogging
+        
+        if ($null -ne $appToScimGroupLookup) {
+            $accessPolicyStats.FilesProvided = $true
+        }
+    }
+    catch {
+        Write-Log "Failed to build access policy lookup. Using placeholder values. Error: $_" -Level "WARN"
+        $appToScimGroupLookup = $null
     }
     #endregion
     
@@ -976,6 +1602,24 @@ try {
                             $conflictCount++
                         }
                         
+                        # Determine EntraGroup value
+                        $entraGroupValue = "Placeholder_Replace_Me"
+                        
+                        if ($null -ne $appToScimGroupLookup) {
+                            $appId = $segment.id.ToString()
+                            
+                            if ($appToScimGroupLookup.ContainsKey($appId)) {
+                                $groupNames = $appToScimGroupLookup[$appId]
+                                if ($groupNames -and $groupNames.Count -gt 0) {
+                                    $entraGroupValue = ($groupNames -join "; ")
+                                } else {
+                                    $entraGroupValue = "No_Access_Policy_Found_Replace_Me"
+                                }
+                            } else {
+                                $entraGroupValue = "No_Access_Policy_Found_Replace_Me"
+                            }
+                        }
+                        
                         # Create result object
                         $resultObj = [PSCustomObject]@{
                             SegmentId = "SEG-{0:D6}" -f $segmentIdCounter
@@ -987,8 +1631,7 @@ try {
                             Ports = $combo.Port
                             SegmentGroup = if ($segment.segmentGroupName) { $segment.segmentGroupName } else { "Unknown" }
                             ServerGroups = $serverGroupsString
-                            ConditionalAccessPolicy = "Placeholder_Replace_Me"
-                            EntraGroup = "Placeholder_Replace_Me"
+                            EntraGroup = $entraGroupValue
                             ConnectorGroup = "Placeholder_Replace_Me"
                             Conflict = if ($hasConflict) { "Yes" } else { "No" }
                             ConflictingEnterpriseApp = if ($conflictingApps.Count -gt 0) { ($conflictingApps | Sort-Object -Unique) -join ", " } else { "" }
@@ -1018,6 +1661,20 @@ try {
     }
     
     Write-Progress -Activity "Processing ZPA Segments" -Completed
+    
+    # Calculate access policy statistics
+    if ($null -ne $appToScimGroupLookup) {
+        foreach ($segment in $filteredSegments) {
+            $appId = $segment.id.ToString()
+            if ($appToScimGroupLookup.ContainsKey($appId) -and $appToScimGroupLookup[$appId].Count -gt 0) {
+                $accessPolicyStats.AppsWithGroups++
+            } else {
+                $accessPolicyStats.AppsWithoutPolicies++
+            }
+        }
+    } else {
+        $accessPolicyStats.AppsUsingPlaceholder = $filteredSegments.Count
+    }
     #endregion
     
     #region Data Grouping and Deduplication
@@ -1040,7 +1697,6 @@ try {
             Ports = $uniquePorts
             SegmentGroup = $firstItem.SegmentGroup
             ServerGroups = $firstItem.ServerGroups
-            ConditionalAccessPolicy = $firstItem.ConditionalAccessPolicy
             EntraGroup = $firstItem.EntraGroup
             ConnectorGroup = $firstItem.ConnectorGroup
             Conflict = $firstItem.Conflict
@@ -1081,13 +1737,27 @@ try {
     Write-Log "Total result records: $($allResults.Count)" -Level "INFO"
     Write-Log "Grouped result records: $($groupedResults.Count)" -Level "INFO"
     Write-Log "Conflicts detected: $conflictCount" -Level "INFO"
+    Write-Log "" -Level "INFO"
+    
+    # Access Policy Integration Summary
+    if ($accessPolicyStats.FilesProvided) {
+        Write-Log "Access Policy Integration:" -Level "INFO"
+        Write-Log "  Access policy files: Provided" -Level "INFO"
+        Write-Log "  APPs with assigned groups: $($accessPolicyStats.AppsWithGroups) ($(if ($filteredSegments.Count -gt 0) { [math]::Round(($accessPolicyStats.AppsWithGroups / $filteredSegments.Count) * 100, 1) } else { 0 })%)" -Level "INFO"
+        Write-Log "  APPs without access policies: $($accessPolicyStats.AppsWithoutPolicies) ($(if ($filteredSegments.Count -gt 0) { [math]::Round(($accessPolicyStats.AppsWithoutPolicies / $filteredSegments.Count) * 100, 1) } else { 0 })%)" -Level "INFO"
+        Write-Log "  APPs using placeholder: 0 (0.0%)" -Level "INFO"
+    } else {
+        Write-Log "Access Policy Integration:" -Level "INFO"
+        Write-Log "  Access policy files: Not provided" -Level "INFO"
+        Write-Log "  All APPs using placeholder: $($accessPolicyStats.AppsUsingPlaceholder) (100.0%)" -Level "INFO"
+    }
+    Write-Log "" -Level "INFO"
     Write-Log "Output file: $outputFilePath" -Level "INFO"
     Write-Log "" -Level "INFO"
     Write-Log "=== NEXT STEPS ===" -Level "INFO"
     Write-Log "1. Review the exported CSV file for accuracy" -Level "INFO"
     Write-Log "2. Replace all 'Placeholder_Replace_Me' values with actual values:" -Level "INFO"
-    Write-Log "   - ConditionalAccessPolicy: Set appropriate CA policy names, if needed" -Level "INFO"
-    Write-Log "   - EntraGroup: Set appropriate Entra ID group names" -Level "INFO"
+    Write-Log "   - EntraGroup: Set appropriate Entra ID group names (if not auto-populated)" -Level "INFO"
     Write-Log "   - ConnectorGroup: Set appropriate connector group names" -Level "INFO"
     Write-Log "3. Review and resolve any conflicts identified in the 'Conflict' column" -Level "INFO"
     Write-Log "4. Import the completed data into Global Secure Access" -Level "INFO"
