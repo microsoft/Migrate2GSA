@@ -1631,7 +1631,7 @@ try {
                             Ports = $combo.Port
                             SegmentGroup = if ($segment.segmentGroupName) { $segment.segmentGroupName } else { "Unknown" }
                             ServerGroups = $serverGroupsString
-                            EntraGroup = $entraGroupValue
+                            EntraGroups = $entraGroupValue
                             ConnectorGroup = "Placeholder_Replace_Me"
                             Conflict = if ($hasConflict) { "Yes" } else { "No" }
                             ConflictingEnterpriseApp = if ($conflictingApps.Count -gt 0) { ($conflictingApps | Sort-Object -Unique) -join ", " } else { "" }
@@ -1697,7 +1697,7 @@ try {
             Ports = $uniquePorts
             SegmentGroup = $firstItem.SegmentGroup
             ServerGroups = $firstItem.ServerGroups
-            EntraGroup = $firstItem.EntraGroup
+            EntraGroups = $firstItem.EntraGroups
             ConnectorGroup = $firstItem.ConnectorGroup
             Conflict = $firstItem.Conflict
             ConflictingEnterpriseApp = $firstItem.ConflictingEnterpriseApp
@@ -1757,7 +1757,7 @@ try {
     Write-Log "=== NEXT STEPS ===" -Level "INFO"
     Write-Log "1. Review the exported CSV file for accuracy" -Level "INFO"
     Write-Log "2. Replace all 'Placeholder_Replace_Me' values with actual values:" -Level "INFO"
-    Write-Log "   - EntraGroup: Set appropriate Entra ID group names (if not auto-populated)" -Level "INFO"
+    Write-Log "   - EntraGroups: Set appropriate Entra ID group names (if not auto-populated)" -Level "INFO"
     Write-Log "   - ConnectorGroup: Set appropriate connector group names" -Level "INFO"
     Write-Log "3. Review and resolve any conflicts identified in the 'Conflict' column" -Level "INFO"
     Write-Log "4. Import the completed data into Global Secure Access" -Level "INFO"
