@@ -6,6 +6,10 @@
     This script reads CSV configuration files containing Entra Private Access application details
     and provisions them automatically. It provides comprehensive logging, error handling, and
     supports retry scenarios through output CSV generation.
+    
+    The script supports assigning multiple Entra ID groups per Enterprise Application using
+    semicolon-separated values in the EntraGroups column. Groups are aggregated across all
+    segments of an application, deduplicated, and assigned at the application level.
 
 .PARAMETER ProvisioningConfigPath
     Path to the CSV provisioning configuration file.
@@ -33,7 +37,7 @@
 
 .NOTES
     Author: Andres Canello
-    Version: 1.0
+    Version: 2.0
     Requires: PowerShell 7+, Entra PowerShell Beta Modules
 #>
 
@@ -316,7 +320,7 @@ function Import-ProvisioningConfig {
             'Ports',
             'ConnectorGroup',
             'Provision',
-            'EntraGroup'
+            'EntraGroups'
         )
 
         $actualColumns = $configData[0].PSObject.Properties.Name
@@ -446,6 +450,15 @@ function Show-ProvisioningPlan {
                 }
             }
             
+            # Get aggregated Entra groups
+            $aggregatedGroups = Get-AggregatedEntraGroups -Segments $appGroup.Group
+            if ($aggregatedGroups.Count -gt 0) {
+                Write-LogMessage "    Entra Groups ($($aggregatedGroups.Count)):" -Level INFO -Component "Plan"
+                foreach ($groupName in $aggregatedGroups) {
+                    Write-LogMessage "      - $groupName" -Level INFO -Component "Plan"
+                }
+            }
+            
             $protocols = $appGroup.Group | Select-Object -ExpandProperty Protocol -Unique
             Write-LogMessage "    Protocols: $($protocols -join ', ')" -Level INFO -Component "Plan"
         }
@@ -526,6 +539,10 @@ function Resolve-EntraGroups {
     <#
     .SYNOPSIS
         Finds and caches Entra ID groups for application assignments.
+    
+    .DESCRIPTION
+        Parses the EntraGroups column (semicolon-separated), aggregates groups across all segments
+        per application, deduplicates, filters out placeholders, and resolves all unique groups.
     #>
     [CmdletBinding()]
     param(
@@ -536,28 +553,40 @@ function Resolve-EntraGroups {
     Write-LogMessage "Resolving Entra ID groups..." -Level INFO -Component "EntraGroups"
     
     try {
-        # Group by application and get EntraGroup from first segment only (like connector groups)
+        # Group by application to aggregate groups from all segments
         $appGroups = $ConfigData | Group-Object -Property EnterpriseAppName
-        $groupNames = @()
+        $allGroupNames = @()
         
         foreach ($appGroup in $appGroups) {
-            $firstSegmentGroup = $appGroup.Group[0].EntraGroup
-            if ($firstSegmentGroup -and $firstSegmentGroup -ne "Placeholder_Replace_Me" -and $firstSegmentGroup -ne "") {
-                $groupNames += $firstSegmentGroup
+            # Aggregate groups from ALL segments for this application
+            foreach ($segment in $appGroup.Group) {
+                $groupsField = $segment.EntraGroups
+                
+                if ([string]::IsNullOrWhiteSpace($groupsField)) {
+                    continue
+                }
+                
+                # Split by semicolon and process each group
+                $groupNames = $groupsField -split ';' | ForEach-Object { $_.Trim() } | Where-Object { 
+                    -not [string]::IsNullOrWhiteSpace($_) -and $_ -notmatch '_Replace_Me'
+                }
+                
+                # Add to collection
+                $allGroupNames += $groupNames
             }
         }
         
-        # Remove duplicates in case multiple apps use the same group
-        $groupNames = $groupNames | Select-Object -Unique
+        # Remove duplicates (case-insensitive)
+        $uniqueGroupNames = $allGroupNames | Sort-Object -Unique
         
-        if ($groupNames.Count -eq 0) {
+        if ($uniqueGroupNames.Count -eq 0) {
             Write-LogMessage "No Entra groups to resolve (all placeholders or empty)" -Level INFO -Component "EntraGroups"
             return
         }
         
-        Write-LogMessage "Found $($groupNames.Count) unique Entra groups to resolve (from first segments only)" -Level INFO -Component "EntraGroups"
+        Write-LogMessage "Found $($uniqueGroupNames.Count) unique Entra groups to resolve across all segments" -Level INFO -Component "EntraGroups"
         
-        foreach ($groupName in $groupNames) {
+        foreach ($groupName in $uniqueGroupNames) {
             try {
                 $groupParams = @{
                     Filter = "displayName eq '$groupName'"
@@ -590,6 +619,50 @@ function Resolve-EntraGroups {
     }
 }
 
+function Get-AggregatedEntraGroups {
+    <#
+    .SYNOPSIS
+        Gets aggregated, deduplicated Entra groups for an application.
+    
+    .DESCRIPTION
+        Parses EntraGroups from all segments of an application, splits semicolon-separated values,
+        filters placeholders, deduplicates, and returns sorted array of group names.
+    
+    .PARAMETER Segments
+        Array of segment objects for an application.
+    
+    .OUTPUTS
+        Array of unique group names (case-insensitive, sorted alphabetically).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [array]$Segments
+    )
+    
+    $allGroupNames = @()
+    
+    foreach ($segment in $Segments) {
+        $groupsField = $segment.EntraGroups
+        
+        if ([string]::IsNullOrWhiteSpace($groupsField)) {
+            continue
+        }
+        
+        # Split by semicolon and process each group
+        $groupNames = $groupsField -split ';' | ForEach-Object { $_.Trim() } | Where-Object { 
+            -not [string]::IsNullOrWhiteSpace($_) -and $_ -notmatch '_Replace_Me'
+        }
+        
+        $allGroupNames += $groupNames
+    }
+    
+    # Remove duplicates (case-insensitive) and sort
+    $uniqueGroupNames = $allGroupNames | Sort-Object -Unique
+    
+    return $uniqueGroupNames
+}
+
 function Validate-ApplicationDependencies {
     <#
     .SYNOPSIS
@@ -612,7 +685,7 @@ function Validate-ApplicationDependencies {
     foreach ($appGroup in $appGroups) {
         $appName = $appGroup.Name
         $segments = $appGroup.Group
-        $hasUnresolvedDependencies = $false
+        $skipApp = $false
         
         # Check connector groups for this application
         $connectorGroups = $segments | Select-Object -ExpandProperty ConnectorGroup -Unique
@@ -626,8 +699,19 @@ function Validate-ApplicationDependencies {
             }
         }
         
+        # Check Entra groups for this application (aggregated from all segments)
+        $aggregatedGroups = Get-AggregatedEntraGroups -Segments $segments
+        $unresolvedEntraGroups = @()
+        
+        foreach ($groupName in $aggregatedGroups) {
+            if (-not $Global:EntraGroupCache.ContainsKey($groupName) -or -not $Global:EntraGroupCache[$groupName]) {
+                $unresolvedEntraGroups += $groupName
+            }
+        }
+        
+        # Report unresolved connector groups
         if ($unresolvedConnectorGroups.Count -gt 0) {
-            $hasUnresolvedDependencies = $true
+            $skipApp = $true
             Write-LogMessage "❌ Skipping application '$appName': Unresolved connector groups found" -Level ERROR -Component "Validation"
             
             foreach ($unresolvedCG in $unresolvedConnectorGroups) {
@@ -637,7 +721,18 @@ function Validate-ApplicationDependencies {
                     Write-LogMessage "   - '$unresolvedCG' (not found in tenant)" -Level ERROR -Component "Validation"
                 }
             }
-            
+        }
+        
+        # Report unresolved Entra groups (warning only, don't skip app)
+        if ($unresolvedEntraGroups.Count -gt 0) {
+            Write-LogMessage "⚠️  Warning for application '$appName': Some Entra groups could not be resolved" -Level WARN -Component "Validation"
+            foreach ($unresolvedGroup in $unresolvedEntraGroups) {
+                Write-LogMessage "   - '$unresolvedGroup' (not found in tenant)" -Level WARN -Component "Validation"
+            }
+            Write-LogMessage "   Application will be provisioned, but group assignments may fail" -Level WARN -Component "Validation"
+        }
+        
+        if ($skipApp) {
             # Mark all segments of this application as skipped
             foreach ($segment in $segments) {
                 # Direct lookup instead of filtering
@@ -652,7 +747,7 @@ function Validate-ApplicationDependencies {
             
             $skippedApplications += $appName
         } else {
-            # Application has all dependencies resolved
+            # Application has connector groups resolved (Entra groups are optional)
             $validApplications += $segments
         }
     }
@@ -901,26 +996,31 @@ function New-ApplicationSegments {
 function Set-ApplicationGroupAssignments {
     <#
     .SYNOPSIS
-        Assigns Entra ID groups to Private Access applications.
+        Assigns multiple Entra ID groups to Private Access applications.
     
     .DESCRIPTION
-        Assigns an Entra ID group to a Private Access application. The function includes
-        duplicate assignment checking to prevent assigning the same group multiple times
-        to the same application with the same role.
+        Assigns one or more Entra ID groups to a Private Access application. The function processes
+        each group individually, includes duplicate assignment checking, and returns a summary of
+        successful, already assigned, and failed assignments. The application provisioning is not
+        considered failed even if group assignments fail.
     
     .PARAMETER AppId
         The application ID of the Private Access application.
     
-    .PARAMETER GroupName
-        The display name of the Entra ID group to assign to the application.
+    .PARAMETER GroupNames
+        Array of Entra ID group display names to assign to the application.
     
     .OUTPUTS
-        Returns a hashtable with Success (boolean), Action (string), and optional Error (string).
-        Action values: "Assigned", "AlreadyAssigned", "Skipped", "Failed"
+        Returns a hashtable with:
+        - TotalGroups: Total number of groups to assign
+        - Succeeded: Number of successfully assigned groups
+        - AlreadyAssigned: Number of groups already assigned
+        - Failed: Number of failed group assignments
+        - FailedGroups: Array of group names that failed
     
     .EXAMPLE
-        Set-ApplicationGroupAssignments -AppId "app-123" -GroupName "MyGroup"
-        Assigns the group "MyGroup" to application "app-123" if not already assigned.
+        Set-ApplicationGroupAssignments -AppId "app-123" -GroupNames @("Group1", "Group2")
+        Assigns multiple groups to application "app-123".
     #>
     [CmdletBinding()]
     param(
@@ -928,102 +1028,151 @@ function Set-ApplicationGroupAssignments {
         [string]$AppId,
         
         [Parameter(Mandatory=$true)]
-        [string]$GroupName
+        [string[]]$GroupNames
     )
     
-    if ($GroupName -eq "Placeholder_Replace_Me" -or [string]::IsNullOrWhiteSpace($GroupName)) {
-        Write-LogMessage "Skipping group assignment (placeholder group name)" -Level INFO -Component "GroupAssignment"
-        return @{ Success = $true; Action = "Skipped" }
+    # Initialize result tracking
+    $result = @{
+        TotalGroups = $GroupNames.Count
+        Succeeded = 0
+        AlreadyAssigned = 0
+        Failed = 0
+        FailedGroups = @()
     }
     
-    Write-LogMessage "Assigning group '$GroupName' to application" -Level INFO -Component "GroupAssignment"
+    if ($GroupNames.Count -eq 0) {
+        Write-LogMessage "No groups to assign" -Level INFO -Component "GroupAssignment"
+        return $result
+    }
     
-    try {
-        $groupId = $Global:EntraGroupCache[$GroupName]
-        if (-not $groupId) {
-            throw "Group '$GroupName' not found or not resolved"
-        }
-        
-        if ($WhatIf) {
-            Write-LogMessage "[WHATIF] Would assign group '$GroupName' to application" -Level INFO -Component "GroupAssignment"
-            return @{ Success = $true; Action = "WhatIf" }
-        }
-        
-        # Get the service principal for the application
-        $servicePrincipalParams = @{
-            Filter = "appId eq '$AppId'"
-        }
-        if ($DebugPreference -eq 'Continue') {
-            $servicePrincipalParams['Debug'] = $true
-        }
-        $servicePrincipal = Get-EntraBetaServicePrincipal @servicePrincipalParams
-        
-        if (-not $servicePrincipal) {
-            throw "Service principal not found for application ID: $AppId"
-        }
-        
-        # Find the User app role from the service principal's app roles
-        $userAppRole = $servicePrincipal.AppRoles | Where-Object { $_.DisplayName -eq "User" -and $_.IsEnabled -eq $true }
-        
-        if (-not $userAppRole) {
-            # Fallback to default role if User role not found
-            Write-LogMessage "User app role not found for application, using default role" -Level WARN -Component "GroupAssignment"
-            $appRoleId = "00000000-0000-0000-0000-000000000000"
-        } else {
-            $appRoleId = $userAppRole.Id
-            Write-LogMessage "Found User app role ID: $appRoleId for application" -Level INFO -Component "GroupAssignment"
-        }
-        
-        # Check if the group is already assigned to the application with this role
-        Write-LogMessage "Checking for existing group assignment..." -Level INFO -Component "GroupAssignment"
+    Write-LogMessage "Assigning $($GroupNames.Count) groups to application" -Level INFO -Component "GroupAssignment"
+    
+    # Get the service principal once for all assignments (if not WhatIf)
+    $servicePrincipal = $null
+    $appRoleId = $null
+    
+    if (-not $WhatIf) {
         try {
-            $assignmentCheckParams = @{
-                ServicePrincipalId = $servicePrincipal.Id
+            # Get the service principal for the application
+            $servicePrincipalParams = @{
+                Filter = "appId eq '$AppId'"
                 ErrorAction = 'Stop'
             }
             if ($DebugPreference -eq 'Continue') {
-                $assignmentCheckParams['Debug'] = $true
+                $servicePrincipalParams['Debug'] = $true
             }
-            $existingAssignments = Get-EntraBetaServicePrincipalAppRoleAssignedTo @assignmentCheckParams
+            $servicePrincipal = Get-EntraBetaServicePrincipal @servicePrincipalParams
             
-            $existingAssignment = $existingAssignments | Where-Object { 
-                $_.PrincipalId -eq $groupId -and $_.AppRoleId -eq $appRoleId 
-            }
-            
-            if ($existingAssignment) {
-                Write-LogMessage "Group '$GroupName' is already assigned to application with role ID '$appRoleId'" -Level INFO -Component "GroupAssignment"
-                return @{ Success = $true; Action = "AlreadyAssigned" }
+            if (-not $servicePrincipal) {
+                Write-LogMessage "Service principal not found for application ID: $AppId" -Level ERROR -Component "GroupAssignment"
+                $result.Failed = $GroupNames.Count
+                $result.FailedGroups = $GroupNames
+                return $result
             }
             
-            Write-LogMessage "No existing assignment found for group '$GroupName' with role ID '$appRoleId'" -Level INFO -Component "GroupAssignment"
+            # Find the User app role from the service principal's app roles
+            $userAppRole = $servicePrincipal.AppRoles | Where-Object { $_.DisplayName -eq "User" -and $_.IsEnabled -eq $true }
+            
+            if (-not $userAppRole) {
+                # Fallback to default role if User role not found
+                Write-LogMessage "User app role not found for application, using default role" -Level WARN -Component "GroupAssignment"
+                $appRoleId = "00000000-0000-0000-0000-000000000000"
+            } else {
+                $appRoleId = $userAppRole.Id
+            }
         }
         catch {
-            Write-LogMessage "Warning: Could not check existing assignments: $_. Proceeding with assignment attempt." -Level WARN -Component "GroupAssignment"
+            Write-LogMessage "Failed to retrieve service principal: $_" -Level ERROR -Component "GroupAssignment"
+            $result.Failed = $GroupNames.Count
+            $result.FailedGroups = $GroupNames
+            return $result
         }
+    }
+    
+    # Process each group individually
+    foreach ($groupName in $GroupNames) {
+        try {
+            # Skip placeholders
+            if ($groupName -match '_Replace_Me' -or [string]::IsNullOrWhiteSpace($groupName)) {
+                Write-LogMessage "Skipping placeholder group: '$groupName'" -Level INFO -Component "GroupAssignment"
+                continue
+            }
+            
+            Write-LogMessage "Assigning group '$groupName' to application" -Level INFO -Component "GroupAssignment"
+            
+            # Check if group was resolved
+            $groupId = $Global:EntraGroupCache[$groupName]
+            if (-not $groupId) {
+                Write-LogMessage "Group '$groupName' not found or not resolved" -Level WARN -Component "GroupAssignment"
+                $result.Failed++
+                $result.FailedGroups += $groupName
+                continue
+            }
+            
+            if ($WhatIf) {
+                Write-LogMessage "[WHATIF] Would assign group '$groupName' to application" -Level INFO -Component "GroupAssignment"
+                $result.Succeeded++
+                continue
+            }
+            
+            # Check if the group is already assigned to the application with this role
+            try {
+                $assignmentCheckParams = @{
+                    ServicePrincipalId = $servicePrincipal.Id
+                    ErrorAction = 'Stop'
+                }
+                if ($DebugPreference -eq 'Continue') {
+                    $assignmentCheckParams['Debug'] = $true
+                }
+                $existingAssignments = Get-EntraBetaServicePrincipalAppRoleAssignedTo @assignmentCheckParams
+                
+                $existingAssignment = $existingAssignments | Where-Object { 
+                    $_.PrincipalId -eq $groupId -and $_.AppRoleId -eq $appRoleId 
+                }
+                
+                if ($existingAssignment) {
+                    Write-LogMessage "Group '$groupName' is already assigned to application" -Level INFO -Component "GroupAssignment"
+                    $result.AlreadyAssigned++
+                    continue
+                }
+            }
+            catch {
+                Write-LogMessage "Warning: Could not check existing assignments for group '$groupName': $_" -Level WARN -Component "GroupAssignment"
+            }
 
-        # Create app role assignment
-        $assignmentParams = @{
-            GroupId = $groupId
-            PrincipalId = $groupId
-            ResourceId = $servicePrincipal.Id
-            AppRoleId = $appRoleId
+            # Create app role assignment
+            $assignmentParams = @{
+                GroupId = $groupId
+                PrincipalId = $groupId
+                ResourceId = $servicePrincipal.Id
+                AppRoleId = $appRoleId
+                ErrorAction = 'Stop'
+            }
+            
+            if ($DebugPreference -eq 'Continue') {
+                $assignmentParams['Debug'] = $true
+            }
+            
+            New-EntraBetaGroupAppRoleAssignment @assignmentParams
+            
+            Write-LogMessage "Successfully assigned group '$groupName' to application" -Level SUCCESS -Component "GroupAssignment"
+            $result.Succeeded++
         }
-        
-        # Add Debug parameter if script was called with -Debug
-        if ($DebugPreference -eq 'Continue') {
-            $assignmentParams['Debug'] = $true
+        catch {
+            Write-LogMessage "Failed to assign group '$groupName' to application: $_" -Level ERROR -Component "GroupAssignment"
+            $result.Failed++
+            $result.FailedGroups += $groupName
         }
-        
-        New-EntraBetaGroupAppRoleAssignment @assignmentParams
-        
-        Write-LogMessage "Successfully assigned group '$GroupName' to application" -Level SUCCESS -Component "GroupAssignment"
-        
-        return @{ Success = $true; Action = "Assigned" }
     }
-    catch {
-        Write-LogMessage "Failed to assign group '$GroupName' to application: $_" -Level ERROR -Component "GroupAssignment"
-        return @{ Success = $false; Error = $_.Exception.Message; Action = "Failed" }
+    
+    # Log summary
+    if ($result.Failed -gt 0) {
+        Write-LogMessage "Group assignment summary: $($result.Succeeded) succeeded, $($result.AlreadyAssigned) already assigned, $($result.Failed) failed" -Level WARN -Component "GroupAssignment"
+    } else {
+        Write-LogMessage "Group assignment summary: $($result.Succeeded) succeeded, $($result.AlreadyAssigned) already assigned" -Level SUCCESS -Component "GroupAssignment"
     }
+    
+    return $result
 }
 #endregion
 
@@ -1166,18 +1315,22 @@ function Invoke-ProvisioningProcess {
             $segments = $appGroup.Group
             $currentAppNumber++
             
+            # Get connector group for first segment (assuming all segments for an app use same connector group)
+            $connectorGroupName = $segments[0].ConnectorGroup
+            
+            # Get aggregated Entra groups from all segments
+            $aggregatedGroups = Get-AggregatedEntraGroups -Segments $segments
+            
             # Add visual separator and enhanced app header
             Write-LogMessage " " -Level INFO -Component "Main"
             Write-LogMessage "╔═══════════════════════════════════════════════════════════════════════════════════════" -Level SUMMARY -Component "Main"
             Write-LogMessage "║ 📱 APPLICATION [$currentAppNumber/$($appGroups.Count)]: $appName" -Level SUMMARY -Component "Main"
-            Write-LogMessage "║ 🔗 Segments: $($segments.Count) | Connector: $($segments[0].ConnectorGroup) | Group: $($segments[0].EntraGroup)" -Level SUMMARY -Component "Main"
+            if ($aggregatedGroups.Count -gt 0) {
+                Write-LogMessage "║ 🔗 Segments: $($segments.Count) | Connector: $connectorGroupName | Groups: $($aggregatedGroups.Count)" -Level SUMMARY -Component "Main"
+            } else {
+                Write-LogMessage "║ 🔗 Segments: $($segments.Count) | Connector: $connectorGroupName | Groups: None" -Level SUMMARY -Component "Main"
+            }
             Write-LogMessage "╚═══════════════════════════════════════════════════════════════════════════════════════" -Level SUMMARY -Component "Main"
-            
-            # Get connector group for first segment (assuming all segments for an app use same connector group)
-            $connectorGroupName = $segments[0].ConnectorGroup
-            
-            # Get Entra group from first segment (assuming all segments for an app use same group)
-            $entraGroupName = $segments[0].EntraGroup
             
             # Create or get application
             $appResult = New-PrivateAccessApplication -AppName $appName -ConnectorGroupName $connectorGroupName
@@ -1187,13 +1340,24 @@ function Invoke-ProvisioningProcess {
                     $Global:ProvisioningStats.SuccessfulApps++
                 }
                 
-                # Assign group to the application (once per app, using first segment's group)
-                if ($entraGroupName -and $entraGroupName -ne "Placeholder_Replace_Me") {
-                    Write-LogMessage "Assigning group '$entraGroupName' to application '$appName'" -Level INFO -Component "Main"
-                    $assignmentResult = Set-ApplicationGroupAssignments -AppId $appResult.AppId -GroupName $entraGroupName
-                    if (-not $assignmentResult.Success) {
-                        Write-LogMessage "Failed to assign group '$entraGroupName' to application '$appName': $($assignmentResult.Error)" -Level WARN -Component "Main"
+                # Assign aggregated groups to the application
+                if ($aggregatedGroups.Count -gt 0) {
+                    $assignmentResult = Set-ApplicationGroupAssignments -AppId $appResult.AppId -GroupNames $aggregatedGroups
+                    
+                    # Update provisioning result based on group assignment outcomes
+                    $groupAssignmentStatus = ""
+                    if ($assignmentResult.Failed -eq 1) {
+                        $groupAssignmentStatus = " (Warning: 1 group failed assignment)"
+                    } elseif ($assignmentResult.Failed -gt 1) {
+                        $groupAssignmentStatus = " (Warning: Multiple groups failed assignment, check the log)"
+                    } elseif ($assignmentResult.Failed -eq $assignmentResult.TotalGroups -and $assignmentResult.TotalGroups -gt 0) {
+                        $groupAssignmentStatus = " (Warning: All groups failed assignment, check the log)"
                     }
+                    
+                    # Store for later use in result tracking
+                    $Global:CurrentAppGroupAssignmentStatus = $groupAssignmentStatus
+                } else {
+                    $Global:CurrentAppGroupAssignmentStatus = ""
                 }
                 
                 # Process segments for this application
@@ -1211,13 +1375,13 @@ function Invoke-ProvisioningProcess {
                         
                         if ($resultRecord) {
                             if ($segmentResult.Action -eq "AlreadyExists") {
-                                $resultRecord.ProvisioningResult = "AlreadyExists"
+                                $resultRecord.ProvisioningResult = "AlreadyExists$($Global:CurrentAppGroupAssignmentStatus)"
                                 $resultRecord.Provision = "No"  # Mark as completed since segment already exists
                             } elseif ($appResult.Action -eq "ExistingApp") {
-                                $resultRecord.ProvisioningResult = "AddedToExisting"
+                                $resultRecord.ProvisioningResult = "AddedToExisting$($Global:CurrentAppGroupAssignmentStatus)"
                                 $resultRecord.Provision = "No"  # Mark as completed
                             } else {
-                                $resultRecord.ProvisioningResult = "Provisioned"
+                                $resultRecord.ProvisioningResult = "Provisioned$($Global:CurrentAppGroupAssignmentStatus)"
                                 $resultRecord.Provision = "No"  # Mark as completed
                             }
                         }

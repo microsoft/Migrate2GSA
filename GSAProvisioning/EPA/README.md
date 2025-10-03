@@ -40,7 +40,7 @@ Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrit
 The script expects a CSV file with the following required columns:
 
 | Column | Description | Example |
-|--------|-------------|---------|
+|--------|-------------|---------||
 | `SegmentId` | Segment identifier, can be a number or a string, only for reporting/logging. | `DomainController1`
 | `EnterpriseAppName` | Name of the Private Access application | `GSA-WebApp-Production` |
 | `destinationHost` | Target host/IP address/range | `webapp.internal.com`, `10.1.2.3`, or `192.168.1.0/24` |
@@ -49,7 +49,7 @@ The script expects a CSV file with the following required columns:
 | `Ports` | Port specification (single, range, or comma-separated) | `443`, `8080-8090`, `80,443,8080` |
 | `ConnectorGroup` | Name of the Application Proxy connector group | `Production-Connectors` |
 | `Provision` | Whether to provision this entry (`Yes` or `No`) | `Yes` |
-| `EntraGroup` | Entra ID group to assign to the application (optional, ignored if blank). Only support single groups. | `WebApp-Users` |
+| `EntraGroups` | Entra ID groups to assign to the application. Supports multiple groups using semicolon (`;`) as separator. Groups are aggregated across all segments and deduplicated. | `WebApp-Users` or `WebApp-Users;WebApp-Admins;Support-Team` |
 
 ### DestinationType Values
 
@@ -61,6 +61,51 @@ The `DestinationType` field supports the following values:
 | `ipAddress` | Single IPv4 address | `10.1.2.100` |
 | `ipRangeCidr` | IP range in CIDR notation | `192.168.1.0/24` |
 | `ipRange` | IP range from start to end | `192.168.1.1..192.168.1.50` |
+
+### EntraGroups Format and Behavior
+
+The `EntraGroups` column supports multiple Entra ID groups per application:
+
+#### Single Group
+
+```csv
+EnterpriseAppName,SegmentId,...,EntraGroups,Provision
+GSA-WebPortal,Portal-Main,...,GSA-Portal-Users,Yes
+```
+
+#### Multiple Groups (Semicolon-Separated)
+
+```csv
+EnterpriseAppName,SegmentId,...,EntraGroups,Provision
+GSA-WebPortal,Portal-Main,...,GSA-Portal-Users;GSA-Portal-Admins;GSA-Support-Team,Yes
+```
+
+#### Group Aggregation Across Segments
+
+Groups are aggregated across **all segments** of an Enterprise Application:
+
+```csv
+EnterpriseAppName,SegmentId,...,EntraGroups,Provision
+GSA-WebPortal,Portal-Main,...,GSA-Portal-Users;GSA-Portal-Admins,Yes
+GSA-WebPortal,Portal-Admin,...,GSA-Portal-Admins;GSA-Support-Team,Yes
+GSA-WebPortal,Portal-API,...,GSA-Portal-Users,Yes
+```
+
+**Result:** The application `GSA-WebPortal` will have three unique groups assigned:
+
+- `GSA-Portal-Admins`
+- `GSA-Portal-Users`
+- `GSA-Support-Team`
+
+#### Placeholder Handling
+
+Any value containing `_Replace_Me` is treated as a placeholder and ignored:
+
+- `Placeholder_Replace_Me`
+- `EntraGroup_Replace_Me`
+- `TODO_Replace_Me`
+
+Empty or whitespace-only values are also skipped.
 
 ### Sample CSV Content
 
@@ -159,6 +204,9 @@ Check sample provided, Sample-EntraPrivateAccessConfig.rename_to_csv.
 - **Purpose**: Track provisioning status and enable retry scenarios
 - **Status Values**:
   - `Provisioned`: Successfully created new application and segments
+  - `Provisioned (Warning: 1 group failed assignment)`: Application provisioned but one group assignment failed
+  - `Provisioned (Warning: Multiple groups failed assignment, check the log)`: Application provisioned but multiple group assignments failed
+  - `Provisioned (Warning: All groups failed assignment, check the log)`: Application provisioned but all group assignments failed
   - `AddedToExisting`: Added segments to existing application
   - `Filtered: [reason]`: Skipped due to filters or settings
   - `Skipped: [reason]`: Skipped due to dependency issues
@@ -292,10 +340,13 @@ Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrit
 - Ensure Entra groups exist and are accessible
 - Verify group names match exactly (case-sensitive)
 - Check that groups are security groups, not distribution lists
+- Review the log file for specific group assignment errors
+- Note: Applications are still provisioned successfully even if group assignments fail
+- Failed group assignments are reported in the ProvisioningResult column
 
 
 ---
 
 **Author**: Andres Canello  
-**Version**: 1.0  
-**Last Updated**: August 2025
+**Version**: 2.0  
+**Last Updated**: October 2025

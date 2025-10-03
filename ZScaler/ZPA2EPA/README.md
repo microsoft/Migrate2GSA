@@ -284,7 +284,7 @@ The script expects a JSON file containing an array of ZPA application segments. 
 | `OriginalAppName` | Original ZPA application segment name |
 | `EnterpriseAppName` | Generated EPA Enterprise Application name (prefixed with "GSA-") |
 | `destinationHost` | Target host (IP, CIDR, or FQDN) |
-| `DestinationType` | Type of destination (IP, Subnet, or FQDN) |
+| `DestinationType` | Type of destination (ipAddress, ipRangeCidr, or FQDN) |
 | `Protocol` | Network protocol (TCP or UDP) |
 | `Ports` | Port range (single port or range like "80-443") |
 | `SegmentGroup` | Original ZPA segment group |
@@ -337,7 +337,7 @@ Policies that don't meet these criteria are skipped with logged reasons.
 The script implements sophisticated conflict detection to prevent configuration issues:
 
 ### IP Range Conflicts
-- Detects overlapping IP addresses and CIDR ranges
+- Detects overlapping IP addresses (ipAddress) and CIDR ranges (ipRangeCidr)
 - Handles subnet containment and intersection scenarios
 - Validates CIDR notation and IP address formats
 

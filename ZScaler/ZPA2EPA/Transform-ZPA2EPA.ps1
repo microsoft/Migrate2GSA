@@ -1453,7 +1453,7 @@ try {
                     $destinationType = Get-DestinationType -Destination $cleanDomain
                     
                     # Validate CIDR if it's a subnet
-                    if ($destinationType -eq "Subnet") {
+                    if ($destinationType -eq "ipRangeCidr") {
                         $cidrRange = Convert-CIDRToRange -CIDR $cleanDomain
                         if ($null -eq $cidrRange) {
                             Write-Log "Invalid CIDR format in segment '$($segment.name)': $cleanDomain. Skipping entire segment." -Level "ERROR"
@@ -1505,9 +1505,9 @@ try {
                         }
                         
                         # Conflict detection logic
-                        if ($destinationType -eq "IP" -or $destinationType -eq "Subnet") {
+                        if ($destinationType -eq "ipAddress" -or $destinationType -eq "ipRangeCidr") {
                             # Convert to IP range for comparison
-                            $currentRange = if ($destinationType -eq "IP") {
+                            $currentRange = if ($destinationType -eq "ipAddress") {
                                 $ipInt = Convert-IPToInteger -IPAddress $cleanDomain
                                 @{ Start = $ipInt; End = $ipInt }
                             } else {
