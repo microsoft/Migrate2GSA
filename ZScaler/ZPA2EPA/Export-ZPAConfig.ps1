@@ -46,7 +46,13 @@ param(
     [string]$BaseUrl = "https://config.private.zscaler.com",
     
     [Parameter(Mandatory = $false)]
-    [string]$OutputDirectory = (Get-Location).Path
+    [string]$OutputDirectory = (Get-Location).Path,
+    
+    [Parameter(Mandatory = $false)]
+    [int]$PageSize = 20,
+    
+    [Parameter(Mandatory = $false)]
+    [int]$PageDelay = 1
 )
 
 # Global variables for ZPA session
@@ -124,35 +130,145 @@ function Connect-ZPAApi {
 function Invoke-ZPAApi {
     <#
     .SYNOPSIS
-        Makes an API call to the ZPA API
+        Makes an API call to the ZPA API with automatic pagination support
     
     .PARAMETER Endpoint
         The API endpoint to call
+    
+    .PARAMETER PageSize
+        The number of items to retrieve per page (default: 20)
+    
+    .PARAMETER PageDelaySeconds
+        The delay in seconds between page requests (default: 1)
     #>
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Endpoint
+        [string]$Endpoint,
+        
+        [Parameter(Mandatory = $false)]
+        [int]$PageSize = 20,
+        
+        [Parameter(Mandatory = $false)]
+        [int]$PageDelaySeconds = 1
     )
     
     try {
-        $url = "$BaseUrl$Endpoint"
-        Write-Host "Making API call to: $url" -ForegroundColor Gray
+        # Check if endpoint already has query parameters
+        $separator = if ($Endpoint -match '\?') { '&' } else { '?' }
         
-        $response = Invoke-RestMethod -Uri $url -Method Get -Headers $script:ZPAHeaders
+        # Make first request to determine if pagination is supported
+        $firstPageUrl = "$BaseUrl$Endpoint$separator" + "page=1&pageSize=$PageSize"
+        Write-Host "Making API call to: $firstPageUrl" -ForegroundColor Gray
         
-        if ($response) {
-            if ($response -is [array]) {
-                Write-Host "API call successful - Retrieved $($response.Count) items" -ForegroundColor Gray
-            } elseif ($response.PSObject.Properties['list'] -and $response.list -is [array]) {
-                Write-Host "API call successful - Retrieved $($response.list.Count) items" -ForegroundColor Gray
-            } else {
-                Write-Host "API call successful - Retrieved data" -ForegroundColor Gray
+        $response = Invoke-RestMethod -Uri $firstPageUrl -Method Get -Headers $script:ZPAHeaders
+        
+        # Check if response indicates pagination support
+        if ($response.PSObject.Properties['totalPages'] -and $response.PSObject.Properties['list']) {
+            # Paginated endpoint
+            $totalPages = $response.totalPages
+            $allItems = @()
+            
+            if ($response.list) {
+                $allItems += $response.list
             }
-        } else {
-            Write-Host "API call successful but no data returned" -ForegroundColor Yellow
+            
+            $totalItemsRetrieved = $allItems.Count
+            Write-Host "  Page 1 of $totalPages - Retrieved $totalItemsRetrieved items" -ForegroundColor Gray
+            
+            # Safety limit to prevent infinite loops
+            $maxPages = 1000
+            if ($totalPages -gt $maxPages) {
+                Write-Warning "Total pages ($totalPages) exceeds safety limit ($maxPages). Will process first $maxPages pages only."
+                $totalPages = $maxPages
+            }
+            
+            # Retrieve remaining pages
+            $currentPage = 2
+            $failedPages = @()
+            
+            while ($currentPage -le $totalPages) {
+                try {
+                    # Add delay between requests
+                    if ($currentPage -gt 1) {
+                        Start-Sleep -Seconds $PageDelaySeconds
+                    }
+                    
+                    $pageUrl = "$BaseUrl$Endpoint$separator" + "page=$currentPage&pageSize=$PageSize"
+                    Write-Host "  Retrieving page $currentPage of $totalPages..." -ForegroundColor Gray
+                    
+                    $pageResponse = Invoke-RestMethod -Uri $pageUrl -Method Get -Headers $script:ZPAHeaders
+                    
+                    if ($pageResponse.list) {
+                        $allItems += $pageResponse.list
+                        $totalItemsRetrieved = $allItems.Count
+                        Write-Host "  Page $currentPage of $totalPages - Retrieved $totalItemsRetrieved items" -ForegroundColor Gray
+                    }
+                    
+                    $currentPage++
+                }
+                catch {
+                    Write-Warning "Failed to retrieve page $currentPage : $($_.Exception.Message)"
+                    
+                    # Retry once
+                    try {
+                        Write-Host "  Retrying page $currentPage..." -ForegroundColor Yellow
+                        Start-Sleep -Seconds ($PageDelaySeconds * 2)
+                        
+                        $pageUrl = "$BaseUrl$Endpoint$separator" + "page=$currentPage&pageSize=$PageSize"
+                        $pageResponse = Invoke-RestMethod -Uri $pageUrl -Method Get -Headers $script:ZPAHeaders
+                        
+                        if ($pageResponse.list) {
+                            $allItems += $pageResponse.list
+                            $totalItemsRetrieved = $allItems.Count
+                            Write-Host "  Page $currentPage of $totalPages - Retrieved $totalItemsRetrieved items (retry successful)" -ForegroundColor Gray
+                        }
+                    }
+                    catch {
+                        Write-Warning "Retry failed for page $currentPage. Skipping this page."
+                        $failedPages += $currentPage
+                    }
+                    
+                    $currentPage++
+                }
+            }
+            
+            # Validation and summary
+            $totalItemsRetrieved = $allItems.Count
+            $apiTotalCount = if ($response.PSObject.Properties['totalCount']) { $response.totalCount } else { $null }
+            
+            if ($null -ne $apiTotalCount) {
+                if ($totalItemsRetrieved -eq $apiTotalCount) {
+                    Write-Host "  ✓ Retrieved $totalItemsRetrieved of $apiTotalCount total items (complete)" -ForegroundColor Green
+                } else {
+                    Write-Warning "Retrieved $totalItemsRetrieved items but API reported $apiTotalCount total items (mismatch)"
+                }
+            } else {
+                Write-Host "  Retrieved $totalItemsRetrieved total items" -ForegroundColor Gray
+            }
+            
+            if ($failedPages.Count -gt 0) {
+                Write-Warning "Failed to retrieve $($failedPages.Count) page(s): $($failedPages -join ', ')"
+            }
+            
+            # Return in standardized format
+            return @{
+                "list" = $allItems
+                "totalCount" = $totalItemsRetrieved
+                "totalPages" = $totalPages
+            }
         }
-        
-        return $response
+        else {
+            # Non-paginated endpoint or direct array/object response
+            if ($response -is [array]) {
+                Write-Host "API call successful - Retrieved $($response.Count) items (non-paginated)" -ForegroundColor Gray
+            } elseif ($response.PSObject.Properties['list'] -and $response.list -is [array]) {
+                Write-Host "API call successful - Retrieved $($response.list.Count) items (non-paginated)" -ForegroundColor Gray
+            } else {
+                Write-Host "API call successful - Retrieved data (non-paginated)" -ForegroundColor Gray
+            }
+            
+            return $response
+        }
     }
     catch {
         Write-Warning "Failed to retrieve data from $Endpoint : $($_.Exception.Message)"
@@ -174,7 +290,7 @@ function Get-ZPAApplicationSegments {
         Backs up ZPA Application Segments
     #>
     Write-Host "Backing up Application Segments..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/application"
+    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/application" -PageSize $PageSize -PageDelaySeconds $PageDelay
 }
 
 function Get-ZPASegmentGroups {
@@ -183,7 +299,7 @@ function Get-ZPASegmentGroups {
         Backs up ZPA Segment Groups
     #>
     Write-Host "Backing up Segment Groups..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/segmentGroup"
+    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/segmentGroup" -PageSize $PageSize -PageDelaySeconds $PageDelay
 }
 
 function Get-ZPAServerGroups {
@@ -192,7 +308,7 @@ function Get-ZPAServerGroups {
         Backs up ZPA Server Groups
     #>
     Write-Host "Backing up Server Groups..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/serverGroup"
+    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/serverGroup" -PageSize $PageSize -PageDelaySeconds $PageDelay
 }
 
 function Get-ZPAAppConnectors {
@@ -201,7 +317,7 @@ function Get-ZPAAppConnectors {
         Backs up ZPA App Connectors
     #>
     Write-Host "Backing up App Connectors..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/connector"
+    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/connector" -PageSize $PageSize -PageDelaySeconds $PageDelay
 }
 
 function Get-ZPAConnectorGroups {
@@ -210,7 +326,7 @@ function Get-ZPAConnectorGroups {
         Backs up ZPA Connector Groups
     #>
     Write-Host "Backing up Connector Groups..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/appConnectorGroup"
+    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/appConnectorGroup" -PageSize $PageSize -PageDelaySeconds $PageDelay
 }
 
 function Get-ZPAAccessPolicies {
@@ -219,7 +335,7 @@ function Get-ZPAAccessPolicies {
         Backs up ZPA Access Policies
     #>
     Write-Host "Backing up Access Policies..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/policySet/rules/policyType/ACCESS_POLICY"
+    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/policySet/rules/policyType/ACCESS_POLICY" -PageSize $PageSize -PageDelaySeconds $PageDelay
 }
 
 function Get-ZPAClientForwardingPolicy {
@@ -228,7 +344,7 @@ function Get-ZPAClientForwardingPolicy {
         Backs up ZPA Client Forwarding Policy
     #>
     Write-Host "Backing up Client Forwarding Policy..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/policySet/rules/policyType/CLIENT_FORWARDING_POLICY"
+    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/policySet/rules/policyType/CLIENT_FORWARDING_POLICY" -PageSize $PageSize -PageDelaySeconds $PageDelay
 }
 
 function Get-ZPAServiceEdges {
@@ -237,7 +353,7 @@ function Get-ZPAServiceEdges {
         Backs up ZPA Service Edges
     #>
     Write-Host "Backing up Service Edges..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/serviceEdge"
+    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/serviceEdge" -PageSize $PageSize -PageDelaySeconds $PageDelay
 }
 
 function Get-ZPAServiceEdgeGroups {
@@ -246,7 +362,7 @@ function Get-ZPAServiceEdgeGroups {
         Backs up ZPA Service Edge Groups
     #>
     Write-Host "Backing up Service Edge Groups..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/serviceEdgeGroup"
+    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/serviceEdgeGroup" -PageSize $PageSize -PageDelaySeconds $PageDelay
 }
 
 function Get-ZPAIdpControllers {
@@ -255,7 +371,7 @@ function Get-ZPAIdpControllers {
         Backs up ZPA IDP Controllers
     #>
     Write-Host "Backing up IDP Controllers..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v2/admin/customers/$CustomerId/idp"
+    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v2/admin/customers/$CustomerId/idp" -PageSize $PageSize -PageDelaySeconds $PageDelay
 }
 
 function Get-ZPAScimGroups {
@@ -273,71 +389,15 @@ function Get-ZPAScimGroups {
     
     Write-Host "Backing up SCIM Groups for IDP ID: $IdpId..." -ForegroundColor Green
     
-    $allGroups = @()
-    $currentPage = 1
-    $pageSize = 100  # Default page size
-    $totalPages = 1
+    # Use common pagination logic from Invoke-ZPAApi
+    $endpoint = "/userconfig/v1/customers/$CustomerId/scimgroup/idpId/$IdpId"
+    $result = Invoke-ZPAApi -Endpoint $endpoint -PageSize $PageSize -PageDelaySeconds $PageDelay
     
-    do {
-        try {
-            # Construct endpoint with pagination parameters
-            $endpoint = "/userconfig/v1/customers/$CustomerId/scimgroup/idpId/$IdpId" + "?page=$currentPage&pageSize=$pageSize"
-            
-            Write-Host "  Retrieving page $currentPage of $totalPages for IDP ID: $IdpId..." -ForegroundColor Gray
-            
-            $response = Invoke-ZPAApi -Endpoint $endpoint
-            
-            if ($response -and $response.PSObject.Properties['list']) {
-                # Update total pages from response
-                if ($response.PSObject.Properties['totalPages'] -and $response.totalPages -gt 0) {
-                    $totalPages = $response.totalPages
-                }
-                
-                # Add groups from this page
-                if ($response.list -and $response.list.Count -gt 0) {
-                    $allGroups += $response.list
-                    Write-Host "  Page $currentPage`: Retrieved $($response.list.Count) SCIM groups" -ForegroundColor Gray
-                } else {
-                    Write-Host "  Page $currentPage`: No SCIM groups found on this page" -ForegroundColor Yellow
-                }
-                
-                # Check if we have more pages
-                if ($currentPage -ge $totalPages) {
-                    break
-                }
-                
-                # Add delay between requests to avoid rate limiting
-                if ($currentPage -lt $totalPages) {
-                    Write-Host "  Waiting 2 seconds before next page request..." -ForegroundColor Gray
-                    Start-Sleep -Seconds 2
-                }
-                
-                $currentPage++
-            } else {
-                Write-Warning "No valid response received for page $currentPage of IDP ID: $IdpId"
-                break
-            }
-        }
-        catch {
-            Write-Warning "Failed to retrieve page $currentPage for IDP ID $IdpId : $($_.Exception.Message)"
-            # Continue with next page on error
-            $currentPage++
-            
-            # Add delay even on error to avoid rapid retry
-            if ($currentPage -le $totalPages) {
-                Start-Sleep -Seconds 2
-            }
-        }
-    } while ($currentPage -le $totalPages)
-    
-    Write-Host "Completed pagination for IDP ID $IdpId - Total groups retrieved: $($allGroups.Count)" -ForegroundColor Green
-    
-    # Return in the same format as other API calls
-    return @{
-        "totalCount" = $allGroups.Count
-        "totalPages" = $totalPages
-        "list" = $allGroups
+    if ($result) {
+        Write-Host "Completed retrieval for IDP ID $IdpId" -ForegroundColor Green
     }
+    
+    return $result
 }
 
 function Get-AllZPAScimGroups {
@@ -413,7 +473,7 @@ function Get-ZPAMachineGroups {
         Backs up ZPA Machine Groups
     #>
     Write-Host "Backing up Machine Groups..." -ForegroundColor Green
-    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/machineGroup"
+    return Invoke-ZPAApi -Endpoint "/mgmtconfig/v1/admin/customers/$CustomerId/machineGroup" -PageSize $PageSize -PageDelaySeconds $PageDelay
 }
 
 function Start-ZPAFullBackup {
