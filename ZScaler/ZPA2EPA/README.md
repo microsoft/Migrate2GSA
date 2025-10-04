@@ -289,15 +289,15 @@ The script expects a JSON file containing an array of ZPA application segments. 
 | `Ports` | Port range (single port or range like "80-443") |
 | `SegmentGroup` | Original ZPA segment group |
 | `ServerGroups` | Associated server groups |
-| `EntraGroup` | **Auto-populated from access policies** or placeholder (see EntraGroup Values below) |
+| `EntraGroups` | **Auto-populated from access policies** or placeholder (see EntraGroups Values below) |
 | `ConnectorGroup` | Placeholder for connector group (replace with actual values) |
 | `Conflict` | "Yes" if conflicts detected, "No" otherwise |
 | `ConflictingEnterpriseApp` | Names of conflicting applications |
 | `Provision` | "Yes" if ready to provision, "No" if conflicts need resolution |
 
-#### EntraGroup Values
+#### EntraGroups Values
 
-The `EntraGroup` column is automatically populated based on access policy configuration:
+The `EntraGroups` column is automatically populated based on access policy configuration:
 
 - **`Group1; Group2; Group3`**: Semicolon-separated SCIM group names when access policies are found
 - **`No_Access_Policy_Found_Replace_Me`**: Access policy files provided but no policy found for this application
@@ -305,7 +305,7 @@ The `EntraGroup` column is automatically populated based on access policy config
 
 ## Access Policy Integration
 
-The script can automatically process ZPA access policies to populate Entra ID group assignments, eliminating manual placeholder replacement for the `EntraGroup` column.
+The script can automatically process ZPA access policies to populate Entra ID group assignments, eliminating manual placeholder replacement for the `EntraGroups` column.
 
 ### How It Works
 
@@ -316,7 +316,7 @@ The script can automatically process ZPA access policies to populate Entra ID gr
 5. **Expand APP_GROUPs**: Uses segment group membership to expand groups to individual apps
 6. **Resolve Groups**: Converts SCIM group IDs to group names
 7. **Build Lookup**: Creates mapping of Application ID → SCIM group names
-8. **Populate CSV**: Automatically fills EntraGroup column with semicolon-separated group names
+8. **Populate CSV**: Automatically fills EntraGroups column with semicolon-separated group names
 
 ### Policy Filtering Criteria
 
@@ -370,7 +370,7 @@ After running the script, follow these steps:
 ### 2. Review and Update Values
 The CSV may contain values that need review or replacement:
 
-- **EntraGroup**: 
+- **EntraGroups**:
   - **Auto-populated**: If access policies were provided, review the automatically assigned groups for accuracy
   - **`No_Access_Policy_Found_Replace_Me`**: Replace with appropriate Entra ID group names for applications without policies
   - **`Placeholder_Replace_Me`**: Replace with appropriate Entra ID group names if access policies weren't provided

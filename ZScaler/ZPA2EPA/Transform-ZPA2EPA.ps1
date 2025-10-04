@@ -1007,12 +1007,12 @@ function Build-AppToScimGroupLookup {
         
         # Step 3: Validate Prerequisites
         if ($null -eq $scimGroups -or $null -eq $accessPolicies) {
-            Write-Log "Access policy files not provided or not found. Using placeholder values for EntraGroup." -Level "INFO"
+            Write-Log "Access policy files not provided or not found. Using placeholder values for EntraGroups." -Level "INFO"
             return $null
         }
         
         if ($scimGroups.Count -eq 0 -or $accessPolicies.Count -eq 0) {
-            Write-Log "Access policy files are empty. Using placeholder values for EntraGroup." -Level "WARN"
+            Write-Log "Access policy files are empty. Using placeholder values for EntraGroups." -Level "WARN"
             return $null
         }
         
@@ -1602,7 +1602,7 @@ try {
                             $conflictCount++
                         }
                         
-                        # Determine EntraGroup value
+                        # Determine EntraGroups value
                         $entraGroupValue = "Placeholder_Replace_Me"
                         
                         if ($null -ne $appToScimGroupLookup) {
