@@ -198,10 +198,23 @@ function Invoke-ZPAApi {
                     
                     $pageResponse = Invoke-RestMethod -Uri $pageUrl -Method Get -Headers $script:ZPAHeaders
                     
-                    if ($pageResponse.list) {
+                    # Check if we got any items in this page
+                    if ($pageResponse.list -and $pageResponse.list.Count -gt 0) {
+                        $itemsInPage = $pageResponse.list.Count
                         $allItems += $pageResponse.list
                         $totalItemsRetrieved = $allItems.Count
-                        Write-Host "  Page $currentPage of $totalPages - Retrieved $totalItemsRetrieved items" -ForegroundColor Gray
+                        Write-Host "  Page $currentPage of $totalPages - Retrieved $totalItemsRetrieved items ($itemsInPage in this page)" -ForegroundColor Gray
+                        
+                        # If we got fewer items than the page size, we've reached the end
+                        if ($itemsInPage -lt $PageSize) {
+                            Write-Host "  ✓ Reached end of data (last page had $itemsInPage items, less than page size of $PageSize)" -ForegroundColor Green
+                            break
+                        }
+                    }
+                    else {
+                        # No items in response - we've reached the end
+                        Write-Host "  ✓ No more items found on page $currentPage - stopping pagination" -ForegroundColor Green
+                        break
                     }
                     
                     $currentPage++
@@ -217,15 +230,28 @@ function Invoke-ZPAApi {
                         $pageUrl = "$BaseUrl$Endpoint$separator" + "page=$currentPage&pageSize=$PageSize"
                         $pageResponse = Invoke-RestMethod -Uri $pageUrl -Method Get -Headers $script:ZPAHeaders
                         
-                        if ($pageResponse.list) {
+                        if ($pageResponse.list -and $pageResponse.list.Count -gt 0) {
+                            $itemsInPage = $pageResponse.list.Count
                             $allItems += $pageResponse.list
                             $totalItemsRetrieved = $allItems.Count
-                            Write-Host "  Page $currentPage of $totalPages - Retrieved $totalItemsRetrieved items (retry successful)" -ForegroundColor Gray
+                            Write-Host "  Page $currentPage of $totalPages - Retrieved $totalItemsRetrieved items (retry successful, $itemsInPage in page)" -ForegroundColor Gray
+                            
+                            # If we got fewer items than the page size, we've reached the end
+                            if ($itemsInPage -lt $PageSize) {
+                                Write-Host "  ✓ Reached end of data (last page had $itemsInPage items)" -ForegroundColor Green
+                                break
+                            }
+                        }
+                        else {
+                            # No items in retry response - we're done
+                            Write-Host "  ✓ No items in retry response - stopping pagination" -ForegroundColor Green
+                            break
                         }
                     }
                     catch {
-                        Write-Warning "Retry failed for page $currentPage. Skipping this page."
+                        Write-Warning "Retry failed for $currentPage. Skipping remaining pages."
                         $failedPages += $currentPage
+                        break
                     }
                     
                     $currentPage++
