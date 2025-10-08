@@ -5,7 +5,7 @@ The [Migrate2GSA Toolkit](https://github.com/microsoft/Migrate2GSA) not only hel
 For Entra Private Access provisioning, simply input all your Enterprise Apps and segment configuration on a CSV file with the appropriate format and use the `Start-EntraPrivateAccessProvisioning` function for automatically provisioning Microsoft Entra Private Access applications from CSV configuration data.
 
 Sample provisioning file:
-![alt text](SampleEPAProvisioningConfig.png)
+![alt text](https://github.com/microsoft/Migrate2GSA/blob/main/Docs/SampleEPAProvisioningConfig.png)
 
 ## Overview
 
