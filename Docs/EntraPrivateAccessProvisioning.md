@@ -45,7 +45,7 @@ Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrit
 The script expects a CSV file with the following required columns:
 
 | Column | Description | Example |
-|--------|-------------|---------||
+|--------|-------------|---------|
 | `SegmentId` | Segment identifier, can be a number or a string, only for reporting/logging. | `DomainController1`
 | `EnterpriseAppName` | Name of the Private Access application | `GSA-WebApp-Production` |
 | `destinationHost` | Target host/IP address/range | `webapp.internal.com`, `10.1.2.3`, or `192.168.1.0/24` |
