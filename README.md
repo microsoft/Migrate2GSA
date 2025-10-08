@@ -7,7 +7,7 @@
 This is PowerShell-based migration toolkit designed to help organizations transition from SSE solutions to Global Secure Access (GSA). This toolkit provides automated configuration export, transformation, and a set of common GSA provisioning tools to streamline the transition process.
 
 ## How to contact us
-If you have a migration project and need assistance with this migration tools, contact us at migrate2gsateam@microsoft.com
+If you have a migration project and need assistance with the migration tools, or you can work with us to build tools for other third party SSE solutions, contact us at migrate2gsateam@microsoft.com
 
 ## Installation and Setup
 
