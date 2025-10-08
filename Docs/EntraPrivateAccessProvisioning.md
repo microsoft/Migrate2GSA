@@ -1,6 +1,11 @@
-# Entra Private Access (EPA) Provisioning
+# Entra Private Access (EPA) Automated Provisioning
 
-This module contains the `Start-EntraPrivateAccessProvisioning` function for automatically provisioning Microsoft Entra Private Access applications from CSV configuration data.
+The [Migrate2GSA Toolkit](https://github.com/microsoft/Migrate2GSA) not only helps migration projects, it also includes a set of common GSA provisioning tools to streamline your GSA configuration provisioning process.
+
+For Entra Private Access provisioning, simply input all your Enterprise Apps and segment configuration on a CSV file with the appropriate format and use the `Start-EntraPrivateAccessProvisioning` function for automatically provisioning Microsoft Entra Private Access applications from CSV configuration data.
+
+Sample provisioning file:
+![alt text](SampleEPAProvisioningConfig.png)
 
 ## Overview
 

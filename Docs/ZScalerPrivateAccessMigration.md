@@ -1,8 +1,4 @@
-# ZScaler2GSA
-
-This is experimental code, use it at your own risk.
-
-## Table of Contents
+These tools are part of the [Migrate2GSA Toolkit](https://github.com/microsoft/Migrate2GSA).
 
 1. [ZPA Configuration Export Tool](#export-zpaconfigps1---zpa-configuration-export-tool)
 2. [ZPA to Entra Private Access (EPA) Configuration Transformer](#zpa-to-entra-private-access-epa-configuration-transformer)
