@@ -840,9 +840,16 @@ function New-PrivateAccessApplication {
                     Write-LogMessage "Successfully retrieved created application '$AppName' on attempt $attempt" -Level SUCCESS -Component "AppProvisioning"
                     break
                 }
+                
+                # If no app found and not the last attempt, wait before retrying
+                if ($attempt -lt $maxRetries) {
+                    $delay = $baseDelay * [math]::Pow(2, $attempt - 1)  # Exponential backoff: 2, 4, 8, 16 seconds
+                    Write-LogMessage "Application '$AppName' not found on attempt $attempt. Retrying in $delay seconds..." -Level WARN -Component "AppProvisioning"
+                    Start-Sleep -Seconds $delay
+                }
             }
             catch {
-                $delay = $baseDelay * [math]::Pow(2, $attempt - 1)  # Exponential backoff: 2, 4 seconds
+                $delay = $baseDelay * [math]::Pow(2, $attempt - 1)  # Exponential backoff: 2, 4, 8, 16 seconds
                 
                 if ($attempt -eq $maxRetries) {
                     Write-LogMessage "Failed to retrieve application '$AppName' after $maxRetries attempts. Final error: $_" -Level ERROR -Component "AppProvisioning"
