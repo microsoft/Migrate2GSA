@@ -1,10 +1,10 @@
 # Entra Private Access (EPA) Provisioning
 
-This directory contains the `Provision-EntraPrivateAccessConfig.ps1` script for automatically provisioning Microsoft Entra Private Access applications from CSV configuration data.
+This module contains the `Start-EntraPrivateAccessProvisioning` function for automatically provisioning Microsoft Entra Private Access applications from CSV configuration data.
 
 ## Overview
 
-The EPA provisioning script automates the creation of Private Access applications and their network segments in Microsoft Entra. It reads CSV configuration files containing application details and provisions them with comprehensive logging, error handling, and retry capabilities.
+The EPA provisioning function automates the creation of Private Access applications and their network segments in Microsoft Entra. It reads CSV configuration files containing application details and provisions them with comprehensive logging, error handling, and retry capabilities.
 
 ## Prerequisites
 
@@ -29,10 +29,10 @@ Install-Module -Name Microsoft.Entra.Beta -Force -AllowClobber
 
 ### Entra Authentication
 
-You must authenticate with sufficient permissions before running the script:
+You must authenticate with sufficient permissions before running the function:
 
 ```powershell
-Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrite.All', 'NetworkAccess.ReadWrite.All' -ContextScope Process
+Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrite.All', 'NetworkAccess.ReadWrite.All'
 ```
 
 ## CSV Configuration Format
@@ -116,47 +116,47 @@ Check sample provided, Sample-EntraPrivateAccessConfig.rename_to_csv.
 ### Basic Usage
 
 ```powershell
-.\Provision-EntraPrivateAccessConfig.ps1 -ProvisioningConfigPath ".\config.csv"
+Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv"
 ```
 
 ### Preview Changes (WhatIf Mode)
 
 ```powershell
-.\Provision-EntraPrivateAccessConfig.ps1 -ProvisioningConfigPath ".\config.csv" -WhatIf
+Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv" -WhatIf
 ```
 
 ### Filter by Application Name Prefix
 
 ```powershell
-.\Provision-EntraPrivateAccessConfig.ps1 -ProvisioningConfigPath ".\config.csv" -AppNamePrefix "GSA-Production"
+Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv" -AppNamePrefix "GSA-Production"
 ```
 
 ### Filter by Connector Group
 
 ```powershell
-.\Provision-EntraPrivateAccessConfig.ps1 -ProvisioningConfigPath ".\config.csv" -ConnectorGroupFilter "Production-Connectors"
+Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv" -ConnectorGroupFilter "Production-Connectors"
 ```
 
 ### Automated Execution (Skip Confirmations)
 
 ```powershell
-.\Provision-EntraPrivateAccessConfig.ps1 -ProvisioningConfigPath ".\config.csv" -Force
+Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv" -Force
 ```
 
 ### Custom Log File Location
 
 ```powershell
-.\Provision-EntraPrivateAccessConfig.ps1 -ProvisioningConfigPath ".\config.csv" -LogPath "C:\Logs\EPA-Provisioning.log"
+Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv" -LogPath "C:\Logs\EPA-Provisioning.log"
 ```
 
-## Script Parameters
+## Function Parameters
 
 | Parameter | Required | Description | Default |
 |-----------|----------|-------------|---------|
 | `ProvisioningConfigPath` | ✅ | Path to the CSV configuration file | - |
 | `AppNamePrefix` | ❌ | Filter applications by name prefix | Empty (no filter) |
 | `ConnectorGroupFilter` | ❌ | Filter by connector group name | Empty (no filter) |
-| `LogPath` | ❌ | Path for the log file | `.\Provision-EntraPrivateAccessConfig.log` |
+| `LogPath` | ❌ | Path for the log file | `.\Start-EntraPrivateAccessProvisioning.log` |
 | `WhatIf` | ❌ | Enable dry-run mode (preview only) | `$false` |
 | `Force` | ❌ | Skip confirmation prompts | `$false` |
 
@@ -193,7 +193,7 @@ Check sample provided, Sample-EntraPrivateAccessConfig.rename_to_csv.
 
 ### Log File
 
-- **Default Location**: `.\Provision-EntraPrivateAccessConfig.log`
+- **Default Location**: `.\Start-EntraPrivateAccessProvisioning.log`
 - **Content**: Detailed execution log with timestamps and component tracking
 - **Levels**: INFO, WARN, ERROR, SUCCESS, DEBUG, SUMMARY
 
@@ -232,14 +232,14 @@ The generated results CSV can be used as input for subsequent script executions.
 
 ```powershell
 # Initial run - some segments fail due to missing connector group
-.\Provision-EntraPrivateAccessConfig.ps1 -ProvisioningConfigPath ".\initial-config.csv"
+Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\initial-config.csv"
 
 # Output generated: 20250804_143022_initial-config_provisioned.csv
 # - 5 segments: Provision = No (successfully created)
 # - 3 segments: Provision = Yes (failed due to missing connector group)
 
 # Fix connector group names in the output CSV, then rerun
-.\Provision-EntraPrivateAccessConfig.ps1 -ProvisioningConfigPath ".\20250804_143022_initial-config_provisioned.csv"
+Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\20250804_143022_initial-config_provisioned.csv"
 
 # Only the 3 failed segments will be processed (Provision = Yes)
 # The 5 successful segments will be skipped (Provision = No)
@@ -283,7 +283,7 @@ The generated results CSV can be used as input for subsequent script executions.
 **Solution**: Authenticate with required scopes:
 
 ```powershell
-Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrite.All', 'NetworkAccess.ReadWrite.All' -ContextScope Process
+Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrite.All', 'NetworkAccess.ReadWrite.All'
 ```
 
 ### Retry Failed Operations
@@ -291,7 +291,7 @@ Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrit
 1. Check the generated results CSV file
 2. Fix any configuration issues
 3. Set failed entries' `Provision` column back to `Yes`
-4. Re-run the script with the updated CSV
+4. Re-run the function with the updated CSV
 
 ## Best Practices
 
@@ -305,7 +305,7 @@ Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrit
 ### During Execution
 
 1. **Monitor Logs**: Watch the console output for warnings and errors
-2. **Don't Interrupt**: Allow the script to complete to avoid partial configurations
+2. **Don't Interrupt**: Allow the function to complete to avoid partial configurations
 3. **Review Progress**: Use the progress bar to estimate completion time
 
 ### After Execution
@@ -317,7 +317,7 @@ Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrit
 
 ## Troubleshooting
 
-### Script Won't Start
+### Function Won't Start
 
 - Verify PowerShell 7+ is installed and being used
 - Check that required modules are installed

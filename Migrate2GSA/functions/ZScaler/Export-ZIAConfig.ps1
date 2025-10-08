@@ -1,50 +1,3 @@
-<#
-.SYNOPSIS
-    Zscaler Internet Access (ZIA) Configuration Backup Script
-    Exports ZIA configurations to JSON files
-
-.DESCRIPTION
-    This PowerShell script connects to the ZIA API using admin credentials and API key/token
-    and exports various configuration types to JSON files for backup purposes.
-
-.PARAMETER Username
-    The ZIA admin username
-
-.PARAMETER Password
-    The ZIA admin password (as SecureString)
-
-.PARAMETER ApiKey
-    The ZIA API key/token
-
-.PARAMETER BaseUrl
-    The ZIA API base URL (defaults to production cloud)
-
-.PARAMETER OutputDirectory
-    The output directory for backup files (defaults to the script directory)
-
-.EXAMPLE
-    $securePassword = Read-Host "Enter Password" -AsSecureString
-    .\Export-ZIAConfig.ps1 -Username "admin@example.com" -Password $securePassword -ApiKey "your-api-key"
-
-.EXAMPLE
-    $securePassword = ConvertTo-SecureString "your-password" -AsPlainText -Force
-    .\Export-ZIAConfig.ps1 -Username "admin@example.com" -Password $securePassword -ApiKey "your-api-key" -BaseUrl "https://admin.zscaler.net/api/v1" -OutputDirectory "C:\Backups\ZIA"
-#>
-
-[CmdletBinding()]
-param(
-    [Parameter(Mandatory = $true)]
-    [string]$Username,
-    [Parameter(Mandatory = $true)]
-    [SecureString]$Password,
-    [Parameter(Mandatory = $true)]
-    [string]$ApiKey,
-    [Parameter(Mandatory = $false)]
-    [string]$BaseUrl = "https://zsapi.zscaler.net/api/v1",
-    [Parameter(Mandatory = $false)]
-    [string]$OutputDirectory = $PSScriptRoot
-)
-
 class ZIABackup {
     [string]$Username
     [SecureString]$Password
@@ -322,46 +275,125 @@ class ZIABackup {
     }
 }
 
-# Main execution
-try {
-    Write-Host "ZIA Configuration Backup Script" -ForegroundColor Cyan
-    Write-Host "================================" -ForegroundColor Cyan
-    # Log script initialization
-    Write-Host "Script started at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
-    Write-Host "Validating input parameters..." -ForegroundColor Gray
-    # Log parameters (excluding sensitive data)
-    Write-Host "Username: $Username" -ForegroundColor Gray
-    Write-Host "Base URL: $BaseUrl" -ForegroundColor Gray
-    Write-Host "Output Directory: $OutputDirectory" -ForegroundColor Gray
-    Write-Host "Password: [PROTECTED]" -ForegroundColor Gray
-    Write-Host "API Key: [PROTECTED]" -ForegroundColor Gray
-    Write-Host "Creating ZIA backup instance..." -ForegroundColor Gray
-    # Create backup instance
-    $backup = [ZIABackup]::new($Username, $Password, $ApiKey, $BaseUrl)
-    Write-Host "ZIA backup instance created successfully" -ForegroundColor Gray
-    Write-Host "Initiating backup process..." -ForegroundColor Gray
-    # Perform backup
-    $success = $backup.FullBackup($OutputDirectory)
-    if ($success) {
-        Write-Host "`nBackup process completed successfully!" -ForegroundColor Green
-        Write-Host "Script execution finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
-        exit 0
+function Export-ZIAConfig {
+    <#
+    .SYNOPSIS
+        Exports Zscaler Internet Access (ZIA) configurations to JSON files
+
+    .DESCRIPTION
+        This function connects to the ZIA API using admin credentials and API key/token
+        and exports various configuration types to JSON files for backup purposes.
+        
+        The function creates timestamped backup directories and exports the following configurations:
+        - URL Filtering Policy
+        - URL Categories
+        - SSL Inspection Policy
+        - File Type Control
+        - Firewall Control
+
+    .PARAMETER Username
+        The ZIA admin username
+
+    .PARAMETER Password
+        The ZIA admin password (as SecureString)
+
+    .PARAMETER ApiKey
+        The ZIA API key/token
+
+    .PARAMETER BaseUrl
+        The ZIA API base URL (defaults to production cloud)
+
+    .PARAMETER OutputDirectory
+        The output directory for backup files (defaults to the current directory)
+
+    .EXAMPLE
+        $securePassword = Read-Host "Enter Password" -AsSecureString
+        Export-ZIAConfig -Username "admin@example.com" -Password $securePassword -ApiKey "your-api-key"
+
+    .EXAMPLE
+        $securePassword = ConvertTo-SecureString "your-password" -AsPlainText -Force
+        Export-ZIAConfig -Username "admin@example.com" -Password $securePassword -ApiKey "your-api-key" -BaseUrl "https://admin.zscaler.net/api/v1" -OutputDirectory "C:\Backups\ZIA"
+
+    .OUTPUTS
+        System.Boolean
+        Returns $true if the backup process completed successfully, $false otherwise.
+
+    .NOTES
+        Requires network access to ZIA API endpoints.
+        Creates timestamped backup directories to prevent overwrites.
+        Exports both individual configuration files and a complete backup file.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Username,
+
+        [Parameter(Mandatory = $true)]
+        [SecureString]$Password,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ApiKey,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$BaseUrl = "https://zsapi.zscaler.net/api/v1",
+
+        [Parameter(Mandatory = $false)]
+        [ValidateNotNullOrEmpty()]
+        [string]$OutputDirectory = (Get-Location).Path
+    )
+
+    begin {
+        Write-Verbose "Starting ZIA configuration export process"
+        Write-Host "ZIA Configuration Backup Function" -ForegroundColor Cyan
+        Write-Host "=================================" -ForegroundColor Cyan
+        # Log function initialization
+        Write-Host "Function started at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
+        Write-Verbose "Validating input parameters..."
+        # Log parameters (excluding sensitive data)
+        Write-Host "Username: $Username" -ForegroundColor Gray
+        Write-Host "Base URL: $BaseUrl" -ForegroundColor Gray
+        Write-Host "Output Directory: $OutputDirectory" -ForegroundColor Gray
+        Write-Host "Password: [PROTECTED]" -ForegroundColor Gray
+        Write-Host "API Key: [PROTECTED]" -ForegroundColor Gray
     }
-    else {
-        Write-Error "Backup process failed!"
-        Write-Host "Script execution failed at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Red
-        exit 1
+
+    process {
+        try {
+            Write-Verbose "Creating ZIA backup instance..."
+            Write-Host "Creating ZIA backup instance..." -ForegroundColor Gray
+            # Create backup instance
+            $backup = [ZIABackup]::new($Username, $Password, $ApiKey, $BaseUrl)
+            Write-Host "ZIA backup instance created successfully" -ForegroundColor Gray
+            Write-Verbose "Initiating backup process..."
+            Write-Host "Initiating backup process..." -ForegroundColor Gray
+            # Perform backup
+            $success = $backup.FullBackup($OutputDirectory)
+            if ($success) {
+                Write-Host "`nBackup process completed successfully!" -ForegroundColor Green
+                Write-Host "Function execution finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
+            }
+            else {
+                Write-Error "Backup process failed!"
+                Write-Host "Function execution failed at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Red
+            }
+        }
+        catch {
+            Write-Error "Function execution failed: $($_.Exception.Message)"
+            Write-Host "Error occurred at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Red
+            Write-Verbose "Error type: $($_.Exception.GetType().Name)"
+            Write-Verbose "Error details: $($_.Exception.ToString())"
+            if ($_.Exception.InnerException) {
+                Write-Verbose "Inner exception: $($_.Exception.InnerException.Message)"
+            }
+            Write-Verbose "Stack trace: $($_.ScriptStackTrace)"
+        }
     }
-}
-catch {
-    Write-Error "Script execution failed: $($_.Exception.Message)"
-    Write-Host "Error occurred at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Red
-    Write-Host "Error type: $($_.Exception.GetType().Name)" -ForegroundColor Red
-    Write-Host "Error details: $($_.Exception.ToString())" -ForegroundColor Red
-    if ($_.Exception.InnerException) {
-        Write-Host "Inner exception: $($_.Exception.InnerException.Message)" -ForegroundColor Red
+
+    end {
+        Write-Verbose "ZIA configuration export process completed"
     }
-    Write-Host "Stack trace:" -ForegroundColor Red
-    Write-Host $_.ScriptStackTrace -ForegroundColor Red
-    exit 1
 }

@@ -1,51 +1,134 @@
-[CmdletBinding()]
-param(
-    [Parameter(HelpMessage = "Path to ZPA Application Segments JSON export")]
-    [ValidateScript({
-        if (Test-Path $_) { return $true }
-        else { throw "File not found: $_" }
-    })]
-    [string]$AppSegmentPath = (Join-Path $PSScriptRoot "App_Segments.json"),
-    
-    [Parameter(HelpMessage = "Base directory for output files")]
-    [ValidateScript({
-        if (Test-Path $_ -PathType Container) { return $true }
-        else { throw "Directory not found: $_" }
-    })]
-    [string]$OutputBasePath = $PWD,
-    
-    [Parameter(HelpMessage = "Specific segment name for exact match processing")]
-    [string]$TargetAppSegmentName,
-    
-    [Parameter(HelpMessage = "Wildcard pattern for segment name matching")]
-    [string]$AppSegmentNamePattern,
-    
-    [Parameter(HelpMessage = "Comma-separated list of specific segment names to skip (exact match)")]
-    [string]$SkipAppSegmentName,
-    
-    [Parameter(HelpMessage = "Comma-separated list of wildcard patterns for segment names to skip")]
-    [string]$SkipAppSegmentNamePattern,
-    
-    [Parameter(HelpMessage = "Path to ZPA Segment Groups JSON export (optional)")]
-    [ValidateScript({
-        if ([string]::IsNullOrEmpty($_)) { return $true }
-        if (Test-Path $_) { return $true }
-        else { throw "File not found: $_" }
-    })]
-    [string]$SegmentGroupPath,
-    
-    [Parameter(HelpMessage = "Path to ZPA Access Policies JSON export (optional)")]
-    [string]$AccessPolicyPath = (Join-Path $PSScriptRoot "access_policies.json"),
-    
-    [Parameter(HelpMessage = "Path to SCIM Groups JSON export (optional)")]
-    [string]$ScimGroupPath = (Join-Path $PSScriptRoot "scim_groups.json"),
-    
-    [Parameter(HelpMessage = "Enable verbose debug logging")]
-    [switch]$EnableDebugLogging
-)
+function Convert-ZPA2EPA {
+    <#
+    .SYNOPSIS
+        Converts ZPA Application Segments to GSA Enterprise Application format.
 
-# Set strict mode for better error handling
-Set-StrictMode -Version Latest
+    .DESCRIPTION
+        This function converts Zscaler Private Access (ZPA) Application Segments configuration
+        to Microsoft Global Secure Access (GSA) Enterprise Application format. It processes
+        application segments, handles conflicts detection, and integrates access policies.
+
+    .PARAMETER AppSegmentPath
+        Path to ZPA Application Segments JSON export file. Defaults to "App_Segments.json" 
+        in the script root directory.
+
+    .PARAMETER OutputBasePath
+        Base directory for output files. Defaults to current working directory.
+
+    .PARAMETER TargetAppSegmentName
+        Specific segment name for exact match processing. When specified, only processes 
+        this specific segment.
+
+    .PARAMETER AppSegmentNamePattern
+        Wildcard pattern for segment name matching. Supports * and ? wildcards.
+
+    .PARAMETER SkipAppSegmentName
+        Comma-separated list of specific segment names to skip (exact match).
+
+    .PARAMETER SkipAppSegmentNamePattern
+        Comma-separated list of wildcard patterns for segment names to skip.
+
+    .PARAMETER SegmentGroupPath
+        Path to ZPA Segment Groups JSON export (optional). When provided, segments 
+        from groups are merged with standalone segments.
+
+    .PARAMETER AccessPolicyPath
+        Path to ZPA Access Policies JSON export (optional). Defaults to "access_policies.json"
+        in the script root directory.
+
+    .PARAMETER ScimGroupPath
+        Path to SCIM Groups JSON export (optional). Defaults to "scim_groups.json"
+        in the script root directory.
+
+    .PARAMETER EnableDebugLogging
+        Enable verbose debug logging for detailed troubleshooting.
+
+    .PARAMETER PassThru
+        Return results to pipeline instead of just saving to file. When specified, 
+        the function returns the processed data objects for further processing.
+
+    .EXAMPLE
+        Convert-ZPA2EPA -AppSegmentPath "C:\Export\App_Segments.json" -OutputBasePath "C:\Output"
+        
+        Transforms all application segments from the specified file to GSA format.
+
+    .EXAMPLE
+        Convert-ZPA2EPA -AppSegmentPath "segments.json" -TargetAppSegmentName "WebApp-Prod"
+        
+        Processes only the "WebApp-Prod" segment from the specified file.
+
+    .EXAMPLE
+        Convert-ZPA2EPA -AppSegmentNamePattern "Web*" -SkipAppSegmentName "Test,Dev"
+        
+        Processes all segments matching "Web*" pattern while skipping "Test" and "Dev" segments.
+
+    .EXAMPLE
+        $results = Convert-ZPA2EPA -AppSegmentPath "segments.json" -PassThru
+        
+        Processes segments and returns the results for further processing instead of just saving to file.
+
+    .OUTPUTS
+        System.Management.Automation.PSCustomObject[]
+        Returns an array of transformed GSA Enterprise Application configuration objects.
+
+    .NOTES
+        - Requires PowerShell 5.1 or later
+        - Input files must be valid JSON format
+        - Output includes conflict detection and resolution recommendations
+        - Access policies integration requires both AccessPolicyPath and ScimGroupPath
+    #>
+    
+    [CmdletBinding(SupportsShouldProcess = $false)]
+    param(
+        [Parameter(HelpMessage = "Path to ZPA Application Segments JSON export")]
+        [ValidateScript({
+            if (Test-Path $_) { return $true }
+            else { throw "File not found: $_" }
+        })]
+        [string]$AppSegmentPath = (Join-Path $PSScriptRoot "App_Segments.json"),
+        
+        [Parameter(HelpMessage = "Base directory for output files")]
+        [ValidateScript({
+            if (Test-Path $_ -PathType Container) { return $true }
+            else { throw "Directory not found: $_" }
+        })]
+        [string]$OutputBasePath = $PWD,
+        
+        [Parameter(HelpMessage = "Specific segment name for exact match processing")]
+        [string]$TargetAppSegmentName,
+        
+        [Parameter(HelpMessage = "Wildcard pattern for segment name matching")]
+        [string]$AppSegmentNamePattern,
+        
+        [Parameter(HelpMessage = "Comma-separated list of specific segment names to skip (exact match)")]
+        [string]$SkipAppSegmentName,
+        
+        [Parameter(HelpMessage = "Comma-separated list of wildcard patterns for segment names to skip")]
+        [string]$SkipAppSegmentNamePattern,
+        
+        [Parameter(HelpMessage = "Path to ZPA Segment Groups JSON export (optional)")]
+        [ValidateScript({
+            if ([string]::IsNullOrEmpty($_)) { return $true }
+            if (Test-Path $_) { return $true }
+            else { throw "File not found: $_" }
+        })]
+        [string]$SegmentGroupPath,
+        
+        [Parameter(HelpMessage = "Path to ZPA Access Policies JSON export (optional)")]
+        [string]$AccessPolicyPath = (Join-Path $PSScriptRoot "access_policies.json"),
+        
+        [Parameter(HelpMessage = "Path to SCIM Groups JSON export (optional)")]
+        [string]$ScimGroupPath = (Join-Path $PSScriptRoot "scim_groups.json"),
+        
+        [Parameter(HelpMessage = "Enable verbose debug logging")]
+        [switch]$EnableDebugLogging,
+        
+        [Parameter(HelpMessage = "Return results to pipeline (suppresses automatic console output)")]
+        [switch]$PassThru
+    )
+
+    # Set strict mode for better error handling
+    Set-StrictMode -Version Latest
 
 #region Helper Functions
 
@@ -88,7 +171,7 @@ function Write-Log {
         }
         
         # Write to log file
-        $logFilePath = Join-Path $OutputBasePath "Transform-ZPA2EPA.log"
+        $logFilePath = Join-Path $OutputBasePath "Convert-ZPA2EPA.log"
         try {
             if ([string]::IsNullOrEmpty($Message)) {
                 "" | Out-File -FilePath $logFilePath -Append -Encoding UTF8
@@ -334,7 +417,7 @@ function Test-WildcardMatch {
     }
 }
 
-function Clean-Domain {
+function Clear-Domain {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Domain
@@ -352,7 +435,7 @@ function Clean-Domain {
     }
 }
 
-function Load-SegmentGroups {
+function Import-SegmentGroups {
     param(
         [Parameter(Mandatory = $true)]
         [string]$FilePath
@@ -557,7 +640,7 @@ function Merge-ApplicationSegments {
     }
 }
 
-function Load-ApplicationSegments {
+function Import-ApplicationSegments {
     param(
         [Parameter(Mandatory = $true)]
         [string]$AppSegmentPath,
@@ -610,7 +693,7 @@ function Load-ApplicationSegments {
         $segmentGroupSegments = @()
         $segmentGroupMembership = @{}
         if (-not [string]::IsNullOrEmpty($SegmentGroupPath)) {
-            $segmentGroupResult = Load-SegmentGroups -FilePath $SegmentGroupPath
+            $segmentGroupResult = Import-SegmentGroups -FilePath $SegmentGroupPath
             $segmentGroupSegments = $segmentGroupResult.Segments
             $segmentGroupMembership = $segmentGroupResult.Membership
         }
@@ -626,7 +709,7 @@ function Load-ApplicationSegments {
     }
 }
 
-function Load-AccessPolicies {
+function Import-AccessPolicies {
     param(
         [Parameter(Mandatory = $true)]
         [string]$FilePath
@@ -678,7 +761,7 @@ function Load-AccessPolicies {
     }
 }
 
-function Load-ScimGroups {
+function Import-ScimGroups {
     param(
         [Parameter(Mandatory = $true)]
         [string]$FilePath
@@ -1024,7 +1107,7 @@ function Build-AppToScimAccessLookup {
         # Step 1: Load SCIM Groups
         $scimGroups = $null
         try {
-            $scimGroups = Load-ScimGroups -FilePath $ScimGroupPath
+            $scimGroups = Import-ScimGroups -FilePath $ScimGroupPath
         }
         catch {
             Write-Log "Failed to load SCIM groups: $_" -Level "ERROR"
@@ -1034,7 +1117,7 @@ function Build-AppToScimAccessLookup {
         # Step 2: Load Access Policies
         $accessPolicies = $null
         try {
-            $accessPolicies = Load-AccessPolicies -FilePath $AccessPolicyPath
+            $accessPolicies = Import-AccessPolicies -FilePath $AccessPolicyPath
         }
         catch {
             Write-Log "Failed to load access policies: $_" -Level "ERROR"
@@ -1334,8 +1417,8 @@ function Build-AppToScimAccessLookup {
 #region Main Script Logic
 
 try {
-    Write-Log "Starting ZPA to GSA transformation script" -Level "INFO"
-    Write-Log "Script version: 1.0" -Level "INFO"
+    Write-Log "Starting ZPA to GSA conversion function" -Level "INFO"
+    Write-Log "Function version: 1.0" -Level "INFO"
     Write-Log "Parameters:" -Level "INFO"
     Write-Log "  AppSegmentPath: $AppSegmentPath" -Level "INFO"
     Write-Log "  OutputBasePath: $OutputBasePath" -Level "INFO"
@@ -1371,14 +1454,14 @@ try {
     
     #region Data Loading Phase
     try {
-        $loadResult = Load-ApplicationSegments -AppSegmentPath $AppSegmentPath -SegmentGroupPath $SegmentGroupPath
+        $loadResult = Import-ApplicationSegments -AppSegmentPath $AppSegmentPath -SegmentGroupPath $SegmentGroupPath
         $appSegments = $loadResult.Segments
         $loadingStats = $loadResult.Stats
         $segmentGroupMembership = $loadResult.SegmentGroupMembership
     }
     catch {
         Write-Log "Error loading application segments: $_" -Level "ERROR"
-        exit 1
+        throw
     }
     
     # Build access policy lookup if files are provided
@@ -1473,8 +1556,8 @@ try {
     Write-Log "Processing $($filteredSegments.Count) of $originalCount total segments" -Level "INFO"
     
     if ($filteredSegments.Count -eq 0) {
-        Write-Log "No segments remain after filtering. Exiting." -Level "WARN"
-        exit 0
+        Write-Log "No segments remain after filtering. Returning empty result." -Level "WARN"
+        return @()
     }
     #endregion
     
@@ -1597,7 +1680,7 @@ try {
                 }
                 
                 try {
-                    $cleanDomain = Clean-Domain -Domain $domain
+                    $cleanDomain = Clear-Domain -Domain $domain
                     $destinationType = Get-DestinationType -Destination $cleanDomain
                     
                     # Validate CIDR if it's a subnet
@@ -1911,7 +1994,7 @@ try {
     
     #region Statistics and Summary
     Write-Log "" -Level "INFO"
-    Write-Log "=== TRANSFORMATION SUMMARY ===" -Level "INFO"
+    Write-Log "=== CONVERSION SUMMARY ===" -Level "INFO"
     Write-Log "Total segments loaded: $originalCount" -Level "INFO"
     if (-not [string]::IsNullOrEmpty($SegmentGroupPath)) {
         Write-Log "  Standalone segments file: $($loadingStats.TotalFromStandalone) segments" -Level "INFO"
@@ -1958,13 +2041,19 @@ try {
         Write-Log "WARNING: $conflictCount conflicts were detected. Please review the 'ConflictingEnterpriseApp' column for details." -Level "WARN"
     }
     
-    Write-Log "Script completed successfully!" -Level "INFO"
+    Write-Log "Function completed successfully!" -Level "INFO"
     #endregion
+    
+    # Return the grouped results only if PassThru is specified
+    if ($PassThru) {
+        return $groupedResults
+    }
 }
 catch {
-    Write-Log "Fatal error in main script execution: $_" -Level "ERROR"
+    Write-Log "Fatal error in function execution: $_" -Level "ERROR"
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level "ERROR"
-    exit 1
+    throw
 }
 
 #endregion
+}

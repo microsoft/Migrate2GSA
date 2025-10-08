@@ -23,17 +23,14 @@
 .PARAMETER LogPath
     Path for the log file. Defaults to .\GSA_Provisioning.log
 
-.PARAMETER WhatIf
-    Enable dry-run mode to preview changes without executing them.
-
 .PARAMETER Force
     Skip confirmation prompts for automated execution.
 
 .EXAMPLE
-    .\Provision-EntraPrivateAccessConfig.ps1 -ProvisioningConfigPath ".\config.csv"
+    Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv"
 
 .EXAMPLE
-    .\Provision-EntraPrivateAccessConfig.ps1 -ProvisioningConfigPath ".\config.csv" -AppNamePrefix "GSA-" -WhatIf
+    Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv" -AppNamePrefix "GSA-" -WhatIf
 
 .NOTES
     Author: Andres Canello
@@ -41,27 +38,25 @@
     Requires: PowerShell 7+, Entra PowerShell Beta Modules
 #>
 
-[CmdletBinding()]
-param (
-    [Parameter(Mandatory=$true, HelpMessage="Path to CSV provisioning config file")]
-    [ValidateScript({Test-Path $_ -PathType Leaf})]
-    [string]$ProvisioningConfigPath,
-       
-    [Parameter(HelpMessage="Application name filter")]
-    [string]$AppNamePrefix = "",
-    
-    [Parameter(HelpMessage="Connector group filter")]
-    [string]$ConnectorGroupFilter = "",
-     
-    [Parameter(HelpMessage="Log file path")]
-    [string]$LogPath = ".\Provision-EntraPrivateAccessConfig.log",
-    
-    [Parameter(HelpMessage="Enable WhatIf mode")]
-    [switch]$WhatIf,
-    
-    [Parameter(HelpMessage="Skip confirmation prompts")]
-    [switch]$Force
-)
+function Start-EntraPrivateAccessProvisioning {
+    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
+    param (
+        [Parameter(Mandatory=$true, HelpMessage="Path to CSV provisioning config file")]
+        [ValidateScript({Test-Path $_ -PathType Leaf})]
+        [string]$ProvisioningConfigPath,
+           
+        [Parameter(HelpMessage="Application name filter")]
+        [string]$AppNamePrefix = "",
+        
+        [Parameter(HelpMessage="Connector group filter")]
+        [string]$ConnectorGroupFilter = "",
+         
+        [Parameter(HelpMessage="Log file path")]
+        [string]$LogPath = ".\Provision-EntraPrivateAccessConfig.log",
+        
+        [Parameter(HelpMessage="Skip confirmation prompts")]
+        [switch]$Force
+    )
 
 #region Global Variables
 $Global:ProvisioningStats = @{
@@ -117,9 +112,9 @@ function Write-LogMessage {
     # Write to console with color
     Write-Host $logEntry -ForegroundColor $colorMap[$Level]
     
-    # Write to log file
+    # Write to log file (suppress WhatIf for logging operations)
     try {
-        Add-Content -Path $LogPath -Value $logEntry -Encoding UTF8
+        Add-Content -Path $LogPath -Value $logEntry -Encoding UTF8 -WhatIf:$false
     }
     catch {
         Write-Warning "Failed to write to log file: $_"
@@ -225,7 +220,7 @@ function Test-RequiredModules {
     return $true
 }
 
-function Validate-EntraConnection {
+function Test-EntraConnection {
     <#
     .SYNOPSIS
         Validates Entra PowerShell connection and required permissions.
@@ -430,7 +425,7 @@ function Show-ProvisioningPlan {
     Write-LogMessage "Total segments to create: $($ConfigData.Count)" -Level SUMMARY -Component "Plan"
     
     # Only show detailed plan information when WhatIf is enabled
-    if ($WhatIf) {
+    if ($WhatIfPreference) {
         foreach ($appGroup in $appGroups) {
             Write-LogMessage "  App: $($appGroup.Name)" -Level INFO -Component "Plan"
             Write-LogMessage "    Segments: $($appGroup.Count)" -Level INFO -Component "Plan"
@@ -663,7 +658,7 @@ function Get-AggregatedEntraGroups {
     return $uniqueGroupNames
 }
 
-function Validate-ApplicationDependencies {
+function Test-ApplicationDependencies {
     <#
     .SYNOPSIS
         Validates that all applications have their required dependencies resolved.
@@ -804,7 +799,7 @@ function New-PrivateAccessApplication {
             throw "Connector group '$ConnectorGroupName' not found"
         }
         
-        if ($WhatIf) {
+        if ($WhatIfPreference) {
             Write-LogMessage "[WHATIF] Would create Private Access application: $AppName" -Level INFO -Component "AppProvisioning"
             return @{ Success = $true; AppId = "whatif-app-id"; Action = "WhatIf" }
         }
@@ -936,7 +931,7 @@ function New-ApplicationSegments {
             throw "No valid ports found in configuration: $($SegmentConfig.Ports)"
         }
         
-        if ($WhatIf) {
+        if ($WhatIfPreference) {
             Write-LogMessage "[WHATIF] Would create segment: $segmentName" -Level INFO -Component "SegmentProvisioning"
             return @{ Success = $true; Action = "WhatIf" }
         }
@@ -1051,7 +1046,7 @@ function Set-ApplicationGroupAssignments {
     $servicePrincipal = $null
     $appRoleId = $null
     
-    if (-not $WhatIf) {
+    if (-not $WhatIfPreference) {
         try {
             # Get the service principal for the application
             $servicePrincipalParams = @{
@@ -1109,7 +1104,7 @@ function Set-ApplicationGroupAssignments {
                 continue
             }
             
-            if ($WhatIf) {
+            if ($WhatIfPreference) {
                 Write-LogMessage "[WHATIF] Would assign group '$groupName' to application" -Level INFO -Component "GroupAssignment"
                 $result.Succeeded++
                 continue
@@ -1251,13 +1246,13 @@ function Invoke-ProvisioningProcess {
     
     try {
         Write-LogMessage "Starting Entra Private Access provisioning process..." -Level INFO -Component "Main"
-        Write-LogMessage "WhatIf Mode: $WhatIf" -Level INFO -Component "Main"
+        Write-LogMessage "WhatIf Mode: $WhatIfPreference" -Level INFO -Component "Main"
         
         # Validate required PowerShell modules are installed
         Test-RequiredModules
         
         # Validate Entra authentication
-        Validate-EntraConnection
+        Test-EntraConnection
         
         # Send script execution as a custom header for reporting
         $customHeaderParams = @{
@@ -1281,7 +1276,7 @@ function Invoke-ProvisioningProcess {
         Show-ProvisioningPlan -ConfigData $configData
         
         # Confirm execution unless Force is specified
-        if (-not $Force -and -not $WhatIf) {
+        if (-not $Force -and -not $WhatIfPreference) {
             $confirmation = Read-Host "Proceed with provisioning? (y/N)"
             if ($confirmation -notmatch '^[Yy]') {
                 Write-LogMessage "Provisioning cancelled by user" -Level INFO -Component "Main"
@@ -1294,7 +1289,7 @@ function Invoke-ProvisioningProcess {
         Resolve-EntraGroups -ConfigData $configData
         
         # Validate dependencies and filter out applications with unresolved dependencies
-        $validConfigData = Validate-ApplicationDependencies -ConfigData $configData
+        $validConfigData = Test-ApplicationDependencies -ConfigData $configData
         
         if ($validConfigData.Count -eq 0) {
             Write-LogMessage "No applications can be processed due to unresolved dependencies. Exiting." -Level ERROR -Component "Main"
@@ -1442,11 +1437,12 @@ function Invoke-ProvisioningProcess {
 }
 
 # Execute main process
-try {
-    Invoke-ProvisioningProcess
-}
-catch {
-    Write-LogMessage "Fatal error during provisioning: $_" -Level ERROR -Component "Main"
-    exit 1
+    try {
+        Invoke-ProvisioningProcess
+    }
+    catch {
+        Write-LogMessage "Fatal error during provisioning: $_" -Level ERROR -Component "Main"
+        throw
+    }
 }
 #endregion

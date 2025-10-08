@@ -1,3 +1,4 @@
+function Export-ZPAConfig {
 <#
 .SYNOPSIS
     Zscaler Private Access (ZPA) Configuration Backup Script
@@ -635,60 +636,60 @@ function Start-ZPAFullBackup {
     return $true
 }
 
-# Main execution
-try {
-    Write-Host "ZPA Configuration Backup Script" -ForegroundColor Cyan
-    Write-Host "================================" -ForegroundColor Cyan
-    
-    # Log script initialization
-    Write-Host "Script started at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
-    Write-Host "Validating input parameters..." -ForegroundColor Gray
-    
-    # Log parameters (excluding sensitive data)
-    Write-Host "Customer ID: $CustomerId" -ForegroundColor Gray
-    Write-Host "Client ID: $ClientId" -ForegroundColor Gray
-    Write-Host "Base URL: $BaseUrl" -ForegroundColor Gray
-    Write-Host "Output Directory: $OutputDirectory" -ForegroundColor Gray
-    Write-Host "Client Secret: [PROTECTED]" -ForegroundColor Gray
-    
-    Write-Host "Authenticating with ZPA API..." -ForegroundColor Gray
-    # Authenticate with ZPA API
-    $authSuccess = Connect-ZPAApi -ClientId $ClientId -ClientSecret $ClientSecret
-    
-    if (-not $authSuccess) {
-        Write-Error "Failed to authenticate with ZPA API"
-        Write-Host "Script execution failed at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Red
-        exit 1
+    # Main execution logic - moved inside the function
+    try {
+        Write-Host "ZPA Configuration Backup Script" -ForegroundColor Cyan
+        Write-Host "================================" -ForegroundColor Cyan
+        
+        # Log script initialization
+        Write-Host "Script started at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
+        Write-Host "Validating input parameters..." -ForegroundColor Gray
+        
+        # Log parameters (excluding sensitive data)
+        Write-Host "Customer ID: $CustomerId" -ForegroundColor Gray
+        Write-Host "Client ID: $ClientId" -ForegroundColor Gray
+        Write-Host "Base URL: $BaseUrl" -ForegroundColor Gray
+        Write-Host "Output Directory: $OutputDirectory" -ForegroundColor Gray
+        Write-Host "Client Secret: [PROTECTED]" -ForegroundColor Gray
+        
+        Write-Host "Authenticating with ZPA API..." -ForegroundColor Gray
+        # Authenticate with ZPA API
+        $authSuccess = Connect-ZPAApi -ClientId $ClientId -ClientSecret $ClientSecret
+        
+        if (-not $authSuccess) {
+            Write-Error "Failed to authenticate with ZPA API"
+            Write-Host "Script execution failed at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Red
+            throw "Authentication failed"
+        }
+        
+        Write-Host "ZPA authentication successful" -ForegroundColor Gray
+        Write-Host "Initiating backup process..." -ForegroundColor Gray
+        
+        # Perform backup
+        $success = Start-ZPAFullBackup -OutputDir $OutputDirectory
+        
+        if ($success) {
+            Write-Host "`nBackup process completed successfully!" -ForegroundColor Green
+            Write-Host "Script execution finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
+        }
+        else {
+            Write-Error "Backup process failed!"
+            Write-Host "Script execution failed at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Red
+            throw "Backup process failed"
+        }
     }
-    
-    Write-Host "ZPA authentication successful" -ForegroundColor Gray
-    Write-Host "Initiating backup process..." -ForegroundColor Gray
-    
-    # Perform backup
-    $success = Start-ZPAFullBackup -OutputDir $OutputDirectory
-    
-    if ($success) {
-        Write-Host "`nBackup process completed successfully!" -ForegroundColor Green
-        Write-Host "Script execution finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
-        exit 0
+    catch {
+        Write-Error "Script execution failed: $($_.Exception.Message)"
+        Write-Host "Error occurred at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Red
+        Write-Host "Error type: $($_.Exception.GetType().Name)" -ForegroundColor Red
+        Write-Host "Error details: $($_.Exception.ToString())" -ForegroundColor Red
+        
+        if ($_.Exception.InnerException) {
+            Write-Host "Inner exception: $($_.Exception.InnerException.Message)" -ForegroundColor Red
+        }
+        
+        Write-Host "Stack trace:" -ForegroundColor Red
+        Write-Host $_.ScriptStackTrace -ForegroundColor Red
+        throw
     }
-    else {
-        Write-Error "Backup process failed!"
-        Write-Host "Script execution failed at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Red
-        exit 1
-    }
-}
-catch {
-    Write-Error "Script execution failed: $($_.Exception.Message)"
-    Write-Host "Error occurred at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Red
-    Write-Host "Error type: $($_.Exception.GetType().Name)" -ForegroundColor Red
-    Write-Host "Error details: $($_.Exception.ToString())" -ForegroundColor Red
-    
-    if ($_.Exception.InnerException) {
-        Write-Host "Inner exception: $($_.Exception.InnerException.Message)" -ForegroundColor Red
-    }
-    
-    Write-Host "Stack trace:" -ForegroundColor Red
-    Write-Host $_.ScriptStackTrace -ForegroundColor Red
-    exit 1
 }

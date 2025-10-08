@@ -2,11 +2,11 @@
 
 ## Overview
 
-This PowerShell script provides a comprehensive backup solution for Zscaler Internet Access (ZIA) configurations. It connects to the ZIA API to export various policy configurations to JSON files for backup, migration, or analysis purposes.
+This PowerShell function provides a comprehensive backup solution for Zscaler Internet Access (ZIA) configurations. It connects to the ZIA API to export various policy configurations to JSON files for backup, migration, or analysis purposes.
 
 ## Purpose
 
-The `Export-ZIAConfig.ps1` script is designed to:
+The `Export-ZIAConfig` function is designed to:
 
 - Create complete backups of ZIA configurations
 - Export configurations to structured JSON files
@@ -24,7 +24,7 @@ The `Export-ZIAConfig.ps1` script is designed to:
 
 ## Supported Configuration Types
 
-The script exports the following ZIA configuration types:
+The function exports the following ZIA configuration types:
 
 | Configuration Type | Description | API Endpoint |
 |-------------------|-------------|--------------|
@@ -52,7 +52,7 @@ The script exports the following ZIA configuration types:
 ### Optional Parameters
 
 - **`BaseUrl`** (string): ZIA API base URL (defaults to `https://zsapi.zscaler.net/api/v1`)
-- **`OutputDirectory`** (string): Output directory for backup files (defaults to script directory)
+- **`OutputDirectory`** (string): Output directory for backup files (defaults to current directory)
 
 ## Usage Examples
 
@@ -63,7 +63,7 @@ The script exports the following ZIA configuration types:
 $securePassword = Read-Host "Enter ZIA Password" -AsSecureString
 
 # Run the backup with minimum required parameters
-.\Export-ZIAConfig.ps1 -Username "admin@company.com" -Password $securePassword -ApiKey "your-api-key"
+Export-ZIAConfig -Username "admin@company.com" -Password $securePassword -ApiKey "your-api-key"
 ```
 
 ### Advanced Usage with Custom Settings
@@ -73,7 +73,7 @@ $securePassword = Read-Host "Enter ZIA Password" -AsSecureString
 $securePassword = ConvertTo-SecureString "your-password" -AsPlainText -Force
 
 # Run backup with custom API URL and output directory
-.\Export-ZIAConfig.ps1 `
+Export-ZIAConfig `
     -Username "admin@company.com" `
     -Password $securePassword `
     -ApiKey "your-api-key" `
@@ -83,7 +83,7 @@ $securePassword = ConvertTo-SecureString "your-password" -AsPlainText -Force
 
 ## Migration to Entra Internet Access
 
-This script is part of a larger migration toolkit for moving from Zscaler to Microsoft Entra Internet Access. The exported configurations can be:
+This function is part of a larger migration toolkit for moving from Zscaler to Microsoft Entra Internet Access. The exported configurations can be:
 
 - Analyzed for policy coverage and gaps
 - Transformed to EIA equivalent configurations
@@ -114,6 +114,6 @@ This script is part of a larger migration toolkit for moving from Zscaler to Mic
 Use PowerShell's `-Verbose` parameter for detailed execution information:
 
 ```powershell
-.\Export-ZIAConfig.ps1 -Username "admin@company.com" -Password $securePassword -ApiKey "your-api-key" -Verbose
+Export-ZIAConfig -Username "admin@company.com" -Password $securePassword -ApiKey "your-api-key" -Verbose
 ```
 

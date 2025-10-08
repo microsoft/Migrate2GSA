@@ -6,6 +6,60 @@
 
 This is PowerShell-based migration toolkit designed to help organizations transition from SSE solutions to Global Secure Access (GSA). This toolkit provides automated configuration export, transformation, and a set of common GSA provisioning tools to streamline the transition process.
 
+## How to contact us
+If you have a migration project and need assistance with this migration tools, contact us at migrate2gsateam@microsoft.com
+
+## Installation and Setup
+
+### Download the Module
+
+1. **Clone the repository:**
+   ```powershell
+   git clone https://github.com/microsoft/Migrate2GSA.git
+   cd Migrate2GSA
+   ```
+
+2. **Or download as ZIP:**
+   - Download the repository as a ZIP file from GitHub
+   - Extract to your desired location
+
+### Import the Module
+
+Once you have the module files locally, you can import the module using one of these methods:
+
+**Method 1: Import from local path**
+```powershell
+Import-Module "C:\Path\To\Migrate2GSA\Migrate2GSA\Migrate2GSA.psd1"
+```
+
+**Method 2: Install to PowerShell modules directory**
+```powershell
+# Copy the Migrate2GSA folder to your PowerShell modules directory
+$ModulesPath = $env:PSModulePath -split ';' | Select-Object -First 1
+Copy-Item -Path "C:\Path\To\Migrate2GSA\Migrate2GSA" -Destination "$ModulesPath\Migrate2GSA" -Recurse -Force
+
+# Import the module
+Import-Module Migrate2GSA
+```
+
+### Verify Installation
+
+After importing, verify the module is loaded and check available functions:
+
+```powershell
+# Check if module is loaded
+Get-Module Migrate2GSA
+
+# List available functions
+Get-Command -Module Migrate2GSA
+```
+
+The module provides the following functions:
+- `Export-ZPAConfig`
+- `Convert-ZPA2EPA`
+- `Export-ZIAConfig`
+- `Start-EntraPrivateAccessProvisioning`
+
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
