@@ -132,68 +132,6 @@ function Convert-ZPA2EPA {
 
 #region Helper Functions
 
-function Write-Log {
-    param(
-        [Parameter(Mandatory = $true)]
-        [AllowEmptyString()]
-        [string]$Message,
-        
-        [Parameter(Mandatory = $false)]
-        [ValidateSet("INFO", "WARN", "ERROR", "DEBUG")]
-        [string]$Level = "INFO"
-    )
-    
-    try {
-        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        
-        # Handle empty messages for spacing
-        if ([string]::IsNullOrEmpty($Message)) {
-            $logMessage = ""
-        } else {
-            $logMessage = "[$timestamp] [$Level] $Message"
-        }
-        
-        # Color coding for console output
-        if ([string]::IsNullOrEmpty($Message)) {
-            Write-Host ""
-        } else {
-            # Skip DEBUG messages unless debug logging is enabled
-            if ($Level -eq "DEBUG" -and -not $EnableDebugLogging) {
-                return
-            }
-            
-            switch ($Level) {
-                "INFO" { Write-Host $logMessage -ForegroundColor Green }
-                "WARN" { Write-Host $logMessage -ForegroundColor Yellow }
-                "ERROR" { Write-Host $logMessage -ForegroundColor Red }
-                "DEBUG" { Write-Host $logMessage -ForegroundColor Cyan }
-            }
-        }
-        
-        # Write to log file
-        $logFilePath = Join-Path $OutputBasePath "Convert-ZPA2EPA.log"
-        try {
-            if ([string]::IsNullOrEmpty($Message)) {
-                "" | Out-File -FilePath $logFilePath -Append -Encoding UTF8
-            } else {
-                # Skip DEBUG messages in log file unless debug logging is enabled
-                if ($Level -eq "DEBUG" -and -not $EnableDebugLogging) {
-                    return
-                }
-                $logMessage | Out-File -FilePath $logFilePath -Append -Encoding UTF8
-            }
-        }
-        catch {
-            # Don't let log file issues interrupt the script
-            Write-Warning "Failed to write to log file: $_"
-        }
-    }
-    catch {
-        # Fallback to basic Write-Host if logging fails
-        Write-Host "[$Level] $Message"
-    }
-}
-
 function Convert-CIDRToRange {
     param(
         [Parameter(Mandatory = $true)]
@@ -203,7 +141,7 @@ function Convert-CIDRToRange {
     try {
         # Validate CIDR format
         if ($CIDR -notmatch '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$') {
-            Write-Log "Invalid CIDR format: $CIDR" -Level "ERROR"
+            Write-LogMessage "Invalid CIDR format: $CIDR" -Level "ERROR"
             return $null
         }
         
@@ -213,7 +151,7 @@ function Convert-CIDRToRange {
         
         # Validate prefix length
         if ($prefixLength -lt 0 -or $prefixLength -gt 32) {
-            Write-Log "Invalid prefix length in CIDR: $CIDR" -Level "ERROR"
+            Write-LogMessage "Invalid prefix length in CIDR: $CIDR" -Level "ERROR"
             return $null
         }
         
@@ -236,7 +174,7 @@ function Convert-CIDRToRange {
         }
     }
     catch {
-        Write-Log "Error converting CIDR $CIDR to range: $_" -Level "ERROR"
+        Write-LogMessage "Error converting CIDR $CIDR to range: $_" -Level "ERROR"
         return $null
     }
 }
@@ -250,7 +188,7 @@ function Convert-IPToInteger {
     try {
         # Validate IP address format
         if ($IPAddress -notmatch '^\d{1,3}(\.\d{1,3}){3}$') {
-            Write-Log "Invalid IP address format: $IPAddress" -Level "ERROR"
+            Write-LogMessage "Invalid IP address format: $IPAddress" -Level "ERROR"
             return $null
         }
         
@@ -260,7 +198,7 @@ function Convert-IPToInteger {
         foreach ($octet in $octets) {
             $octetInt = [int]$octet
             if ($octetInt -lt 0 -or $octetInt -gt 255) {
-                Write-Log "Invalid octet value in IP address: $IPAddress" -Level "ERROR"
+                Write-LogMessage "Invalid octet value in IP address: $IPAddress" -Level "ERROR"
                 return $null
             }
         }
@@ -270,7 +208,7 @@ function Convert-IPToInteger {
         return $result
     }
     catch {
-        Write-Log "Error converting IP $IPAddress to integer: $_" -Level "ERROR"
+        Write-LogMessage "Error converting IP $IPAddress to integer: $_" -Level "ERROR"
         return $null
     }
 }
@@ -293,7 +231,7 @@ function Test-IntervalOverlap {
         return $maxStart -le $minEnd
     }
     catch {
-        Write-Log "Error checking interval overlap: $_" -Level "ERROR"
+        Write-LogMessage "Error checking interval overlap: $_" -Level "ERROR"
         return $false
     }
 }
@@ -326,7 +264,7 @@ function Test-PortRangeOverlap {
         return Test-IntervalOverlap -Range1 $ports1 -Range2 $ports2
     }
     catch {
-        Write-Log "Error checking port range overlap: $_" -Level "ERROR"
+        Write-LogMessage "Error checking port range overlap: $_" -Level "ERROR"
         return $false
     }
 }
@@ -349,12 +287,12 @@ function Export-DataToFile {
         $outputDir = Split-Path $FilePath -Parent
         if (-not (Test-Path $outputDir)) {
             New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
-            Write-Log "Created output directory: $outputDir" -Level "INFO"
+            Write-LogMessage "Created output directory: $outputDir" -Level "INFO"
         }
         
         # Handle empty datasets
         if ($null -eq $Data -or $Data.Count -eq 0) {
-            Write-Log "No data to export to $FilePath" -Level "WARN"
+            Write-LogMessage "No data to export to $FilePath" -Level "WARN"
             return $false
         }
         
@@ -368,11 +306,11 @@ function Export-DataToFile {
             }
         }
         
-        Write-Log "Successfully exported $($Data.Count) records to $FilePath" -Level "INFO"
+        Write-LogMessage "Successfully exported $($Data.Count) records to $FilePath" -Level "INFO"
         return $true
     }
     catch {
-        Write-Log "Failed to export data to $FilePath : $_" -Level "ERROR"
+        Write-LogMessage "Failed to export data to $FilePath : $_" -Level "ERROR"
         return $false
     }
 }
@@ -412,7 +350,7 @@ function Test-WildcardMatch {
         return $Text -match "^$regexPattern$"
     }
     catch {
-        Write-Log "Error in wildcard matching: $_" -Level "ERROR"
+        Write-LogMessage "Error in wildcard matching: $_" -Level "ERROR"
         return $false
     }
 }
@@ -430,7 +368,7 @@ function Clear-Domain {
         return $cleanDomain
     }
     catch {
-        Write-Log "Error cleaning domain $Domain : $_" -Level "ERROR"
+        Write-LogMessage "Error cleaning domain $Domain : $_" -Level "ERROR"
         return $Domain
     }
 }
@@ -442,10 +380,10 @@ function Import-SegmentGroups {
     )
     
     try {
-        Write-Log "Loading ZPA segment groups from: $FilePath" -Level "INFO"
+        Write-LogMessage "Loading ZPA segment groups from: $FilePath" -Level "INFO"
         
         if (-not (Test-Path $FilePath)) {
-            Write-Log "Segment groups file not found: $FilePath" -Level "ERROR"
+            Write-LogMessage "Segment groups file not found: $FilePath" -Level "ERROR"
             return @()
         }
         
@@ -453,32 +391,32 @@ function Import-SegmentGroups {
         $segmentGroupsData = $segmentGroupsJson | ConvertFrom-Json
         
         if ($null -eq $segmentGroupsData) {
-            Write-Log "Failed to parse JSON from segment groups file: $FilePath" -Level "ERROR"
+            Write-LogMessage "Failed to parse JSON from segment groups file: $FilePath" -Level "ERROR"
             return @()
         }
         
         # Handle different JSON formats: direct array or nested under 'list' property
         $segmentGroups = @()
         if ($segmentGroupsData.PSObject.Properties.Name -contains 'list') {
-            Write-Log "Detected paginated format with 'list' property in segment groups" -Level "DEBUG"
+            Write-LogMessage "Detected paginated format with 'list' property in segment groups" -Level "DEBUG"
             $segmentGroups = $segmentGroupsData.list
             if ($segmentGroupsData.PSObject.Properties.Name -contains 'totalCount') {
-                Write-Log "Total segment groups count from API: $($segmentGroupsData.totalCount)" -Level "DEBUG"
+                Write-LogMessage "Total segment groups count from API: $($segmentGroupsData.totalCount)" -Level "DEBUG"
             }
         } elseif ($segmentGroupsData -is [array]) {
-            Write-Log "Detected direct array format in segment groups" -Level "DEBUG"
+            Write-LogMessage "Detected direct array format in segment groups" -Level "DEBUG"
             $segmentGroups = $segmentGroupsData
         } else {
-            Write-Log "Unknown JSON format in segment groups file. Expected either an array or object with 'list' property" -Level "ERROR"
+            Write-LogMessage "Unknown JSON format in segment groups file. Expected either an array or object with 'list' property" -Level "ERROR"
             return @()
         }
         
         if ($null -eq $segmentGroups -or $segmentGroups.Count -eq 0) {
-            Write-Log "No segment groups found in the JSON data" -Level "WARN"
+            Write-LogMessage "No segment groups found in the JSON data" -Level "WARN"
             return @()
         }
         
-        Write-Log "Loaded $($segmentGroups.Count) segment groups" -Level "INFO"
+        Write-LogMessage "Loaded $($segmentGroups.Count) segment groups" -Level "INFO"
         
         # Extract application segments from segment groups and build membership hashtable
         $extractedSegments = @()
@@ -490,7 +428,7 @@ function Import-SegmentGroups {
                 $segmentGroupName = if ($segmentGroup.PSObject.Properties.Name -contains 'name' -and $segmentGroup.name) { $segmentGroup.name } else { "Unknown" }
                 $segmentGroupId = if ($segmentGroup.PSObject.Properties.Name -contains 'id' -and $segmentGroup.id) { $segmentGroup.id.ToString() } else { $null }
                 
-                Write-Log "Processing segment group '$segmentGroupName' with $($segmentGroup.applications.Count) applications" -Level "DEBUG"
+                Write-LogMessage "Processing segment group '$segmentGroupName' with $($segmentGroup.applications.Count) applications" -Level "DEBUG"
                 
                 # Build membership list for this APP_GROUP
                 $appIds = @()
@@ -510,16 +448,16 @@ function Import-SegmentGroups {
                 # Store APP_GROUP membership
                 if ($segmentGroupId -and $appIds.Count -gt 0) {
                     $segmentGroupMembership[$segmentGroupId] = $appIds
-                    Write-Log "  APP_GROUP '$segmentGroupId' contains $($appIds.Count) APPs" -Level "DEBUG"
+                    Write-LogMessage "  APP_GROUP '$segmentGroupId' contains $($appIds.Count) APPs" -Level "DEBUG"
                 }
             } else {
                 $segmentGroupName = if ($segmentGroup.PSObject.Properties.Name -contains 'name' -and $segmentGroup.name) { $segmentGroup.name } else { "Unknown" }
-                Write-Log "Segment group '$segmentGroupName' has no applications or applications array is empty" -Level "DEBUG"
+                Write-LogMessage "Segment group '$segmentGroupName' has no applications or applications array is empty" -Level "DEBUG"
             }
         }
         
-        Write-Log "Extracted $totalApplications application segments from $($segmentGroups.Count) segment groups" -Level "INFO"
-        Write-Log "Built membership map for $($segmentGroupMembership.Count) APP_GROUPs" -Level "DEBUG"
+        Write-LogMessage "Extracted $totalApplications application segments from $($segmentGroups.Count) segment groups" -Level "INFO"
+        Write-LogMessage "Built membership map for $($segmentGroupMembership.Count) APP_GROUPs" -Level "DEBUG"
         
         return @{
             Segments = $extractedSegments
@@ -527,7 +465,7 @@ function Import-SegmentGroups {
         }
     }
     catch {
-        Write-Log "Error loading segment groups: $_" -Level "ERROR"
+        Write-LogMessage "Error loading segment groups: $_" -Level "ERROR"
         return @()
     }
 }
@@ -545,7 +483,7 @@ function Merge-ApplicationSegments {
     )
     
     try {
-        Write-Log "Merging application segments and removing duplicates" -Level "INFO"
+        Write-LogMessage "Merging application segments and removing duplicates" -Level "INFO"
         
         # Ensure arrays are properly initialized
         if ($null -eq $StandaloneSegments) { $StandaloneSegments = @() }
@@ -555,8 +493,8 @@ function Merge-ApplicationSegments {
         if ($StandaloneSegments -isnot [array]) { $StandaloneSegments = @($StandaloneSegments) }
         if ($SegmentGroupSegments -isnot [array]) { $SegmentGroupSegments = @($SegmentGroupSegments) }
         
-        Write-Log "Standalone segments: $($StandaloneSegments.Count)" -Level "DEBUG"
-        Write-Log "Segment group segments: $($SegmentGroupSegments.Count)" -Level "DEBUG"
+        Write-LogMessage "Standalone segments: $($StandaloneSegments.Count)" -Level "DEBUG"
+        Write-LogMessage "Segment group segments: $($SegmentGroupSegments.Count)" -Level "DEBUG"
         
         # Create hashtable with segment ID as key for deduplication
         $segmentLookup = @{}
@@ -572,10 +510,10 @@ function Merge-ApplicationSegments {
                     $segmentLookup[$segmentId] = $segment
                     $uniqueFromStandalone++
                 } else {
-                    Write-Log "Duplicate ID found in standalone segments: $segmentId" -Level "WARN"
+                    Write-LogMessage "Duplicate ID found in standalone segments: $segmentId" -Level "WARN"
                 }
             } else {
-                Write-Log "Standalone segment missing ID property, skipping: $($segment.name)" -Level "WARN"
+                Write-LogMessage "Standalone segment missing ID property, skipping: $($segment.name)" -Level "WARN"
             }
         }
         
@@ -589,23 +527,23 @@ function Merge-ApplicationSegments {
                 } else {
                     $duplicateCount++
                     $existingSegment = $segmentLookup[$segmentId]
-                    Write-Log "Duplicate segment found (ID: $segmentId): '$($segment.name)' from segment group conflicts with standalone segment '$($existingSegment.name)'. Keeping standalone version." -Level "DEBUG"
+                    Write-LogMessage "Duplicate segment found (ID: $segmentId): '$($segment.name)' from segment group conflicts with standalone segment '$($existingSegment.name)'. Keeping standalone version." -Level "DEBUG"
                 }
             } else {
-                Write-Log "Segment group segment missing ID property, skipping: $($segment.name)" -Level "WARN"
+                Write-LogMessage "Segment group segment missing ID property, skipping: $($segment.name)" -Level "WARN"
             }
         }
         
         # Convert hashtable values back to array
         $mergedSegments = $segmentLookup.Values | Sort-Object -Property name
         
-        Write-Log "Deduplication complete:" -Level "INFO"
-        Write-Log "  Total unique segments: $($mergedSegments.Count)" -Level "INFO"
-        Write-Log "  Duplicates removed: $duplicateCount" -Level "INFO"
-        Write-Log "  Unique segments from standalone file: $uniqueFromStandalone" -Level "INFO"
-        Write-Log "  Unique segments from segment groups: $uniqueFromSegmentGroups" -Level "INFO"
-        Write-Log "  Total segments in standalone file: $($StandaloneSegments.Count)" -Level "INFO"
-        Write-Log "  Total segments in segment groups: $($SegmentGroupSegments.Count)" -Level "INFO"
+        Write-LogMessage "Deduplication complete:" -Level "INFO"
+        Write-LogMessage "  Total unique segments: $($mergedSegments.Count)" -Level "INFO"
+        Write-LogMessage "  Duplicates removed: $duplicateCount" -Level "INFO"
+        Write-LogMessage "  Unique segments from standalone file: $uniqueFromStandalone" -Level "INFO"
+        Write-LogMessage "  Unique segments from segment groups: $uniqueFromSegmentGroups" -Level "INFO"
+        Write-LogMessage "  Total segments in standalone file: $($StandaloneSegments.Count)" -Level "INFO"
+        Write-LogMessage "  Total segments in segment groups: $($SegmentGroupSegments.Count)" -Level "INFO"
         
         # Return stats along with segments for use in final summary
         $result = @{
@@ -624,7 +562,7 @@ function Merge-ApplicationSegments {
         return $result
     }
     catch {
-        Write-Log "Error merging application segments: $_" -Level "ERROR"
+        Write-LogMessage "Error merging application segments: $_" -Level "ERROR"
         return @{
             Segments = $StandaloneSegments
             Stats = @{
@@ -651,10 +589,10 @@ function Import-ApplicationSegments {
     
     try {
         # Load standalone application segments
-        Write-Log "Loading standalone application segments from: $AppSegmentPath" -Level "INFO"
+        Write-LogMessage "Loading standalone application segments from: $AppSegmentPath" -Level "INFO"
         
         if (-not (Test-Path $AppSegmentPath)) {
-            Write-Log "Application segments file not found: $AppSegmentPath" -Level "ERROR"
+            Write-LogMessage "Application segments file not found: $AppSegmentPath" -Level "ERROR"
             throw "Application segments file not found"
         }
         
@@ -662,32 +600,32 @@ function Import-ApplicationSegments {
         $appSegmentsData = $appSegmentsJson | ConvertFrom-Json
         
         if ($null -eq $appSegmentsData) {
-            Write-Log "Failed to parse JSON from file: $AppSegmentPath" -Level "ERROR"
+            Write-LogMessage "Failed to parse JSON from file: $AppSegmentPath" -Level "ERROR"
             throw "Failed to parse application segments JSON"
         }
         
         # Handle different JSON formats: direct array or nested under 'list' property
         $standaloneSegments = @()
         if ($appSegmentsData.PSObject.Properties.Name -contains 'list') {
-            Write-Log "Detected paginated format with 'list' property" -Level "DEBUG"
+            Write-LogMessage "Detected paginated format with 'list' property" -Level "DEBUG"
             $standaloneSegments = $appSegmentsData.list
             if ($appSegmentsData.PSObject.Properties.Name -contains 'totalCount') {
-                Write-Log "Total count from API: $($appSegmentsData.totalCount)" -Level "DEBUG"
+                Write-LogMessage "Total count from API: $($appSegmentsData.totalCount)" -Level "DEBUG"
             }
         } elseif ($appSegmentsData -is [array]) {
-            Write-Log "Detected direct array format" -Level "DEBUG"
+            Write-LogMessage "Detected direct array format" -Level "DEBUG"
             $standaloneSegments = $appSegmentsData
         } else {
-            Write-Log "Unknown JSON format. Expected either an array or object with 'list' property" -Level "ERROR"
+            Write-LogMessage "Unknown JSON format. Expected either an array or object with 'list' property" -Level "ERROR"
             throw "Unknown JSON format in application segments file"
         }
         
         if ($null -eq $standaloneSegments -or $standaloneSegments.Count -eq 0) {
-            Write-Log "No application segments found in the JSON data" -Level "ERROR"
+            Write-LogMessage "No application segments found in the JSON data" -Level "ERROR"
             throw "No application segments found"
         }
         
-        Write-Log "Loaded $($standaloneSegments.Count) standalone application segments" -Level "INFO"
+        Write-LogMessage "Loaded $($standaloneSegments.Count) standalone application segments" -Level "INFO"
         
         # Load segment groups if provided
         $segmentGroupSegments = @()
@@ -704,7 +642,7 @@ function Import-ApplicationSegments {
         return $mergeResult
     }
     catch {
-        Write-Log "Error loading application segments: $_" -Level "ERROR"
+        Write-LogMessage "Error loading application segments: $_" -Level "ERROR"
         throw
     }
 }
@@ -716,10 +654,10 @@ function Import-AccessPolicies {
     )
     
     try {
-        Write-Log "Loading ZPA access policies from: $FilePath" -Level "INFO"
+        Write-LogMessage "Loading ZPA access policies from: $FilePath" -Level "INFO"
         
         if (-not (Test-Path $FilePath)) {
-            Write-Log "Access policies file not found: $FilePath" -Level "DEBUG"
+            Write-LogMessage "Access policies file not found: $FilePath" -Level "DEBUG"
             return $null
         }
         
@@ -727,36 +665,36 @@ function Import-AccessPolicies {
         $accessPoliciesData = $accessPoliciesJson | ConvertFrom-Json -ErrorAction Stop
         
         if ($null -eq $accessPoliciesData) {
-            Write-Log "Failed to parse JSON from access policies file: $FilePath" -Level "ERROR"
+            Write-LogMessage "Failed to parse JSON from access policies file: $FilePath" -Level "ERROR"
             throw "Failed to parse access policies JSON"
         }
         
         # Handle different JSON formats: direct array or nested under 'list' property
         $accessPolicies = @()
         if ($accessPoliciesData.PSObject.Properties.Name -contains 'list') {
-            Write-Log "Detected paginated format with 'list' property in access policies" -Level "DEBUG"
+            Write-LogMessage "Detected paginated format with 'list' property in access policies" -Level "DEBUG"
             $accessPolicies = $accessPoliciesData.list
             if ($accessPoliciesData.PSObject.Properties.Name -contains 'totalPages') {
-                Write-Log "Total pages from API: $($accessPoliciesData.totalPages)" -Level "DEBUG"
+                Write-LogMessage "Total pages from API: $($accessPoliciesData.totalPages)" -Level "DEBUG"
             }
         } elseif ($accessPoliciesData -is [array]) {
-            Write-Log "Detected direct array format in access policies" -Level "DEBUG"
+            Write-LogMessage "Detected direct array format in access policies" -Level "DEBUG"
             $accessPolicies = $accessPoliciesData
         } else {
-            Write-Log "Unknown JSON format in access policies file. Expected either an array or object with 'list' property" -Level "ERROR"
+            Write-LogMessage "Unknown JSON format in access policies file. Expected either an array or object with 'list' property" -Level "ERROR"
             throw "Unknown JSON format in access policies file"
         }
         
         if ($null -eq $accessPolicies -or $accessPolicies.Count -eq 0) {
-            Write-Log "No access policies found in the JSON data" -Level "WARN"
+            Write-LogMessage "No access policies found in the JSON data" -Level "WARN"
             return @()
         }
         
-        Write-Log "Loaded $($accessPolicies.Count) access policies" -Level "INFO"
+        Write-LogMessage "Loaded $($accessPolicies.Count) access policies" -Level "INFO"
         return $accessPolicies
     }
     catch {
-        Write-Log "Error loading access policies: $_" -Level "ERROR"
+        Write-LogMessage "Error loading access policies: $_" -Level "ERROR"
         throw
     }
 }
@@ -768,10 +706,10 @@ function Import-ScimGroups {
     )
     
     try {
-        Write-Log "Loading SCIM groups from: $FilePath" -Level "INFO"
+        Write-LogMessage "Loading SCIM groups from: $FilePath" -Level "INFO"
         
         if (-not (Test-Path $FilePath)) {
-            Write-Log "SCIM groups file not found: $FilePath" -Level "DEBUG"
+            Write-LogMessage "SCIM groups file not found: $FilePath" -Level "DEBUG"
             return $null
         }
         
@@ -779,36 +717,36 @@ function Import-ScimGroups {
         $scimGroupsData = $scimGroupsJson | ConvertFrom-Json -ErrorAction Stop
         
         if ($null -eq $scimGroupsData) {
-            Write-Log "Failed to parse JSON from SCIM groups file: $FilePath" -Level "ERROR"
+            Write-LogMessage "Failed to parse JSON from SCIM groups file: $FilePath" -Level "ERROR"
             throw "Failed to parse SCIM groups JSON"
         }
         
         # Handle different JSON formats: direct array or nested under 'list' property
         $scimGroups = @()
         if ($scimGroupsData.PSObject.Properties.Name -contains 'list') {
-            Write-Log "Detected paginated format with 'list' property in SCIM groups" -Level "DEBUG"
+            Write-LogMessage "Detected paginated format with 'list' property in SCIM groups" -Level "DEBUG"
             $scimGroups = $scimGroupsData.list
             if ($scimGroupsData.PSObject.Properties.Name -contains 'totalCount') {
-                Write-Log "Total SCIM groups count from API: $($scimGroupsData.totalCount)" -Level "DEBUG"
+                Write-LogMessage "Total SCIM groups count from API: $($scimGroupsData.totalCount)" -Level "DEBUG"
             }
         } elseif ($scimGroupsData -is [array]) {
-            Write-Log "Detected direct array format in SCIM groups" -Level "DEBUG"
+            Write-LogMessage "Detected direct array format in SCIM groups" -Level "DEBUG"
             $scimGroups = $scimGroupsData
         } else {
-            Write-Log "Unknown JSON format in SCIM groups file. Expected either an array or object with 'list' property" -Level "ERROR"
+            Write-LogMessage "Unknown JSON format in SCIM groups file. Expected either an array or object with 'list' property" -Level "ERROR"
             throw "Unknown JSON format in SCIM groups file"
         }
         
         if ($null -eq $scimGroups -or $scimGroups.Count -eq 0) {
-            Write-Log "No SCIM groups found in the JSON data" -Level "WARN"
+            Write-LogMessage "No SCIM groups found in the JSON data" -Level "WARN"
             return @()
         }
         
-        Write-Log "Loaded $($scimGroups.Count) SCIM groups" -Level "INFO"
+        Write-LogMessage "Loaded $($scimGroups.Count) SCIM groups" -Level "INFO"
         return $scimGroups
     }
     catch {
-        Write-Log "Error loading SCIM groups: $_" -Level "ERROR"
+        Write-LogMessage "Error loading SCIM groups: $_" -Level "ERROR"
         throw
     }
 }
@@ -822,32 +760,32 @@ function Test-ValidAccessPolicy {
     try {
         # Check policyType == "1" (Access Policy)
         if ($Policy.PSObject.Properties.Name -notcontains 'policyType' -or $Policy.policyType -ne "1") {
-            Write-Log "  Policy '$($Policy.name)' skipped: policyType is not '1' (got: $($Policy.policyType))" -Level "DEBUG"
+            Write-LogMessage "  Policy '$($Policy.name)' skipped: policyType is not '1' (got: $($Policy.policyType))" -Level "DEBUG"
             return $false
         }
         
         # Check action == "ALLOW"
         if ($Policy.PSObject.Properties.Name -notcontains 'action' -or $Policy.action -ne "ALLOW") {
-            Write-Log "  Policy '$($Policy.name)' skipped: action is not 'ALLOW' (got: $($Policy.action))" -Level "DEBUG"
+            Write-LogMessage "  Policy '$($Policy.name)' skipped: action is not 'ALLOW' (got: $($Policy.action))" -Level "DEBUG"
             return $false
         }
         
         # Check root operator == "AND"
         if ($Policy.PSObject.Properties.Name -notcontains 'operator' -or $Policy.operator -ne "AND") {
-            Write-Log "  Policy '$($Policy.name)' skipped: root operator is not 'AND' (got: $($Policy.operator))" -Level "DEBUG"
+            Write-LogMessage "  Policy '$($Policy.name)' skipped: root operator is not 'AND' (got: $($Policy.operator))" -Level "DEBUG"
             return $false
         }
         
         # Check has conditions
         if ($Policy.PSObject.Properties.Name -notcontains 'conditions' -or $null -eq $Policy.conditions -or $Policy.conditions.Count -eq 0) {
-            Write-Log "  Policy '$($Policy.name)' skipped: no conditions found" -Level "DEBUG"
+            Write-LogMessage "  Policy '$($Policy.name)' skipped: no conditions found" -Level "DEBUG"
             return $false
         }
         
         # Check for negated conditions
         foreach ($condition in $Policy.conditions) {
             if ($condition.PSObject.Properties.Name -contains 'negated' -and $condition.negated -eq $true) {
-                Write-Log "  Policy '$($Policy.name)' skipped: contains negated conditions" -Level "DEBUG"
+                Write-LogMessage "  Policy '$($Policy.name)' skipped: contains negated conditions" -Level "DEBUG"
                 return $false
             }
         }
@@ -868,7 +806,7 @@ function Test-ValidAccessPolicy {
         }
         
         if (-not $hasAppTarget) {
-            Write-Log "  Policy '$($Policy.name)' skipped: no APP or APP_GROUP targets found" -Level "DEBUG"
+            Write-LogMessage "  Policy '$($Policy.name)' skipped: no APP or APP_GROUP targets found" -Level "DEBUG"
             return $false
         }
         
@@ -896,14 +834,14 @@ function Test-ValidAccessPolicy {
         }
         
         if (-not ($hasScimGroup -or $hasScimUser)) {
-            Write-Log "  Policy '$($Policy.name)' skipped: no SCIM_GROUP or SCIM username conditions found" -Level "DEBUG"
+            Write-LogMessage "  Policy '$($Policy.name)' skipped: no SCIM_GROUP or SCIM username conditions found" -Level "DEBUG"
             return $false
         }
         
         return $true
     }
     catch {
-        Write-Log "Error validating policy '$($Policy.name)': $_" -Level "WARN"
+        Write-LogMessage "Error validating policy '$($Policy.name)': $_" -Level "WARN"
         return $false
     }
 }
@@ -930,11 +868,11 @@ function Get-AppTargetsFromPolicy {
                     if ($operand.PSObject.Properties.Name -contains 'objectType') {
                         if ($operand.objectType -eq "APP" -and $operand.PSObject.Properties.Name -contains 'rhs') {
                             $appIds += $operand.rhs.ToString()
-                            Write-Log "    Found APP target: $($operand.rhs) ($($operand.name))" -Level "DEBUG"
+                            Write-LogMessage "    Found APP target: $($operand.rhs) ($($operand.name))" -Level "DEBUG"
                         }
                         elseif ($operand.objectType -eq "APP_GROUP" -and $operand.PSObject.Properties.Name -contains 'rhs') {
                             $appGroupIds += $operand.rhs.ToString()
-                            Write-Log "    Found APP_GROUP target: $($operand.rhs) ($($operand.name))" -Level "DEBUG"
+                            Write-LogMessage "    Found APP_GROUP target: $($operand.rhs) ($($operand.name))" -Level "DEBUG"
                         }
                     }
                 }
@@ -948,7 +886,7 @@ function Get-AppTargetsFromPolicy {
         }
     }
     catch {
-        Write-Log "Error extracting app targets from policy '$($Policy.name)': $_" -Level "WARN"
+        Write-LogMessage "Error extracting app targets from policy '$($Policy.name)': $_" -Level "WARN"
         return @{ AppIds = @(); AppGroupIds = @() }
     }
 }
@@ -1000,7 +938,7 @@ function Get-ScimAccessFromPolicy {
                                 $usernames += $operand.rhs.Trim()
                             }
                             else {
-                                Write-Log "    Found SCIM username operand with empty/null username in policy $($Policy.id)" -Level "WARN"
+                                Write-LogMessage "    Found SCIM username operand with empty/null username in policy $($Policy.id)" -Level "WARN"
                                 $invalidUsernameCount++
                             }
                         }
@@ -1016,7 +954,7 @@ function Get-ScimAccessFromPolicy {
         }
     }
     catch {
-        Write-Log "Error extracting SCIM access operands from policy '$($Policy.name)': $_" -Level "WARN"
+        Write-LogMessage "Error extracting SCIM access operands from policy '$($Policy.name)': $_" -Level "WARN"
         return @{
             ScimGroupIds = @()
             Usernames = @()
@@ -1041,17 +979,17 @@ function Expand-AppGroupToApps {
             if ($SegmentGroupMembership.ContainsKey($appGroupId)) {
                 $memberAppIds = @($SegmentGroupMembership[$appGroupId])
                 $expandedAppIds += $memberAppIds
-                Write-Log "    Expanded APP_GROUP $appGroupId to $($memberAppIds.Count) APPs" -Level "DEBUG"
+                Write-LogMessage "    Expanded APP_GROUP $appGroupId to $($memberAppIds.Count) APPs" -Level "DEBUG"
             }
             else {
-                Write-Log "    APP_GROUP $appGroupId not found in segment group membership" -Level "WARN"
+                Write-LogMessage "    APP_GROUP $appGroupId not found in segment group membership" -Level "WARN"
             }
         }
         
         return @($expandedAppIds | Select-Object -Unique)
     }
     catch {
-        Write-Log "Error expanding APP_GROUP to APPs: $_" -Level "WARN"
+        Write-LogMessage "Error expanding APP_GROUP to APPs: $_" -Level "WARN"
         return @()
     }
 }
@@ -1099,8 +1037,8 @@ function Build-AppToScimAccessLookup {
     )
 
     try {
-        Write-Log "" -Level "INFO"
-        Write-Log "=== LOADING ACCESS POLICY DATA ===" -Level "INFO"
+        Write-LogMessage "" -Level "INFO"
+        Write-LogMessage "=== LOADING ACCESS POLICY DATA ===" -Level "INFO"
 
         $invalidUsernameCount = 0
 
@@ -1110,7 +1048,7 @@ function Build-AppToScimAccessLookup {
             $scimGroups = Import-ScimGroups -FilePath $ScimGroupPath
         }
         catch {
-            Write-Log "Failed to load SCIM groups: $_" -Level "ERROR"
+            Write-LogMessage "Failed to load SCIM groups: $_" -Level "ERROR"
             throw
         }
 
@@ -1120,35 +1058,35 @@ function Build-AppToScimAccessLookup {
             $accessPolicies = Import-AccessPolicies -FilePath $AccessPolicyPath
         }
         catch {
-            Write-Log "Failed to load access policies: $_" -Level "ERROR"
+            Write-LogMessage "Failed to load access policies: $_" -Level "ERROR"
             throw
         }
 
         # Step 3: Validate Prerequisites
         if ($null -eq $scimGroups -or $null -eq $accessPolicies) {
-            Write-Log "Access policy files not provided or not found. Using placeholder values for EntraGroups and EntraUsers." -Level "INFO"
+            Write-LogMessage "Access policy files not provided or not found. Using placeholder values for EntraGroups and EntraUsers." -Level "INFO"
             return $null
         }
 
         if ($scimGroups.Count -eq 0 -or $accessPolicies.Count -eq 0) {
-            Write-Log "Access policy files are empty. Using placeholder values for EntraGroups and EntraUsers." -Level "WARN"
+            Write-LogMessage "Access policy files are empty. Using placeholder values for EntraGroups and EntraUsers." -Level "WARN"
             return $null
         }
 
         # Build SCIM group lookup: ID -> Name
-        Write-Log "" -Level "INFO"
+        Write-LogMessage "" -Level "INFO"
         $scimGroupLookup = @{}
         foreach ($group in $scimGroups) {
             if ($group.PSObject.Properties.Name -contains 'id' -and $group.PSObject.Properties.Name -contains 'name') {
                 $scimGroupLookup[$group.id.ToString()] = $group.name
             }
         }
-        Write-Log "Built SCIM group lookup with $($scimGroupLookup.Count) groups" -Level "DEBUG"
+        Write-LogMessage "Built SCIM group lookup with $($scimGroupLookup.Count) groups" -Level "DEBUG"
 
         # Step 4 & 5: Filter and Process Policies
-        Write-Log "" -Level "INFO"
-        Write-Log "=== PROCESSING ACCESS POLICIES ===" -Level "INFO"
-        Write-Log "Processing $($accessPolicies.Count) access policies..." -Level "INFO"
+        Write-LogMessage "" -Level "INFO"
+        Write-LogMessage "=== PROCESSING ACCESS POLICIES ===" -Level "INFO"
+        Write-LogMessage "Processing $($accessPolicies.Count) access policies..." -Level "INFO"
 
         $validPolicies = @()
         $skipReasons = @{
@@ -1165,7 +1103,7 @@ function Build-AppToScimAccessLookup {
             try {
                 if (Test-ValidAccessPolicy -Policy $policy) {
                     $validPolicies += $policy
-                    Write-Log "  Valid policy: $($policy.name) (ID: $($policy.id))" -Level "DEBUG"
+                    Write-LogMessage "  Valid policy: $($policy.name) (ID: $($policy.id))" -Level "DEBUG"
                 }
                 else {
                     if ($policy.PSObject.Properties.Name -notcontains 'policyType' -or $policy.policyType -ne "1") {
@@ -1223,21 +1161,21 @@ function Build-AppToScimAccessLookup {
             }
             catch {
                 $skipReasons['Malformed']++
-                Write-Log "  Malformed policy (ID: $($policy.id)): $_" -Level "DEBUG"
+                Write-LogMessage "  Malformed policy (ID: $($policy.id)): $_" -Level "DEBUG"
             }
         }
 
-        Write-Log "  Valid policies: $($validPolicies.Count)" -Level "INFO"
-        Write-Log "  Skipped policies: $($accessPolicies.Count - $validPolicies.Count)" -Level "INFO"
+        Write-LogMessage "  Valid policies: $($validPolicies.Count)" -Level "INFO"
+        Write-LogMessage "  Skipped policies: $($accessPolicies.Count - $validPolicies.Count)" -Level "INFO"
         foreach ($reason in $skipReasons.Keys | Sort-Object) {
             if ($skipReasons[$reason] -gt 0) {
-                Write-Log "    - ${reason}: $($skipReasons[$reason])" -Level "INFO"
+                Write-LogMessage "    - ${reason}: $($skipReasons[$reason])" -Level "INFO"
             }
         }
 
         # Step 5b & 5c & 5d: Extract targets, expand APP_GROUPs, build mappings
-        Write-Log "" -Level "INFO"
-        Write-Log "Expanding APP_GROUP targets using segment group membership..." -Level "INFO"
+        Write-LogMessage "" -Level "INFO"
+        Write-LogMessage "Expanding APP_GROUP targets using segment group membership..." -Level "INFO"
 
         $appToScimAccessLookup = @{}
         $totalDirectApps = 0
@@ -1248,7 +1186,7 @@ function Build-AppToScimAccessLookup {
 
         foreach ($policy in $validPolicies) {
             try {
-                Write-Log "  Processing policy: $($policy.name) (ID: $($policy.id))" -Level "DEBUG"
+                Write-LogMessage "  Processing policy: $($policy.name) (ID: $($policy.id))" -Level "DEBUG"
 
                 # Get APP and APP_GROUP targets
                 $targets = Get-AppTargetsFromPolicy -Policy $policy
@@ -1275,7 +1213,7 @@ function Build-AppToScimAccessLookup {
                 $allAppIds = @(($directAppIds + $expandedAppIds) | Select-Object -Unique)
 
                 if ($allAppIds.Count -eq 0) {
-                    Write-Log "    No APP targets resolved for policy '$($policy.name)'" -Level "DEBUG"
+                    Write-LogMessage "    No APP targets resolved for policy '$($policy.name)'" -Level "DEBUG"
                     continue
                 }
 
@@ -1288,10 +1226,10 @@ function Build-AppToScimAccessLookup {
                     if ($scimGroupLookup.ContainsKey($groupId)) {
                         $groupName = $scimGroupLookup[$groupId]
                         $resolvedGroupNames += $groupName
-                        Write-Log "    Found SCIM_GROUP: $groupId -> $groupName" -Level "DEBUG"
+                        Write-LogMessage "    Found SCIM_GROUP: $groupId -> $groupName" -Level "DEBUG"
                     }
                     else {
-                        Write-Log "    SCIM_GROUP ID $groupId not found in SCIM groups lookup" -Level "WARN"
+                        Write-LogMessage "    SCIM_GROUP ID $groupId not found in SCIM groups lookup" -Level "WARN"
                         if ($scimGroupsNotFound -notcontains $groupId) {
                             $scimGroupsNotFound += $groupId
                         }
@@ -1301,7 +1239,7 @@ function Build-AppToScimAccessLookup {
                 $usernames = @($scimAccess.Usernames)
 
                 if ($resolvedGroupNames.Count -eq 0 -and $usernames.Count -eq 0) {
-                    Write-Log "    No SCIM groups or usernames extracted for policy '$($policy.name)'" -Level "DEBUG"
+                    Write-LogMessage "    No SCIM groups or usernames extracted for policy '$($policy.name)'" -Level "DEBUG"
                     continue
                 }
 
@@ -1323,7 +1261,7 @@ function Build-AppToScimAccessLookup {
                 }
             }
             catch {
-                Write-Log "  Error processing policy '$($policy.name)': $_" -Level "WARN"
+                Write-LogMessage "  Error processing policy '$($policy.name)': $_" -Level "WARN"
                 continue
             }
         }
@@ -1373,41 +1311,41 @@ function Build-AppToScimAccessLookup {
         $totalUniqueUsernames = $globalUserLookup.Count
 
         # Step 7: Summary Logging
-        Write-Log "  Total APP targets (direct): $totalDirectApps" -Level "INFO"
-        Write-Log "  Total APP_GROUP targets: $totalAppGroups" -Level "INFO"
-        Write-Log "  APP_GROUPs expanded to: $totalExpandedFromAppGroups APPs" -Level "INFO"
-        Write-Log "  Total unique APPs with access policies: $($appToScimAccessLookup.Count)" -Level "INFO"
-        Write-Log "  APPs with group-based access: $appsWithGroupAccess" -Level "INFO"
-        Write-Log "  APPs with user-based access: $appsWithUserAccess" -Level "INFO"
-        Write-Log "  APPs with both groups and users: $appsWithBothAccess" -Level "INFO"
-        Write-Log "  Total unique usernames found: $totalUniqueUsernames" -Level "INFO"
+        Write-LogMessage "  Total APP targets (direct): $totalDirectApps" -Level "INFO"
+        Write-LogMessage "  Total APP_GROUP targets: $totalAppGroups" -Level "INFO"
+        Write-LogMessage "  APP_GROUPs expanded to: $totalExpandedFromAppGroups APPs" -Level "INFO"
+        Write-LogMessage "  Total unique APPs with access policies: $($appToScimAccessLookup.Count)" -Level "INFO"
+        Write-LogMessage "  APPs with group-based access: $appsWithGroupAccess" -Level "INFO"
+        Write-LogMessage "  APPs with user-based access: $appsWithUserAccess" -Level "INFO"
+        Write-LogMessage "  APPs with both groups and users: $appsWithBothAccess" -Level "INFO"
+        Write-LogMessage "  Total unique usernames found: $totalUniqueUsernames" -Level "INFO"
 
         if ($scimGroupsNotFound.Count -gt 0 -or $appGroupsNotFound -gt 0 -or $invalidUsernameCount -gt 0) {
-            Write-Log "  Warnings:" -Level "INFO"
+            Write-LogMessage "  Warnings:" -Level "INFO"
 
             if ($scimGroupsNotFound.Count -gt 0) {
-                Write-Log "    - SCIM Groups not found: $($scimGroupsNotFound.Count) (IDs logged below)" -Level "INFO"
+                Write-LogMessage "    - SCIM Groups not found: $($scimGroupsNotFound.Count) (IDs logged below)" -Level "INFO"
                 foreach ($missingGroupId in $scimGroupsNotFound | Sort-Object) {
-                    Write-Log "      Missing SCIM group ID: $missingGroupId" -Level "WARN"
+                    Write-LogMessage "      Missing SCIM group ID: $missingGroupId" -Level "WARN"
                 }
             }
 
             if ($appGroupsNotFound -gt 0) {
-                Write-Log "    - APP_GROUPs not found in segment groups: $appGroupsNotFound" -Level "INFO"
+                Write-LogMessage "    - APP_GROUPs not found in segment groups: $appGroupsNotFound" -Level "INFO"
             }
 
             if ($invalidUsernameCount -gt 0) {
-                Write-Log "    - Invalid/empty usernames skipped: $invalidUsernameCount" -Level "INFO"
+                Write-LogMessage "    - Invalid/empty usernames skipped: $invalidUsernameCount" -Level "INFO"
             }
         }
 
-        Write-Log "" -Level "INFO"
-        Write-Log "Access policy lookup built successfully" -Level "INFO"
+        Write-LogMessage "" -Level "INFO"
+        Write-LogMessage "Access policy lookup built successfully" -Level "INFO"
 
         return $appToScimAccessLookup
     }
     catch {
-        Write-Log "Error building APP to SCIM access lookup: $_" -Level "ERROR"
+        Write-LogMessage "Error building APP to SCIM access lookup: $_" -Level "ERROR"
         return $null
     }
 }
@@ -1417,39 +1355,39 @@ function Build-AppToScimAccessLookup {
 #region Main Script Logic
 
 try {
-    Write-Log "Starting ZPA to GSA conversion function" -Level "INFO"
-    Write-Log "Function version: 1.0" -Level "INFO"
-    Write-Log "Parameters:" -Level "INFO"
-    Write-Log "  AppSegmentPath: $AppSegmentPath" -Level "INFO"
-    Write-Log "  OutputBasePath: $OutputBasePath" -Level "INFO"
+    Write-LogMessage "Starting ZPA to GSA conversion function" -Level "INFO"
+    Write-LogMessage "Function version: 1.0" -Level "INFO"
+    Write-LogMessage "Parameters:" -Level "INFO"
+    Write-LogMessage "  AppSegmentPath: $AppSegmentPath" -Level "INFO"
+    Write-LogMessage "  OutputBasePath: $OutputBasePath" -Level "INFO"
     if (-not [string]::IsNullOrEmpty($SegmentGroupPath)) {
-        Write-Log "  SegmentGroupPath: $SegmentGroupPath" -Level "INFO"
+        Write-LogMessage "  SegmentGroupPath: $SegmentGroupPath" -Level "INFO"
     }
-    Write-Log "  AccessPolicyPath: $AccessPolicyPath" -Level "INFO"
-    Write-Log "  ScimGroupPath: $ScimGroupPath" -Level "INFO"
+    Write-LogMessage "  AccessPolicyPath: $AccessPolicyPath" -Level "INFO"
+    Write-LogMessage "  ScimGroupPath: $ScimGroupPath" -Level "INFO"
     
     if ($EnableDebugLogging) {
-        Write-Log "  EnableDebugLogging: True" -Level "INFO"
+        Write-LogMessage "  EnableDebugLogging: True" -Level "INFO"
     }
     
     if ($TargetAppSegmentName) {
-        Write-Log "Target segment name: $TargetAppSegmentName" -Level "INFO"
+        Write-LogMessage "Target segment name: $TargetAppSegmentName" -Level "INFO"
     }
     
     if ($AppSegmentNamePattern) {
-        Write-Log "Segment name pattern: $AppSegmentNamePattern" -Level "INFO"
+        Write-LogMessage "Segment name pattern: $AppSegmentNamePattern" -Level "INFO"
     }
     
     if ($SkipAppSegmentName) {
-        Write-Log "Skip segment names: $SkipAppSegmentName" -Level "INFO"
+        Write-LogMessage "Skip segment names: $SkipAppSegmentName" -Level "INFO"
     }
     
     if ($SkipAppSegmentNamePattern) {
-        Write-Log "Skip segment patterns: $SkipAppSegmentNamePattern" -Level "INFO"
+        Write-LogMessage "Skip segment patterns: $SkipAppSegmentNamePattern" -Level "INFO"
     }
     
     if ($SegmentGroupPath) {
-        Write-Log "Segment groups file: $SegmentGroupPath" -Level "INFO"
+        Write-LogMessage "Segment groups file: $SegmentGroupPath" -Level "INFO"
     }
     
     #region Data Loading Phase
@@ -1460,7 +1398,7 @@ try {
         $segmentGroupMembership = $loadResult.SegmentGroupMembership
     }
     catch {
-        Write-Log "Error loading application segments: $_" -Level "ERROR"
+        Write-LogMessage "Error loading application segments: $_" -Level "ERROR"
         throw
     }
     
@@ -1488,7 +1426,7 @@ try {
         }
     }
     catch {
-        Write-Log "Failed to build access policy lookup. Using placeholder values. Error: $_" -Level "WARN"
+        Write-LogMessage "Failed to build access policy lookup. Using placeholder values. Error: $_" -Level "WARN"
         $appToScimAccessLookup = $null
     }
     #endregion
@@ -1499,7 +1437,7 @@ try {
     
     # Apply skip filters first (exact name)
     if ($SkipAppSegmentName) {
-        Write-Log "Applying skip exact name filter: $SkipAppSegmentName" -Level "INFO"
+        Write-LogMessage "Applying skip exact name filter: $SkipAppSegmentName" -Level "INFO"
         $skipNames = $SkipAppSegmentName.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
         $beforeSkipCount = $filteredSegments.Count
         $filteredSegments = $filteredSegments | Where-Object { 
@@ -1508,19 +1446,19 @@ try {
             foreach ($skipName in $skipNames) {
                 if ($segmentName -eq $skipName) {
                     $shouldSkip = $true
-                    Write-Log "  Skipping segment: $segmentName (exact match: $skipName)" -Level "DEBUG"
+                    Write-LogMessage "  Skipping segment: $segmentName (exact match: $skipName)" -Level "DEBUG"
                     break
                 }
             }
             return -not $shouldSkip
         }
         $skippedCount = $beforeSkipCount - $filteredSegments.Count
-        Write-Log "Segments after skip exact name filter: $($filteredSegments.Count) (skipped: $skippedCount)" -Level "INFO"
+        Write-LogMessage "Segments after skip exact name filter: $($filteredSegments.Count) (skipped: $skippedCount)" -Level "INFO"
     }
     
     # Apply skip filters (pattern)
     if ($SkipAppSegmentNamePattern) {
-        Write-Log "Applying skip pattern filter: $SkipAppSegmentNamePattern" -Level "INFO"
+        Write-LogMessage "Applying skip pattern filter: $SkipAppSegmentNamePattern" -Level "INFO"
         $skipPatterns = $SkipAppSegmentNamePattern.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
         $beforeSkipCount = $filteredSegments.Count
         $filteredSegments = $filteredSegments | Where-Object { 
@@ -1529,34 +1467,34 @@ try {
             foreach ($skipPattern in $skipPatterns) {
                 if (Test-WildcardMatch -Pattern $skipPattern -Text $segmentName) {
                     $shouldSkip = $true
-                    Write-Log "  Skipping segment: $segmentName (pattern match: $skipPattern)" -Level "DEBUG"
+                    Write-LogMessage "  Skipping segment: $segmentName (pattern match: $skipPattern)" -Level "DEBUG"
                     break
                 }
             }
             return -not $shouldSkip
         }
         $skippedCount = $beforeSkipCount - $filteredSegments.Count
-        Write-Log "Segments after skip pattern filter: $($filteredSegments.Count) (skipped: $skippedCount)" -Level "INFO"
+        Write-LogMessage "Segments after skip pattern filter: $($filteredSegments.Count) (skipped: $skippedCount)" -Level "INFO"
     }
     
     # Apply exact name filter
     if ($TargetAppSegmentName) {
-        Write-Log "Applying exact name filter: $TargetAppSegmentName" -Level "INFO"
+        Write-LogMessage "Applying exact name filter: $TargetAppSegmentName" -Level "INFO"
         $filteredSegments = $filteredSegments | Where-Object { $_.name -eq $TargetAppSegmentName }
-        Write-Log "Segments after exact name filter: $($filteredSegments.Count)" -Level "INFO"
+        Write-LogMessage "Segments after exact name filter: $($filteredSegments.Count)" -Level "INFO"
     }
     
     # Apply pattern filter
     if ($AppSegmentNamePattern) {
-        Write-Log "Applying pattern filter: $AppSegmentNamePattern" -Level "INFO"
+        Write-LogMessage "Applying pattern filter: $AppSegmentNamePattern" -Level "INFO"
         $filteredSegments = $filteredSegments | Where-Object { Test-WildcardMatch -Pattern $AppSegmentNamePattern -Text $_.name }
-        Write-Log "Segments after pattern filter: $($filteredSegments.Count)" -Level "INFO"
+        Write-LogMessage "Segments after pattern filter: $($filteredSegments.Count)" -Level "INFO"
     }
     
-    Write-Log "Processing $($filteredSegments.Count) of $originalCount total segments" -Level "INFO"
+    Write-LogMessage "Processing $($filteredSegments.Count) of $originalCount total segments" -Level "INFO"
     
     if ($filteredSegments.Count -eq 0) {
-        Write-Log "No segments remain after filtering. Returning empty result." -Level "WARN"
+        Write-LogMessage "No segments remain after filtering. Returning empty result." -Level "WARN"
         return @()
     }
     #endregion
@@ -1573,7 +1511,7 @@ try {
     #endregion
     
     #region Main Processing Phase
-    Write-Log "Starting main processing phase" -Level "INFO"
+    Write-LogMessage "Starting main processing phase" -Level "INFO"
     
     foreach ($segment in $filteredSegments) {
         $processedCount++
@@ -1581,7 +1519,7 @@ try {
         Write-Progress -Activity "Processing ZPA Segments" -Status "Processing segment $processedCount of $($filteredSegments.Count) ($progressPercent%)" -PercentComplete $progressPercent
         
         try {
-            Write-Log "Processing segment: $($segment.name) ($($segment.domainNames.Count) domains)" -Level "DEBUG"
+            Write-LogMessage "Processing segment: $($segment.name) ($($segment.domainNames.Count) domains)" -Level "DEBUG"
             
             # Create enterprise app name
             $enterpriseAppName = "GSA-$($segment.name)"
@@ -1599,7 +1537,7 @@ try {
             
             # Validate segment has required properties
             if (-not $segment.domainNames -or $segment.domainNames.Count -eq 0) {
-                Write-Log "Segment '$($segment.name)' has no domain names. Skipping." -Level "WARN"
+                Write-LogMessage "Segment '$($segment.name)' has no domain names. Skipping." -Level "WARN"
                 continue
             }
             
@@ -1616,7 +1554,7 @@ try {
                         
                         # Validate port ranges
                         if ($fromPort -lt 1 -or $fromPort -gt 65535 -or $toPort -lt 1 -or $toPort -gt 65535) {
-                            Write-Log "Invalid TCP port range in segment '$($segment.name)': $fromPort-$toPort" -Level "ERROR"
+                            Write-LogMessage "Invalid TCP port range in segment '$($segment.name)': $fromPort-$toPort" -Level "ERROR"
                             throw "Invalid port range"
                         }
                         
@@ -1627,7 +1565,7 @@ try {
                         }
                     }
                     catch {
-                        Write-Log "Error processing TCP port range for segment '$($segment.name)': $_" -Level "ERROR"
+                        Write-LogMessage "Error processing TCP port range for segment '$($segment.name)': $_" -Level "ERROR"
                         # Skip entire segment if any port is invalid
                         break
                     }
@@ -1643,7 +1581,7 @@ try {
                         
                         # Validate port ranges
                         if ($fromPort -lt 1 -or $fromPort -gt 65535 -or $toPort -lt 1 -or $toPort -gt 65535) {
-                            Write-Log "Invalid UDP port range in segment '$($segment.name)': $fromPort-$toPort" -Level "ERROR"
+                            Write-LogMessage "Invalid UDP port range in segment '$($segment.name)': $fromPort-$toPort" -Level "ERROR"
                             throw "Invalid port range"
                         }
                         
@@ -1654,7 +1592,7 @@ try {
                         }
                     }
                     catch {
-                        Write-Log "Error processing UDP port range for segment '$($segment.name)': $_" -Level "ERROR"
+                        Write-LogMessage "Error processing UDP port range for segment '$($segment.name)': $_" -Level "ERROR"
                         # Skip entire segment if any port is invalid
                         break
                     }
@@ -1663,11 +1601,11 @@ try {
             
             # Skip segment if no port configuration
             if ($tcpPorts.Count -eq 0 -and $udpPorts.Count -eq 0) {
-                Write-Log "Segment '$($segment.name)' has no valid port configuration. Skipping." -Level "WARN"
+                Write-LogMessage "Segment '$($segment.name)' has no valid port configuration. Skipping." -Level "WARN"
                 continue
             }
             
-            Write-Log "Processing $($segment.domainNames.Count) domains with $($tcpPorts.Count) TCP and $($udpPorts.Count) UDP port ranges" -Level "DEBUG"
+            Write-LogMessage "Processing $($segment.domainNames.Count) domains with $($tcpPorts.Count) TCP and $($udpPorts.Count) UDP port ranges" -Level "DEBUG"
             
             # Process each domain
             $domainCount = 0
@@ -1676,7 +1614,7 @@ try {
                 
                 # Show progress for segments with many domains (>10)
                 if ($segment.domainNames.Count -gt 10 -and $domainCount % 5 -eq 0) {
-                    Write-Log "  Processed $domainCount/$($segment.domainNames.Count) domains in segment '$($segment.name)'" -Level "DEBUG"
+                    Write-LogMessage "  Processed $domainCount/$($segment.domainNames.Count) domains in segment '$($segment.name)'" -Level "DEBUG"
                 }
                 
                 try {
@@ -1687,7 +1625,7 @@ try {
                     if ($destinationType -eq "ipRangeCidr") {
                         $cidrRange = Convert-CIDRToRange -CIDR $cleanDomain
                         if ($null -eq $cidrRange) {
-                            Write-Log "Invalid CIDR format in segment '$($segment.name)': $cleanDomain. Skipping entire segment." -Level "ERROR"
+                            Write-LogMessage "Invalid CIDR format in segment '$($segment.name)': $cleanDomain. Skipping entire segment." -Level "ERROR"
                             break
                         }
                     }
@@ -1722,7 +1660,7 @@ try {
                         
                         # Show progress for domains with many port combinations (>20)
                         if ($totalCombos -gt 20 -and $comboCount % 10 -eq 0) {
-                            Write-Log "    Processing combo $comboCount/$totalCombos for domain '$cleanDomain'" -Level "DEBUG"
+                            Write-LogMessage "    Processing combo $comboCount/$totalCombos for domain '$cleanDomain'" -Level "DEBUG"
                         }
                         
                         # Check for conflicts using GSA-style detection
@@ -1758,7 +1696,7 @@ try {
                                                     $existingAppInfo = $protocolData[$combo.Protocol][$existingPort]
                                                     $conflictReference = "$($existingAppInfo.Name):$($existingAppInfo.SegmentId)"
                                                     $conflictingApps += $conflictReference
-                                                    Write-Log "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with existing app: $conflictReference" -Level "WARN"
+                                                    Write-LogMessage "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with existing app: $conflictReference" -Level "WARN"
                                                 }
                                             }
                                         }
@@ -1784,7 +1722,7 @@ try {
                                             $existingAppInfo = $hostToProtocolToPorts[$cleanDomain][$combo.Protocol][$existingPort]
                                             $conflictReference = "$($existingAppInfo.Name):$($existingAppInfo.SegmentId)"
                                             $conflictingApps += $conflictReference
-                                            Write-Log "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with existing app: $conflictReference" -Level "WARN"
+                                            Write-LogMessage "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with existing app: $conflictReference" -Level "WARN"
                                         }
                                     }
                                 }
@@ -1801,7 +1739,7 @@ try {
                                                 $existingAppInfo = $suffixData[$combo.Protocol][$existingPort]
                                                 $conflictReference = "$($existingAppInfo.Name):$($existingAppInfo.SegmentId)"
                                                 $conflictingApps += $conflictReference
-                                                Write-Log "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with wildcard app: $conflictReference (pattern: $suffix)" -Level "WARN"
+                                                Write-LogMessage "Conflict detected: ${cleanDomain}:$($combo.Port):$($combo.Protocol) conflicts with wildcard app: $conflictReference (pattern: $suffix)" -Level "WARN"
                                             }
                                         }
                                     }
@@ -1881,20 +1819,20 @@ try {
                     }
                 }
                 catch {
-                    Write-Log "Error processing domain '$domain' in segment '$($segment.name)': $_" -Level "ERROR"
+                    Write-LogMessage "Error processing domain '$domain' in segment '$($segment.name)': $_" -Level "ERROR"
                     continue
                 }
             }
         }
         catch {
-            Write-Log "Error processing segment '$($segment.name)': $_" -Level "ERROR"
+            Write-LogMessage "Error processing segment '$($segment.name)': $_" -Level "ERROR"
             continue
         }
         
         # Log completion for segments with many results
         $segmentResults = $allResults | Where-Object { $_.OriginalAppName -eq $segment.name }
         if ($segmentResults.Count -gt 50) {
-            Write-Log "Completed segment '$($segment.name)' - generated $($segmentResults.Count) result records" -Level "DEBUG"
+            Write-LogMessage "Completed segment '$($segment.name)' - generated $($segmentResults.Count) result records" -Level "DEBUG"
         }
     }
     
@@ -1947,7 +1885,7 @@ try {
     #endregion
     
     #region Data Grouping and Deduplication
-    Write-Log "Performing data grouping and deduplication" -Level "INFO"
+    Write-LogMessage "Performing data grouping and deduplication" -Level "INFO"
     
     $groupedResults = $allResults | Group-Object -Property EnterpriseAppName, destinationHost, DestinationType, Protocol, SegmentGroup, ServerGroups, Conflict, ConflictingEnterpriseApp | ForEach-Object {
         $group = $_.Group
@@ -1977,7 +1915,7 @@ try {
     #endregion
     
     #region Export Results
-    Write-Log "Exporting results to CSV file" -Level "INFO"
+    Write-LogMessage "Exporting results to CSV file" -Level "INFO"
     
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
     $outputFileName = "${timestamp}_GSA_EnterpriseApps_All.csv"
@@ -1986,62 +1924,62 @@ try {
     $exportSuccess = Export-DataToFile -Data $groupedResults -FilePath $outputFilePath -Format "CSV"
     
     if ($exportSuccess) {
-        Write-Log "Results exported successfully to: $outputFilePath" -Level "INFO"
+        Write-LogMessage "Results exported successfully to: $outputFilePath" -Level "INFO"
     } else {
-        Write-Log "Failed to export results" -Level "ERROR"
+        Write-LogMessage "Failed to export results" -Level "ERROR"
     }
     #endregion
     
     #region Statistics and Summary
-    Write-Log "" -Level "INFO"
-    Write-Log "=== CONVERSION SUMMARY ===" -Level "INFO"
-    Write-Log "Total segments loaded: $originalCount" -Level "INFO"
+    Write-LogMessage "" -Level "INFO"
+    Write-LogMessage "=== CONVERSION SUMMARY ===" -Level "INFO"
+    Write-LogMessage "Total segments loaded: $originalCount" -Level "INFO"
     if (-not [string]::IsNullOrEmpty($SegmentGroupPath)) {
-        Write-Log "  Standalone segments file: $($loadingStats.TotalFromStandalone) segments" -Level "INFO"
-        Write-Log "  Segment groups file: $($loadingStats.TotalFromSegmentGroups) segments" -Level "INFO"
-        Write-Log "  Unique from standalone: $($loadingStats.UniqueFromStandalone)" -Level "INFO"
-        Write-Log "  Unique from segment groups: $($loadingStats.UniqueFromSegmentGroups)" -Level "INFO"
-        Write-Log "  Duplicates removed: $($loadingStats.DuplicatesRemoved)" -Level "INFO"
+        Write-LogMessage "  Standalone segments file: $($loadingStats.TotalFromStandalone) segments" -Level "INFO"
+        Write-LogMessage "  Segment groups file: $($loadingStats.TotalFromSegmentGroups) segments" -Level "INFO"
+        Write-LogMessage "  Unique from standalone: $($loadingStats.UniqueFromStandalone)" -Level "INFO"
+        Write-LogMessage "  Unique from segment groups: $($loadingStats.UniqueFromSegmentGroups)" -Level "INFO"
+        Write-LogMessage "  Duplicates removed: $($loadingStats.DuplicatesRemoved)" -Level "INFO"
     }
-    Write-Log "Segments processed: $($filteredSegments.Count)" -Level "INFO"
-    Write-Log "Total result records: $($allResults.Count)" -Level "INFO"
-    Write-Log "Grouped result records: $($groupedResults.Count)" -Level "INFO"
-    Write-Log "Conflicts detected: $conflictCount" -Level "INFO"
-    Write-Log "" -Level "INFO"
+    Write-LogMessage "Segments processed: $($filteredSegments.Count)" -Level "INFO"
+    Write-LogMessage "Total result records: $($allResults.Count)" -Level "INFO"
+    Write-LogMessage "Grouped result records: $($groupedResults.Count)" -Level "INFO"
+    Write-LogMessage "Conflicts detected: $conflictCount" -Level "INFO"
+    Write-LogMessage "" -Level "INFO"
     
     # Access Policy Integration Summary
     if ($accessPolicyStats.FilesProvided) {
-        Write-Log "Access Policy Integration:" -Level "INFO"
-        Write-Log "  Access policy files: Provided" -Level "INFO"
-        Write-Log "  APPs with assigned groups: $($accessPolicyStats.AppsWithGroups) ($(if ($filteredSegments.Count -gt 0) { [math]::Round(($accessPolicyStats.AppsWithGroups / $filteredSegments.Count) * 100, 1) } else { 0 })%)" -Level "INFO"
-        Write-Log "  APPs with assigned users: $($accessPolicyStats.AppsWithUsers) ($(if ($filteredSegments.Count -gt 0) { [math]::Round(($accessPolicyStats.AppsWithUsers / $filteredSegments.Count) * 100, 1) } else { 0 })%)" -Level "INFO"
-        Write-Log "  APPs with both groups and users: $($accessPolicyStats.AppsWithBoth) ($(if ($filteredSegments.Count -gt 0) { [math]::Round(($accessPolicyStats.AppsWithBoth / $filteredSegments.Count) * 100, 1) } else { 0 })%)" -Level "INFO"
-        Write-Log "  APPs without access policies: $($accessPolicyStats.AppsWithoutPolicies) ($(if ($filteredSegments.Count -gt 0) { [math]::Round(($accessPolicyStats.AppsWithoutPolicies / $filteredSegments.Count) * 100, 1) } else { 0 })%)" -Level "INFO"
-        Write-Log "  APPs using placeholder: 0 (0.0%)" -Level "INFO"
-        Write-Log "  Total unique users across all policies: $($accessPolicyStats.TotalUniqueUsers)" -Level "INFO"
+        Write-LogMessage "Access Policy Integration:" -Level "INFO"
+        Write-LogMessage "  Access policy files: Provided" -Level "INFO"
+        Write-LogMessage "  APPs with assigned groups: $($accessPolicyStats.AppsWithGroups) ($(if ($filteredSegments.Count -gt 0) { [math]::Round(($accessPolicyStats.AppsWithGroups / $filteredSegments.Count) * 100, 1) } else { 0 })%)" -Level "INFO"
+        Write-LogMessage "  APPs with assigned users: $($accessPolicyStats.AppsWithUsers) ($(if ($filteredSegments.Count -gt 0) { [math]::Round(($accessPolicyStats.AppsWithUsers / $filteredSegments.Count) * 100, 1) } else { 0 })%)" -Level "INFO"
+        Write-LogMessage "  APPs with both groups and users: $($accessPolicyStats.AppsWithBoth) ($(if ($filteredSegments.Count -gt 0) { [math]::Round(($accessPolicyStats.AppsWithBoth / $filteredSegments.Count) * 100, 1) } else { 0 })%)" -Level "INFO"
+        Write-LogMessage "  APPs without access policies: $($accessPolicyStats.AppsWithoutPolicies) ($(if ($filteredSegments.Count -gt 0) { [math]::Round(($accessPolicyStats.AppsWithoutPolicies / $filteredSegments.Count) * 100, 1) } else { 0 })%)" -Level "INFO"
+        Write-LogMessage "  APPs using placeholder: 0 (0.0%)" -Level "INFO"
+        Write-LogMessage "  Total unique users across all policies: $($accessPolicyStats.TotalUniqueUsers)" -Level "INFO"
     } else {
-        Write-Log "Access Policy Integration:" -Level "INFO"
-        Write-Log "  Access policy files: Not provided" -Level "INFO"
-        Write-Log "  All APPs using placeholder: $($accessPolicyStats.AppsUsingPlaceholder) (100.0%)" -Level "INFO"
-        Write-Log "  No user assignments: $($accessPolicyStats.AppsUsingPlaceholder) (100.0%)" -Level "INFO"
+        Write-LogMessage "Access Policy Integration:" -Level "INFO"
+        Write-LogMessage "  Access policy files: Not provided" -Level "INFO"
+        Write-LogMessage "  All APPs using placeholder: $($accessPolicyStats.AppsUsingPlaceholder) (100.0%)" -Level "INFO"
+        Write-LogMessage "  No user assignments: $($accessPolicyStats.AppsUsingPlaceholder) (100.0%)" -Level "INFO"
     }
-    Write-Log "" -Level "INFO"
-    Write-Log "Output file: $outputFilePath" -Level "INFO"
-    Write-Log "" -Level "INFO"
-    Write-Log "=== NEXT STEPS ===" -Level "INFO"
-    Write-Log "1. Review the exported CSV file for accuracy" -Level "INFO"
-    Write-Log "2. Replace all 'Placeholder_Replace_Me' values with actual values:" -Level "INFO"
-    Write-Log "   - EntraGroups: Set appropriate Entra ID group names (if not auto-populated)" -Level "INFO"
-    Write-Log "   - ConnectorGroup: Set appropriate connector group names" -Level "INFO"
-    Write-Log "3. Review and resolve any conflicts identified in the 'Conflict' column" -Level "INFO"
-    Write-Log "4. Import the completed data into Global Secure Access" -Level "INFO"
-    Write-Log "" -Level "INFO"
+    Write-LogMessage "" -Level "INFO"
+    Write-LogMessage "Output file: $outputFilePath" -Level "INFO"
+    Write-LogMessage "" -Level "INFO"
+    Write-LogMessage "=== NEXT STEPS ===" -Level "INFO"
+    Write-LogMessage "1. Review the exported CSV file for accuracy" -Level "INFO"
+    Write-LogMessage "2. Replace all 'Placeholder_Replace_Me' values with actual values:" -Level "INFO"
+    Write-LogMessage "   - EntraGroups: Set appropriate Entra ID group names (if not auto-populated)" -Level "INFO"
+    Write-LogMessage "   - ConnectorGroup: Set appropriate connector group names" -Level "INFO"
+    Write-LogMessage "3. Review and resolve any conflicts identified in the 'Conflict' column" -Level "INFO"
+    Write-LogMessage "4. Import the completed data into Global Secure Access" -Level "INFO"
+    Write-LogMessage "" -Level "INFO"
     
     if ($conflictCount -gt 0) {
-        Write-Log "WARNING: $conflictCount conflicts were detected. Please review the 'ConflictingEnterpriseApp' column for details." -Level "WARN"
+        Write-LogMessage "WARNING: $conflictCount conflicts were detected. Please review the 'ConflictingEnterpriseApp' column for details." -Level "WARN"
     }
     
-    Write-Log "Function completed successfully!" -Level "INFO"
+    Write-LogMessage "Function completed successfully!" -Level "INFO"
     #endregion
     
     # Return the grouped results only if PassThru is specified
@@ -2050,8 +1988,8 @@ try {
     }
 }
 catch {
-    Write-Log "Fatal error in function execution: $_" -Level "ERROR"
-    Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level "ERROR"
+    Write-LogMessage "Fatal error in function execution: $_" -Level "ERROR"
+    Write-LogMessage "Stack trace: $($_.ScriptStackTrace)" -Level "ERROR"
     throw
 }
 
