@@ -26,6 +26,18 @@ The script automatically exports the following ZPA configurations:
 - **SCIM Groups** - User group mappings from all configured identity providers
 - **Machine Groups** - Device-based access groupings
 
+### ZPA API key
+ZPA API access keys are required to utilise this function to export ZPA configuration. Browse to Public API on you ZScaler portal and obtain the following information:
+
+- ClientId
+- ClientSecret (only displayed when creating new keys, make sure you store the secret securely)
+- CustomerId
+- BaseUrl - The script uses config.private.zscaler.com as default. Check this ZScaler article to find the correct Base URL https://help.zscaler.com/zpa/what-my-cloud-name-zpa. From ZScaler documentation: "If an organization logs in to admin.private.zscaler.com, then the ZPA API Portal for that organization’s cloud name is config.private.zscaler.com. If an organization logs in to zpatwo.net, then the ZPA API Portal for that organization’s cloud name is config.zpatwo.net."
+
+ZPA Portal:
+![alt text](ZPAAPI.png)
+
+
 ### Security Features
 
 - **SecureString Protection**: Client secrets are encrypted in memory and never visible in command history
