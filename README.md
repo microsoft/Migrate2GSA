@@ -23,6 +23,15 @@ If you have a migration project and need assistance with the migration tools, or
    - Download the repository as a ZIP file from GitHub
    - Extract to your desired location
 
+### Prerequisites
+
+This module requires **PowerShell 7 or later**. If you don't have PowerShell 7 installed, please visit the [PowerShell installation guide](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell?view=powershell-7.5) for instructions.
+
+To check your PowerShell version:
+```powershell
+$PSVersionTable.PSVersion
+```
+
 ### Import the Module
 
 Once you have the module files locally, you can import the module using one of these methods:
