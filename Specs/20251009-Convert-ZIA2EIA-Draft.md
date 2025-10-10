@@ -1,5 +1,6 @@
 Similar to Convert-ZPA2EPA.ps1, we need to build Convert-ZIA2EIA.ps1 to import ZScaler Internet Access configuration and transform to Entra Internet Access configuration.
 
+> SUPER DRAFT Version :) manually crafted, no AI involved.
 
 ## ZScaler Internet Access input configuration files
 
@@ -331,19 +332,82 @@ Key information to parse and filter:
 
 
 ## Conversion
-### url filtering rules
-- If no users or groups are defined we should set EntraGroups to "All-IA-Users"
+
+
 
 
 ### url categories
 
 #### custom categories ("customCategory": true)
-filter IP addresses (log the fact that the url category had IP addresses that were skipped, not each IP address)
-combine and deduplicate urls and dbCategorizedUrls
-group urls that share the same domain, for example "endor.org" and "moon.endor.org" should be grouped together
 
+- filter IP addresses (log the fact that the url category had IP addresses that were skipped, not each IP address)
+- combine and deduplicate urls and dbCategorizedUrls
+- split the list into urls (include a slash like www.domain.com/news) and fqdns (www.domain.com)
+- group fqdn that share the same domain, for example "endor.org" and "moon.endor.org" should be grouped together.
+- group urls that share the same domain, for example "endor.org/ewoks" and "moon.endor.org/forest" should be grouped together.
+- Denormalize each custom category
 
 Conversion output
 File: Timestamp-EIA-WCF-Policies.csv
 Fields:
-ZIAConfiguredName (configuredName)
+WCFName = configuredName, fallback to id
+Action = Allow / Block (to be updated as part of url filtering rule conversion)
+Description = description
+DestinationType = FQDN / URL / webCategory
+Destinations = one group of FQDN or URL. Comma-separated. Each FQDN or URL group should be below a limit of characters. Make the limit (destinationsMaxLength) configurable, default of 100.
+RuleName = FQDNs[x] where x is the number of the group type
+
+
+Example
+This ZIA custom web category
+  {
+    "id": "CUSTOM_10",
+    "configuredName": "Custom Web Cat",
+    "urls": [
+      "secure.okbiz.com",
+      ".marketo.com",
+      "facebook.com",
+      "google.com/news",
+      "secure.domain.com/notsosecure",
+      ""
+    ]
+    ,
+    "dbCategorizedUrls": [
+      "secure.okbiz.com",
+      ".marketo.com",
+      "chat.remote.com",
+      ".marketdesigner.com",
+      "www.yahoo.com/finance",
+      "secure.domain.com/supersecure"
+    ],
+    "Description": "some description",
+    "customCategory": true,
+    "editable": true,
+    "type": "URL_CATEGORY",
+    "val": 137
+  }
+
+becomes:
+WCFName, Action, Description, DestinationType, Destinations, RuleName
+"Custom Web Cat","", "some desription", "FQDN", ""secure.okbiz.com",".marketo.com","facebook.com","chat.remote.com",".marketdesigner.com"", "FQDN1"
+"Custom Web Cat","", "some desription", "URL", ""secure.domain.com/notsosecure","www.yahoo.com/finance","secure.domain.com/supersecure"", "URLs1"
+
+
+
+### url filtering rules
+- If no users or groups are defined we should set EntraGroups to "All-IA-Users"
+- Denormalize each url filtering rule
+- If the rule action is block, then update all the WCFNames (web content filtering policies) that are linked to the filtering rule Action to Block, same for Allow.
+- If further url filtering rules also target the same WCFName and the WCFName has already been set to either Allow or Block by a previous reference, duplicate the WCFName, append -block or -allow to the name and set action as appropriate.
+
+Conversion output:
+File: Timestamp-EIA-SecurityProfiles.csv
+Fields:
+SPName = Name
+Priority = Order*10
+EntraGroups = Groups
+EntraUsers = Users
+WCFLinks = a comma-separated list of WCFName
+Description = Description
+
+
