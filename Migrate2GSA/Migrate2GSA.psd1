@@ -7,7 +7,10 @@ RootModule = 'Migrate2GSA.psm1'
 ModuleVersion = '1.0.0'
 
 # Supported PSEditions
-# CompatiblePSEditions = @()
+CompatiblePSEditions = @('Core')
+
+# Minimum version of the PowerShell engine required by this module
+PowerShellVersion = '7.0'
 
 # ID used to uniquely identify this module
 GUID = '4ad47b80-d4c3-45ee-aa77-948aead8be61'
@@ -23,9 +26,6 @@ Copyright = ''
 
 # Description of the functionality provided by this module
 Description = 'Tooling to migrate to GSA'
-
-# Minimum version of the PowerShell engine required by this module
-# PowerShellVersion = ''
 
 # Name of the PowerShell host required by this module
 # PowerShellHostName = ''
