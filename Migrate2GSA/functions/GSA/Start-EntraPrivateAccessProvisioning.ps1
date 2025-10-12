@@ -1182,15 +1182,8 @@ function Invoke-ProvisioningProcess {
         # Validate Entra authentication
         Test-EntraConnection
         
-        # Send script execution as a custom header for reporting
-        $customHeaderParams = @{
-            Command = 'Provision-EntraPrivateAccessConfig'
-        }
-        if ($DebugPreference -eq 'Continue') {
-            $customHeaderParams['Debug'] = $true
-        }
-        $customHeaders = New-EntraBetaCustomHeaders @customHeaderParams
-        $null = Invoke-GraphRequest -Method GET -Headers $customHeaders -OutputType PSObject -Uri "/beta/networkAccess/tenantStatus"
+        # Check tenant
+        $null = Invoke-InternalGraphRequest -Uri "/beta/networkAccess/tenantStatus"
 
         # Import and validate configuration
         $configData = Import-ProvisioningConfig -ConfigPath $ProvisioningConfigPath -AppFilter $AppNamePrefix -ConnectorFilter $ConnectorGroupFilter
