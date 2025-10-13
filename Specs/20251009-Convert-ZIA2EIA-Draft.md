@@ -330,19 +330,34 @@ Key information to parse and filter:
 - dbCategorizedUrls
 - description
 
+## ZIA2EIA-CategoryMappings.json
+Schema / example:
+``` json
+{
+  "LastUpdated": "2025-10-09",
+  "MappingData": [
+    {
+      "ZIACategory": "OTHER_ADULT_MATERIAL",
+      "ZIADescription": "Sites that contain adult-oriented content not classified elsewhere.",
+      "ExampleURLs": "www.adultfriendfinder.com, www.eroprofile.com",
+      "GSACategory": "AdultContent",
+      "MappingNotes": "Mapped based on semantic similarity"
+    }
+    ]
+}
+```
+Load all mappings.
+
 
 ## Conversion
-
-
-
 
 ### url categories
 
 #### custom categories ("customCategory": true)
 
-- filter IP addresses (log the fact that the url category had IP addresses that were skipped, not each IP address)
 - combine and deduplicate urls and dbCategorizedUrls
-- split the list into urls (include a slash like www.domain.com/news) and fqdns (www.domain.com)
+- split the list into urls (include a slash like www.domain.com/news), fqdns (www.domain.com) and ipAddresses
+- for IP addresses, filter out the ones that are not strictly just an ip address, for example 100.100.100.100/somepath should be excluded, same for 100.100.100.100:80. In INFO log the fact that the url category had IP addresses that were skipped, not each IP address. In DEBUG log each entry being filtered out.
 - group fqdn that share the same domain, for example "endor.org" and "moon.endor.org" should be grouped together.
 - group urls that share the same domain, for example "endor.org/ewoks" and "moon.endor.org/forest" should be grouped together.
 - Denormalize each custom category
@@ -353,9 +368,9 @@ Fields:
 WCFName = configuredName, fallback to id
 Action = Allow / Block (to be updated as part of url filtering rule conversion)
 Description = description
-DestinationType = FQDN / URL / webCategory
-Destinations = one group of FQDN or URL. Comma-separated. Each FQDN or URL group should be below a limit of characters. Make the limit (destinationsMaxLength) configurable, default of 100.
-RuleName = FQDNs[x] where x is the number of the group type
+DestinationType = FQDN / URL / webCategory / ipAddress
+Destinations = one group of FQDN, URL or ipAddress. Comma-separated. Each group should be below a limit of characters. Make the limit (destinationsMaxLength) configurable, default of 300 characters.
+RuleName = FQDNs[x] where x is the number of the group type, same for URL and IPs
 
 
 Example
@@ -394,11 +409,17 @@ WCFName, Action, Description, DestinationType, Destinations, RuleName
 
 
 
+
+
 ### url filtering rules
-- If no users or groups are defined we should set EntraGroups to "All-IA-Users"
-- Denormalize each url filtering rule
+- url filtering rules can have: non custom url categories (ZIACategory), IP addresses, URLs and FQDNs. All these should be parsed and converted as per below.
+- non custom url categories, we should look up each entry in the CategoryMappings ZIACategory, if we find a match get the GSACategory. Log in INFO if a GSACategory doesn't exist (null, blank). Group them and create an entry in the Web Categories. See example below.
+
 - If the rule action is block, then update all the WCFNames (web content filtering policies) that are linked to the filtering rule Action to Block, same for Allow.
 - If further url filtering rules also target the same WCFName and the WCFName has already been set to either Allow or Block by a previous reference, duplicate the WCFName, append -block or -allow to the name and set action as appropriate.
+- Denormalize each url filtering rule
+- If no users or groups are defined we should set EntraGroups to "All-IA-Users"
+
 
 Conversion output:
 File: Timestamp-EIA-SecurityProfiles.csv
@@ -411,3 +432,42 @@ WCFLinks = a comma-separated list of WCFName
 Description = Description
 
 
+Example url filtering rule with only non custom web categories:
+``` json
+{
+    "id": 12345,
+    "accessControl": "READ_WRITE",
+    "name": "urlRule1",
+    "order": 14,
+    "urlCategories": [
+      "OTHER_RELIGION",
+      "NEWLY_REG_DOMAINS"
+    ],
+    "state": "ENABLED",
+    "rank": 7,
+    "action": "BLOCK"
+  }
+  ```
+Example ZIA2EIA category mapping:
+``` json
+{[
+  {
+      "ZIACategory": "OTHER_RELIGION",
+      "ZIADescription": "Other sites related to religion that is not classified in the defined categories.",
+      "ExampleURLs": "stmarkstn.org, qcforjesus.com",
+      "GSACategory": "Religion",
+      "MappingNotes": "Mapped based on semantic similarity"
+    },
+      {
+      "ZIACategory": "NEWLY_REG_DOMAINS",
+      "ZIADescription": "Sites whose domains were created in the last 30 days and are currently not categorized by Zscaler. This category also includes domains that we encounter for the first time. Domains under this category are considered suspicious until they are categorized or better understood by Zscaler.",
+      "ExampleURLs": null,
+      "GSACategory": "NewDomains",
+      "MappingNotes": "No direct mapping found"
+    }
+]
+}
+
+This should be converted to:
+WCFName, Action, Description, DestinationType, Destinations, RuleName
+"urlRule1-WebCategories-Block","Block","Converted from urlRule1 categories","webCategory",""Religion","NewDomains"","WebCategories1"
