@@ -11,7 +11,7 @@
 
 ## Overview
 
-This PowerShell function converts ZScaler Internet Access (ZIA) URL filtering configuration to Microsoft Entra Internet Access (EIA) Web Content Filtering (WCF) format. The function processes URL filtering policies, custom URL categories, and predefined category mappings to generate CSV files ready for import into EIA.
+This PowerShell function converts ZScaler Internet Access (ZIA) URL filtering configuration to Microsoft Entra Internet Access (EIA) format. The function processes URL filtering policies, custom URL categories, and predefined category mappings to generate CSV files ready for import into EIA.
 
 ### Purpose
 - Transform ZIA URL filtering rules to EIA security profiles
@@ -44,15 +44,15 @@ Contains all URL filtering rules configured in ZScaler Internet Access, includin
 | Field | Type | Description | Processing Notes |
 |-------|------|-------------|------------------|
 | `id` | integer | Unique identifier for the rule | Log for reference |
-| `name` | string | Rule name | Maps to SPName in output |
-| `order` | integer | Rule priority (lower = higher) | Maps to Priority (order × 10) |
+| `name` | string | Rule name | Maps to SecurityProfileName in output |
+| `order` | integer | Rule priority (lower = higher) | Maps to SecurityProfilePriority (order × 10) |
 | `groups` | array | Group objects with `name` attribute | Extract `name` field |
 | `users` | array | User objects | Parse email from `name` field |
 | `users[].name` | string | Format: "Display Name (email@domain.com)" | Extract email portion |
 | `users[].deleted` | boolean | User deletion flag | Skip if `true` |
 | `urlCategories` | array | Category IDs (strings) | Both custom and predefined IDs |
 | `state` | string | Rule state | Only process "ENABLED" |
-| `description` | string | Rule description | Maps to Description in output |
+| `description` | string | Rule description | Maps to Security Profile Description in output |
 | `action` | string | Rule action | Values: "ALLOW", "BLOCK", "CAUTION" |
 
 #### Processing Rules
@@ -85,12 +85,12 @@ Contains all URL categories including both ZScaler predefined categories and cus
 | Field | Type | Description | Processing Notes |
 |-------|------|-------------|------------------|
 | `id` | string | Category identifier | e.g., "CUSTOM_01", "OTHER_ADULT_MATERIAL" |
-| `configuredName` | string | Custom category display name | Use for WCFName if present |
+| `configuredName` | string | Custom category display name | Use for PolicyName if present |
 | `customCategory` | boolean | True if custom category | Determines processing path |
 | `type` | string | Category type | Must be "URL_CATEGORY" |
-| `urls` | array | Array of URLs/FQDNs | Combine with dbCategorizedUrls |
-| `dbCategorizedUrls` | array | Database-categorized URLs | Combine with urls |
-| `description` | string | Category description | Maps to Description in output |
+| `urls` | array | Array of URLs/FQDNs/IP Addresses | Combine with dbCategorizedUrls |
+| `dbCategorizedUrls` | array | Array of URLs/FQDNs/IP Addresses | Combine with urls |
+| `description` | string | Category description | Maps to Web Content Filtering Description in output |
 
 #### Processing Rules
 1. **Type Filtering:** Only process entries where `type` = "URL_CATEGORY"
@@ -125,11 +125,11 @@ Provides mapping between ZScaler predefined web categories and Microsoft GSA (Gl
   "LastUpdated": "2025-10-09",
   "MappingData": [
     {
-      "ZIA Category": "OTHER_ADULT_MATERIAL",
-      "ZIA Description": "Sites that contain adult-oriented content",
-      "Example URLs": "www.example.com, www.example.org",
-      "GSA Category": "AdultContent",
-      "Mapping Notes": "Mapped based on semantic similarity"
+      "ZIACategory": "OTHER_ADULT_MATERIAL",
+      "ZIADescription": "Sites that contain adult-oriented content",
+      "ExampleURLs": "www.example.com, www.example.org",
+      "GSACategory": "AdultContent",
+      "MappingNotes": "Mapped based on semantic similarity"
     }
   ]
 }
@@ -139,21 +139,21 @@ Provides mapping between ZScaler predefined web categories and Microsoft GSA (Gl
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `ZIA Category` | string | Yes | ZIA category ID (matches `urlCategories` entries) |
-| `ZIA Description` | string | No | Category description for reference |
-| `Example URLs` | string | No | Sample URLs for documentation |
-| `GSA Category` | string | Yes | Target GSA category name |
-| `Mapping Notes` | string | No | Mapping rationale |
+| `ZIACategory` | string | Yes | ZIA category ID (matches `urlCategories` entries) |
+| `ZIADescription` | string | No | Category description for reference |
+| `ExampleURLs` | string | No | Sample URLs for documentation |
+| `GSACategory` | string | Yes | Target GSA category name |
+| `MappingNotes` | string | No | Mapping rationale |
 
 #### Processing Rules
-1. **Lookup:** For each predefined category ID, find matching `ZIA Category`
+1. **Lookup:** For each predefined category ID, find matching `ZIACategory`
 2. **Unmapped Categories:**
-   - If `GSA Category` is null, blank, or "Unmapped": use placeholder format
+   - If `GSACategory` is null, blank, or "Unmapped": use placeholder format
    - Placeholder format: `[ZIACategoryID]_Unmapped`
    - Example: `OTHER_RELIGION` → `OTHER_RELIGION_Unmapped`
    - Set `ReviewNeeded` = "Yes" in output
 3. **Mapped Categories:**
-   - Use the `GSA Category` value
+   - Use the `GSACategory` value
    - Set `ReviewNeeded` = "No" in output
 
 ---
@@ -162,25 +162,26 @@ Provides mapping between ZScaler predefined web categories and Microsoft GSA (Gl
 
 All output files are created in `$OutputBasePath` with consistent timestamp prefix.
 
-### 1. Web Content Filtering Policies CSV
-**Filename:** `[yyyyMMdd_HHmmss]_EIA_WCF_Policies.csv`
+### 1. Policies CSV
+**Filename:** `[yyyyMMdd_HHmmss]_EIA_Policies.csv`
 
 #### Description
-Contains all web content filtering policies including custom URL categories and predefined category references.
+Contains all policies including web content filtering policies for custom URL categories and predefined category references.
 
 #### Fields
 
 | Field | Description | Example | Notes |
 |-------|-------------|---------|-------|
-| WCFName | Policy name | "Custom_Web_Cat_01-Block" | Unique identifier |
-| Action | Allow or Block | "Block", "Allow" | From rules or default |
+| PolicyName | Policy name | "Custom_Web_Cat_01-Block" | Unique identifier |
+| PolicyType | Type of policy | "WebContentFiltering" | Currently only "WebContentFiltering" supported |
+| PolicyAction | Allow or Block | "Block", "Allow" | From rules or default |
 | Description | Policy description | "Custom category for dev tools" | From category or generated |
-| DestinationType | Type of destination | "FQDN", "URL", "webCategory", "ipAddress" | One type per row |
-| Destinations | Semicolon-separated list | "*.example.com;site.com;other.com" | Max 300 chars |
+| RuleType | Type of destination | "FQDN", "URL", "webCategory", "ipAddress" | One type per row |
+| RuleDestinations | Semicolon-separated list | "*.example.com;site.com;other.com" | Max 300 chars |
 | RuleName | Sub-rule identifier | "FQDNs1", "URLs2", "WebCategories1" | For grouping/splitting |
 | ReviewNeeded | Manual review flag | "Yes", "No" | "Yes" if unmapped categories |
 
-#### WCFName Format
+#### PolicyName Format
 - **Custom Categories:** 
   - Default: `[configuredName]-Block` or `[id]-Block`
   - If duplicated for Allow: `[configuredName]-Allow`
@@ -188,13 +189,13 @@ Contains all web content filtering policies including custom URL categories and 
   - Format: `[RuleName]-WebCategories-[Action]`
   - Example: `urlRule1-WebCategories-Block`
 
-#### DestinationType Values
+#### RuleType Values
 - `FQDN` - Fully qualified domain names
 - `URL` - URLs with paths or wildcards in domain
 - `webCategory` - GSA web category references
 - `ipAddress` - IP addresses (no CIDR, no ports)
 
-#### Destinations Field
+#### RuleDestinations Field
 - Semicolon-separated list of destinations
 - Character limit: 300 characters (not including quotes)
 - Commas within limit count toward total
@@ -210,18 +211,18 @@ Contains security profile definitions that reference web content filtering polic
 
 | Field | Description | Example | Notes |
 |-------|-------------|---------|-------|
-| SPName | Security profile name | "urlRule1" | From rule `name` |
-| Priority | Rule priority | "140" | `order` × 10 |
+| SecurityProfileName | Security profile name | "urlRule1" | From rule `name` |
+| SecurityProfilePriority | Rule priority | "140" | `order` × 10 |
 | EntraGroups | Semicolon-separated groups | "Group1;Group2;Group3" | From `groups[].name` |
 | EntraUsers | Semicolon-separated emails | "user1@domain.com;user2@domain.com" | Parsed from users |
-| WCFLinks | Semicolon-separated WCF names | "Custom_01-Block;urlRule1-WebCategories-Block" | References to WCF policies |
+| PolicyLinks | Semicolon-separated policy names | "Custom_01-Block;urlRule1-WebCategories-Block" | References to policies |
 | Description | Profile description | "Block adult content" | From rule `description` |
 
-#### Priority Calculation and Conflict Resolution
-1. Calculate: `Priority = order × 10`
+#### SecurityProfilePriority Calculation and Conflict Resolution
+1. Calculate: `SecurityProfilePriority = order × 10`
 2. Validate uniqueness across all rules
 3. If conflict detected:
-   - Add 1 to subsequent occurrence: `Priority + 1`
+   - Add 1 to subsequent occurrence: `SecurityProfilePriority + 1`
    - Continue checking and incrementing until unique
    - Log conflict resolution at INFO level
 
@@ -236,10 +237,10 @@ Contains security profile definitions that reference web content filtering polic
 - Join multiple groups with semicolon separator
 - If no users and no groups: "Replace_with_All_IA_Users_Group"
 
-#### WCFLinks Field
-- Semicolon-separated list of WCFName values
-- Includes custom category WCFs
-- Includes predefined category WCF (one entry for all)
+#### PolicyLinks Field
+- Semicolon-separated list of PolicyName values
+- Includes custom category policies
+- Includes predefined category policy (one entry for all)
 - Example: 3 links for rule with 2 custom + predefined categories
 
 ### 3. Log File
@@ -273,9 +274,9 @@ $logPath = Join-Path $OutputBasePath "${timestamp}_Convert-ZIA2EIA.log"
    - Fatal error if file missing or invalid
 
 #### 1.3 Build Lookup Tables
-- Create hashtable for category mappings (ZIA Category → GSA Category)
+- Create hashtable for category mappings (ZIACategory → GSACategory)
 - Create hashtable for custom categories (id → category object)
-- Initialize collections for WCF policies and security profiles
+- Initialize collections for policies and security profiles
 
 ### Phase 2: Custom Category Processing
 
@@ -293,7 +294,14 @@ For each category in url_categories:
     Process custom category
 ```
 
-#### 2.2 URL/FQDN/IP Classification Algorithm
+#### 2.2 Deduplication
+- Combine `urls` and `dbCategorizedUrls` arrays
+- Remove duplicate entries (case-insensitive comparison)
+- Log count of duplicates removed at DEBUG level
+
+**Rationale:** Deduplication is performed before classification for performance efficiency. Classifying fewer entries reduces processing time, and deduplicating raw strings is simpler than deduplicating classified objects.
+
+#### 2.3 URL/FQDN/IP Classification Algorithm
 
 **Classification Order (sequential checks):**
 
@@ -327,11 +335,6 @@ For each category in url_categories:
    - No path, no wildcard (or wildcard at start): `FQDN`
    - Example: `contoso.com` → FQDN
 
-#### 2.3 Deduplication
-- Combine `urls` and `dbCategorizedUrls` arrays
-- Remove duplicate entries (case-insensitive comparison)
-- Log count of duplicates removed at DEBUG level
-
 #### 2.4 Grouping by Base Domain
 
 **Purpose:** Optimize number of rules by grouping related FQDNs/URLs together while respecting character limits.
@@ -351,7 +354,7 @@ For each destination type (FQDN, URL, ipAddress):
         If > 300 characters:
             Split into multiple sub-groups
             Respect individual entry boundaries (no truncation)
-        Create WCF entry for each sub-group
+        Create policy entry for each sub-group
 ```
 
 #### 2.5 Character Limit Splitting
@@ -367,7 +370,7 @@ groupNumber = 1
 For each entry in group:
     entryLength = entry.Length
     If currentLength + entryLength + 1 > 300:  // +1 for semicolon
-        Create WCF entry with currentGroup
+        Create policy entry with currentGroup
         RuleName = "{base}-{type}{groupNumber}"
         groupNumber++
         currentGroup = [entry]
@@ -376,24 +379,25 @@ For each entry in group:
         currentGroup.Add(entry)
         currentLength += entryLength + 1  // +1 for semicolon
 
-Create WCF entry with remaining currentGroup
+Create policy entry with remaining currentGroup
 ```
 
 **RuleName Format:**
 - First group: `FQDNs1`, `URLs1`, `IPs1`, `WebCategories1`
 - Subsequent: `FQDNs1-2`, `FQDNs1-3`, etc.
 
-#### 2.6 WCF Entry Creation (Custom Categories)
+#### 2.6 Policy Entry Creation (Custom Categories)
 
 For each custom category and destination type:
 
 ```powershell
-$wcfEntry = @{
-    WCFName = "$configuredName-Block"  # or "$id-Block" if no configuredName
-    Action = "Block"                    # Default action
+$policyEntry = @{
+    PolicyName = "$configuredName-Block"  # or "$id-Block" if no configuredName
+    PolicyType = "WebContentFiltering"
+    PolicyAction = "Block"                    # Default action
     Description = $category.description
-    DestinationType = "FQDN" | "URL" | "ipAddress"
-    Destinations = "entry1;entry2;entry3"  # semicolon-separated
+    RuleType = "FQDN" | "URL" | "ipAddress"
+    RuleDestinations = "entry1;entry2;entry3"  # semicolon-separated
     RuleName = "FQDNs1" | "URLs1" | "IPs1"
     ReviewNeeded = "No"
 }
@@ -462,33 +466,33 @@ foreach ($categoryId in $rule.urlCategories) {
 }
 ```
 
-#### 3.4 WCF Action Update (Custom Categories)
+#### 3.4 Policy Action Update (Custom Categories)
 
 For each custom category referenced by the rule:
 
 ```
-Lookup existing WCF entry for custom category
+Lookup existing policy entry for custom category
 
 If rule.action == "BLOCK":
-    Use existing WCF (already set to Block)
+    Use existing policy (already set to Block)
     
 If rule.action == "ALLOW":
-    Check if WCF with "-Allow" suffix exists
+    Check if policy with "-Allow" suffix exists
     If not exists:
-        Duplicate the WCF entry
-        Change WCFName to append "-Allow"
-        Change Action to "Allow"
-        Add to WCF collection
+        Duplicate the policy entry
+        Change PolicyName to append "-Allow"
+        Change PolicyAction to "Allow"
+        Add to policy collection
     Use the "-Allow" version
 ```
 
 **Example:**
 - Custom category: "CUSTOM_01"
-- Initial WCF: "CUSTOM_01-Block" (Action: Block)
+- Initial policy: "CUSTOM_01-Block" (PolicyAction: Block)
 - Rule1 (Block) references CUSTOM_01 → uses "CUSTOM_01-Block"
 - Rule2 (Allow) references CUSTOM_01 → creates "CUSTOM_01-Allow", uses it
 
-#### 3.5 WCF Creation (Predefined Categories)
+#### 3.5 Policy Creation (Predefined Categories)
 
 If rule references predefined categories:
 
@@ -500,56 +504,57 @@ foreach ($categoryId in $predefinedCategoryRefs) {
     $mapping = $categoryMappingsHashtable[$categoryId]
     
     if ($null -eq $mapping -or 
-        [string]::IsNullOrWhiteSpace($mapping.'GSA Category') -or
-        $mapping.'GSA Category' -eq 'Unmapped') {
+        [string]::IsNullOrWhiteSpace($mapping.GSACategory) -or
+        $mapping.GSACategory -eq 'Unmapped') {
         
         $mappedCategories += "${categoryId}_Unmapped"
         $hasUnmapped = $true
         Write-LogMessage "Unmapped category: $categoryId" -Level "INFO"
     }
     else {
-        $mappedCategories += $mapping.'GSA Category'
+        $mappedCategories += $mapping.GSACategory
     }
 }
 
-$wcfEntry = @{
-    WCFName = "$($rule.name)-WebCategories-$($rule.action.Substring(0,1) + $rule.action.Substring(1).ToLower())"
-    Action = if ($rule.action -eq "ALLOW") { "Allow" } else { "Block" }
+$policyEntry = @{
+    PolicyName = "$($rule.name)-WebCategories-$($rule.action.Substring(0,1) + $rule.action.Substring(1).ToLower())"
+    PolicyType = "WebContentFiltering"
+    PolicyAction = if ($rule.action -eq "ALLOW") { "Allow" } else { "Block" }
     Description = "Converted from $($rule.name) categories"
-    DestinationType = "webCategory"
-    Destinations = $mappedCategories -join ";"
+    RuleType = "webCategory"
+    RuleDestinations = $mappedCategories -join ";"
     RuleName = "WebCategories1"
     ReviewNeeded = if ($hasUnmapped) { "Yes" } else { "No" }
 }
 ```
 
-**WCFName Examples:**
+**PolicyName Examples:**
 - Rule "urlRule1" with action "BLOCK" → "urlRule1-WebCategories-Block"
 - Rule "urlRule2" with action "ALLOW" → "urlRule2-WebCategories-Allow"
 
 #### 3.6 Security Profile Creation
 
 ```powershell
-$wfcLinks = @()
+$policyLinks = @()
 
-# Add custom category WCF references
+# Add custom category policy references
 foreach ($customCatId in $customCategoryRefs) {
-    $wcfName = Get-CustomCategoryWCFName $customCatId $rule.action
-    $wfcLinks += $wcfName
+    $policyName = Get-CustomCategoryPolicyName $customCatId $rule.action
+    $policyLinks += $policyName
 }
 
-# Add predefined category WCF reference (if any)
+# Add predefined category policy reference (if any)
 if ($predefinedCategoryRefs.Count -gt 0) {
-    $wcfName = "$($rule.name)-WebCategories-$($rule.action)"
-    $wfcLinks += $wcfName
+    $policyName = "$($rule.name)-WebCategories-$($rule.action)"
+    $policyLinks += $policyName
 }
 
 $securityProfile = @{
-    SPName = $rule.name
-    Priority = $rule.order * 10
+    SecurityProfileName = $rule.name
+    SecurityProfilePriority = $rule.order * 10
     EntraGroups = $groups -join ";"
     EntraUsers = $validUsers -join ";"
-    WCFLinks = $wfcLinks -join ";"
+    PolicyLinks = $policyLinks -join ";"
     Description = $rule.description
 }
 ```
@@ -560,23 +565,23 @@ $securityProfile = @{
 $priorityTracker = @{}
 
 foreach ($profile in $securityProfiles) {
-    $originalPriority = $profile.Priority
+    $originalPriority = $profile.SecurityProfilePriority
     
-    while ($priorityTracker.ContainsKey($profile.Priority)) {
-        Write-LogMessage "Priority conflict at $($profile.Priority), incrementing" -Level "INFO"
-        $profile.Priority++
+    while ($priorityTracker.ContainsKey($profile.SecurityProfilePriority)) {
+        Write-LogMessage "Priority conflict at $($profile.SecurityProfilePriority), incrementing" -Level "INFO"
+        $profile.SecurityProfilePriority++
     }
     
-    $priorityTracker[$profile.Priority] = $profile.SPName
+    $priorityTracker[$profile.SecurityProfilePriority] = $profile.SecurityProfileName
 }
 ```
 
 ### Phase 4: Export and Summary
 
-#### 4.1 Export WCF Policies CSV
+#### 4.1 Export Policies CSV
 ```powershell
-$wcfPolicies | Export-Csv -Path $wcfCsvPath -NoTypeInformation
-Write-LogMessage "Exported $($wcfPolicies.Count) WCF policies to: $wcfCsvPath" -Level "INFO"
+$policies | Export-Csv -Path $policiesCsvPath -NoTypeInformation
+Write-LogMessage "Exported $($policies.Count) policies to: $policiesCsvPath" -Level "INFO"
 ```
 
 #### 4.2 Export Security Profiles CSV
@@ -600,9 +605,9 @@ Custom categories skipped (empty): B
 Predefined categories referenced: C
 Unmapped predefined categories: D
 
-WCF policies created: E
-  - Custom category WCFs: E1
-  - Predefined category WCFs: E2
+Policies created: E
+  - Custom category policies: E1
+  - Predefined category policies: E2
 Security profiles created: F
 
 URLs classified: U
@@ -613,7 +618,7 @@ Groups created from splitting: G
 Priority conflicts resolved: P
 
 Output files:
-  - WCF Policies: [path]
+  - Policies: [path]
   - Security Profiles: [path]
   - Log File: [path]
 ```
@@ -640,7 +645,7 @@ None (all have defaults)
 | UrlCategoriesPath | string | `url_categories.json` | Path to categories file |
 | CategoryMappingsPath | string | `ZIA2EIA-CategoryMappings.json` | Path to mappings file |
 | OutputBasePath | string | `$PWD` | Output directory for CSV and log files |
-| DestinationsMaxLength | int | `300` | Max characters per Destinations field |
+| DestinationsMaxLength | int | `300` | Max characters per RuleDestinations field |
 | EnableDebugLogging | switch | `false` | Enable DEBUG level logging |
 
 ### Parameters NOT Included
@@ -851,7 +856,7 @@ Write-LogMessage "Processing custom category: $categoryName" -Level "INFO" `
 
 **Usage:**
 ```powershell
-Export-DataToFile -Data $wcfPolicies -FilePath $wcfCsvPath -FileType "CSV"
+Export-DataToFile -Data $policies -FilePath $policiesCsvPath -FileType "CSV"
 ```
 
 #### 3. Test-WildcardMatch
@@ -884,7 +889,7 @@ $cleanDomain = Clear-Domain -Domain "*.example.com"
 
 | Level | Usage | Examples |
 |-------|-------|----------|
-| INFO | Major milestones, counts, file operations | "Loaded 42 rules", "Exported WCF policies" |
+| INFO | Major milestones, counts, file operations | "Loaded 42 rules", "Exported policies" |
 | WARN | Skipped items, unmapped categories, data issues | "Skipping IP with port", "Unmapped category" |
 | ERROR | Fatal errors, missing files, invalid JSON | "File not found", "Invalid JSON format" |
 | DEBUG | Individual item processing, detailed flow | "Processing rule: urlRule1", "Skipped deleted user" |
@@ -938,7 +943,7 @@ $stats = @{
     GroupsProcessed = 0
     
     # Outputs
-    WCFPoliciesCreated = 0
+    PoliciesCreated = 0
     SecurityProfilesCreated = 0
     GroupsSplitForCharLimit = 0
     PriorityConflictsResolved = 0
@@ -1015,23 +1020,25 @@ All sample files should be created in: `c:\Git\Migrate2GSAPublic\Samples\ZIA2EIA
 
 #### 3. sample_ZIA2EIA-CategoryMappings.json
 **Content:** 10-15 mappings demonstrating:
-- Mapped categories (with GSA Category)
-- Unmapped categories (GSA Category = "Unmapped")
+- Mapped categories (with GSACategory)
+- Unmapped categories (GSACategory = "Unmapped")
 - Various category types
 
-#### 4. sample_output_WCF_Policies.csv
+#### 4. sample_output_Policies.csv
 **Content:** Expected output showing:
-- Custom category WCFs
-- Predefined category WCFs
+- Custom category policies
+- Predefined category policies
+- PolicyType field with "WebContentFiltering" value
+- PolicyAction field with "Block" or "Allow" values
+- RuleType field with different destination types (FQDN, URL, webCategory, ipAddress)
 - Split rules (character limit)
-- Different destination types
 - ReviewNeeded flag examples
 
 #### 5. sample_output_SecurityProfiles.csv
 **Content:** Expected output showing:
 - Security profiles with users and groups
-- WCFLinks with multiple references
-- Priority values
+- PolicyLinks with multiple references
+- SecurityProfilePriority values
 - Default user group placeholder
 
 ### Test Scenarios to Cover
@@ -1079,9 +1086,10 @@ function Convert-ZIA2EIA {
     
     #region Phase 2: Custom Category Processing
     # Process custom categories
+    # Deduplicate URLs/FQDNs/IPs
     # Classify URLs/FQDNs/IPs
     # Group and split
-    # Create WCF entries
+    # Create policy entries
     #endregion
     
     #region Phase 3: URL Filtering Rule Processing
@@ -1121,23 +1129,23 @@ function Convert-ZIA2EIA {
 
 ### Phase 3: Custom Categories
 - [ ] Implement category filtering
-- [ ] Implement URL/FQDN/IP classification
 - [ ] Implement deduplication
+- [ ] Implement URL/FQDN/IP classification
 - [ ] Implement grouping by base domain
 - [ ] Implement character limit splitting
-- [ ] Create WCF entries
+- [ ] Create policy entries
 
 ### Phase 4: Rules Processing
 - [ ] Implement rule filtering
 - [ ] Implement user/group extraction
 - [ ] Implement category separation (custom vs predefined)
-- [ ] Implement WCF action updates
-- [ ] Implement predefined category WCF creation
+- [ ] Implement policy action updates
+- [ ] Implement predefined category policy creation
 - [ ] Implement security profile creation
 - [ ] Implement priority conflict resolution
 
 ### Phase 5: Export
-- [ ] Implement WCF CSV export
+- [ ] Implement Policies CSV export
 - [ ] Implement Security Profile CSV export
 - [ ] Implement summary statistics
 - [ ] Add progress reporting
