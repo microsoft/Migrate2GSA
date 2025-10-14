@@ -197,9 +197,9 @@ Contains all policies including web content filtering policies for custom URL ca
 
 #### RuleDestinations Field
 - Semicolon-separated list of destinations
-- Character limit: 300 characters (not including quotes)
-- Commas within limit count toward total
-- If exceeded, split into multiple rules with "-2", "-3" suffix
+- Character limit: 300 characters (not including quotes) for FQDN, URL, and ipAddress types
+- **Web categories (`webCategory` type) have NO character limit** and are never split
+- If FQDN/URL/IP limit exceeded, split into multiple rules with "-2", "-3" suffix
 
 ### 2. Security Profiles CSV
 **Filename:** `[yyyyMMdd_HHmmss]_EIA_SecurityProfiles.csv`
@@ -294,25 +294,33 @@ For each category in url_categories:
     Process custom category
 ```
 
-#### 2.2 Deduplication
+#### 2.2 Deduplication and Cleaning
 - Combine `urls` and `dbCategorizedUrls` arrays
 - Remove duplicate entries (case-insensitive comparison)
 - Log count of duplicates removed at DEBUG level
+- Call `ConvertTo-CleanDestination` on each unique entry
+- Remove entries where cleaning returns `$null`
 
-**Rationale:** Deduplication is performed before classification for performance efficiency. Classifying fewer entries reduces processing time, and deduplicating raw strings is simpler than deduplicating classified objects.
+**Rationale:** Deduplication is performed before cleaning and classification for performance efficiency. Processing fewer entries reduces execution time.
 
 #### 2.3 URL/FQDN/IP Classification Algorithm
+
+**Prerequisites:**
+- Entries must be deduplicated
+- Entries must be cleaned using `ConvertTo-CleanDestination`
+- Null entries from cleaning are already skipped
 
 **Classification Order (sequential checks):**
 
 1. **Check for Empty String**
-   - If empty or whitespace only: skip and continue
+   - If empty or whitespace only: skip and continue (should not occur after cleaning)
 
 2. **Check for IP Address**
-   - Use regex: `^(\d{1,3}\.){3}\d{1,3}$`
-   - If matches: classify as `ipAddress`
-   - If contains port (":"), path ("/"), or query ("?"): WARN and skip
-   - If IPv6 format: WARN and skip
+   - Use `Get-DestinationType` to classify as `ipv4` or `ipv6`
+   - If `ipv4`: Use `Test-ValidIPv4Address` to validate
+     - If invalid: WARN and skip
+     - If valid: classify as `ipAddress` for output
+   - If `ipv6`: WARN and skip (not supported in current version)
 
 3. **Check for Path Component**
    - If contains "/" character: classify as `URL`
@@ -325,11 +333,11 @@ For each category in url_categories:
    - If wildcard anywhere else: classify as `URL`
    - Example: `contoso*.com` → URL
 
-5. **Check for Invalid Components**
-   - If contains "http://" or "https://": WARN, strip schema, continue
-   - If contains ":" (port): WARN and skip
-   - If contains "?" (query): WARN, strip query/fragment, continue
-   - If contains "#" (fragment): WARN, strip fragment, continue
+5. **Clean Invalid Components**
+   - Call `ConvertTo-CleanDestination` BEFORE classification
+   - Function handles: schema, ports, query strings, fragments
+   - If function returns `$null`: skip entry
+   - If entry is cleaned: continue with classification
 
 6. **Default Classification**
    - No path, no wildcard (or wildcard at start): `FQDN`
@@ -343,11 +351,12 @@ For each category in url_categories:
 - Use last 2 segments of domain
 - Example: `api.internal.company.com` → base domain: `company.com`
 - Example: `www.site.com` → base domain: `site.com`
+- **Note:** IP addresses do not have base domains and are not grouped by domain
 
 **Grouping Logic:**
 
 ```
-For each destination type (FQDN, URL, ipAddress):
+For FQDNs and URLs:
     Group entries by base domain
     For each group:
         Calculate combined length (with semicolons)
@@ -355,11 +364,22 @@ For each destination type (FQDN, URL, ipAddress):
             Split into multiple sub-groups
             Respect individual entry boundaries (no truncation)
         Create policy entry for each sub-group
+
+For ipAddress:
+    Treat all IPs as a single group (no domain-based grouping)
+    Calculate combined length (with semicolons)
+    If > 300 characters:
+        Split into multiple sub-groups
+        Respect individual entry boundaries (no truncation)
+    Create policy entry for each sub-group
 ```
+
+**Note:** Web categories (`webCategory` type) are never grouped or split by character limit. All web categories for a rule are placed in a single policy entry regardless of length.
 
 #### 2.5 Character Limit Splitting
 
 **Limit:** 300 characters (excluding field quotes, including semicolons)
+**Applies to:** FQDN, URL, and ipAddress types only (NOT webCategory)
 
 **Splitting Algorithm:**
 ```
@@ -371,7 +391,7 @@ For each entry in group:
     entryLength = entry.Length
     If currentLength + entryLength + 1 > 300:  // +1 for semicolon
         Create policy entry with currentGroup
-        RuleName = "{base}-{type}{groupNumber}"
+        RuleName = "{baseDomain}" (first) or "{baseDomain}-{groupNumber}" (subsequent)
         groupNumber++
         currentGroup = [entry]
         currentLength = entryLength
@@ -383,8 +403,14 @@ Create policy entry with remaining currentGroup
 ```
 
 **RuleName Format:**
-- First group: `FQDNs1`, `URLs1`, `IPs1`, `WebCategories1`
-- Subsequent: `FQDNs1-2`, `FQDNs1-3`, etc.
+- **For FQDNs and URLs (grouped by base domain):**
+  - First group: Base domain name (e.g., `example.com`, `contoso.com`)
+  - Subsequent groups: Base domain with suffix (e.g., `example.com-2`, `example.com-3`)
+- **For IP addresses:**
+  - First group: `IPs`
+  - Subsequent groups: `IPs-2`, `IPs-3`, etc.
+- **For Web Categories:**
+  - Always: `WebCategories` (no splitting, no numeric suffix)
 
 #### 2.6 Policy Entry Creation (Custom Categories)
 
@@ -522,8 +548,8 @@ $policyEntry = @{
     PolicyAction = if ($rule.action -eq "ALLOW") { "Allow" } else { "Block" }
     Description = "Converted from $($rule.name) categories"
     RuleType = "webCategory"
-    RuleDestinations = $mappedCategories -join ";"
-    RuleName = "WebCategories1"
+    RuleDestinations = $mappedCategories -join ";"  # No character limit for web categories
+    RuleName = "WebCategories"  # Never split, no numeric suffix
     ReviewNeeded = if ($hasUnmapped) { "Yes" } else { "No" }
 }
 ```
@@ -575,6 +601,44 @@ foreach ($profile in $securityProfiles) {
     $priorityTracker[$profile.SecurityProfilePriority] = $profile.SecurityProfileName
 }
 ```
+
+#### 3.8 Cleanup Unreferenced Policies
+
+After all security profiles are created, remove custom category policies that are not referenced by any security profile:
+
+```powershell
+# Collect all policy names referenced in security profiles
+$referencedPolicies = @{}
+foreach ($profile in $securityProfiles) {
+    $policyNames = $profile.PolicyLinks -split ';'
+    foreach ($policyName in $policyNames) {
+        $referencedPolicies[$policyName] = $true
+    }
+}
+
+# Remove unreferenced custom category policies
+$policies = $policies | Where-Object {
+    # Keep predefined category policies (they're created per-rule)
+    if ($_.RuleType -eq 'webCategory') {
+        return $true
+    }
+    
+    # Keep custom category policies that are referenced
+    if ($referencedPolicies.ContainsKey($_.PolicyName)) {
+        return $true
+    }
+    
+    # Remove unreferenced custom category policy (silently)
+    return $false
+}
+```
+
+**Purpose:** Avoid creating unused "-Block" policies when the first filtering rule referencing a custom category has action "ALLOW". Phase 2 creates all custom categories with "-Block" suffix by default, but if no rule actually uses the Block version, it should be removed.
+
+**Example:**
+- Custom category "CUSTOM_01" processed in Phase 2 → creates "CUSTOM_01-Block"
+- Only rule referencing CUSTOM_01 has action "ALLOW" → creates "CUSTOM_01-Allow" in Phase 3
+- Cleanup removes "CUSTOM_01-Block" since no security profile references it
 
 ### Phase 4: Export and Summary
 
@@ -645,7 +709,6 @@ None (all have defaults)
 | UrlCategoriesPath | string | `url_categories.json` | Path to categories file |
 | CategoryMappingsPath | string | `ZIA2EIA-CategoryMappings.json` | Path to mappings file |
 | OutputBasePath | string | `$PWD` | Output directory for CSV and log files |
-| DestinationsMaxLength | int | `300` | Max characters per RuleDestinations field |
 | EnableDebugLogging | switch | `false` | Enable DEBUG level logging |
 
 ### Parameters NOT Included
@@ -656,7 +719,6 @@ None (all have defaults)
 ### Parameter Validation
 - File paths: Validate existence for input files
 - OutputBasePath: Validate directory exists
-- DestinationsMaxLength: Validate > 0
 
 ---
 
@@ -664,41 +726,44 @@ None (all have defaults)
 
 ### Functions to Create (New)
 
-#### 1. Get-UrlType
-**Purpose:** Classify entry as URL, FQDN, or IP address
+#### 1. Get-DestinationType
+**Purpose:** Classify destination entry as URL, FQDN, IPv4, or IPv6 address
+
+**Returns:** `'FQDN'`, `'URL'`, `'ipv4'`, `'ipv6'`, or `$null` (for empty/invalid entries)
 
 **Logic:**
 ```powershell
-function Get-UrlType {
-    param([string]$Entry)
+function Get-DestinationType {
+    param([string]$Destination)
     
     # Empty check
-    if ([string]::IsNullOrWhiteSpace($Entry)) { return $null }
+    if ([string]::IsNullOrWhiteSpace($Destination)) { return $null }
     
-    # IP check (IPv4 only, no CIDR/port/path)
-    if ($Entry -match '^(\d{1,3}\.){3}\d{1,3}$') { return 'ipAddress' }
-    if ($Entry -match '^(\d{1,3}\.){3}\d{1,3}[:/]') {
-        Write-LogMessage "Skipping IP with port/path: $Entry" -Level "WARN"
-        return $null
-    }
-    if ($Entry -match ':.*:') {  # IPv6 detection
-        Write-LogMessage "Skipping IPv6 address: $Entry" -Level "WARN"
-        return $null
-    }
+    # IPv4 check (basic validation)
+    if ($Destination -match '^(\d{1,3}\.){3}\d{1,3}$') { return 'ipv4' }
     
-    # Path check
-    if ($Entry -contains '/') { return 'URL' }
+    # IPv6 detection (contains multiple colons)
+    if ($Destination -match ':.*:') { return 'ipv6' }
+    
+    # Path check - URLs contain forward slash
+    if ($Destination -contains '/') { return 'URL' }
     
     # Wildcard position check
-    if ($Entry -like '*.*') {
-        if ($Entry.StartsWith('*.')) { return 'FQDN' }
-        else { return 'URL' }
+    if ($Destination -like '*.*') {
+        if ($Destination.StartsWith('*.')) { return 'FQDN' }
+        else { return 'URL' }  # Wildcard elsewhere makes it URL pattern
     }
     
-    # Default
+    # Default to FQDN
     return 'FQDN'
 }
 ```
+
+**Notes:**
+- Function performs basic type detection without validation
+- Calling code is responsible for skipping unsupported types (ipv6)
+- Use `ConvertTo-CleanDestination` before calling for best results
+- Use `Test-ValidIPv4Address` to validate IPv4 addresses before use
 
 #### 2. Get-BaseDomain
 **Purpose:** Extract base domain (last 2 segments) for grouping
@@ -726,22 +791,34 @@ function Get-BaseDomain {
 }
 ```
 
-#### 3. Test-ValidIpAddress
-**Purpose:** Validate IP address without CIDR, port, or path
+#### 3. Test-ValidIPv4Address
+**Purpose:** Validate IPv4 address format (used by calling code to decide if address should be skipped)
+
+**Returns:** `$true` if valid IPv4 address, `$false` otherwise
 
 **Logic:**
 ```powershell
-function Test-ValidIpAddress {
+function Test-ValidIPv4Address {
     param([string]$IpAddress)
     
+    # Must match IPv4 pattern
     if ($IpAddress -notmatch '^(\d{1,3}\.){3}\d{1,3}$') { return $false }
-    if ($IpAddress -contains ':') { return $false }  # Port
-    if ($IpAddress -contains '/') { return $false }  # Path
-    if ($IpAddress -match ':.*:') { return $false }  # IPv6
+    
+    # Validate each octet is 0-255
+    $octets = $IpAddress.Split('.')
+    foreach ($octet in $octets) {
+        $num = [int]$octet
+        if ($num -lt 0 -or $num -gt 255) { return $false }
+    }
     
     return $true
 }
 ```
+
+**Notes:**
+- Use after `ConvertTo-CleanDestination` has been called
+- Does not accept CIDR notation, ports, or paths
+- Calling code should log and skip invalid IPv4 addresses
 
 #### 4. Split-UserEmail
 **Purpose:** Extract email from "Display Name (email@domain.com)" format
@@ -761,7 +838,7 @@ function Split-UserEmail {
 ```
 
 #### 5. Split-ByCharacterLimit
-**Purpose:** Split destination arrays by character limit without truncating entries
+**Purpose:** Split destination arrays by character limit without truncating entries (for FQDN, URL, ipAddress only - NOT for webCategory)
 
 **Logic:**
 ```powershell
@@ -800,41 +877,80 @@ function Split-ByCharacterLimit {
 }
 ```
 
-#### 6. Remove-InvalidUrlComponents
-**Purpose:** Strip schema, port, query, and fragment from URLs
+#### 6. ConvertTo-CleanDestination
+**Purpose:** Clean and normalize destination entries by removing unsupported components (schema, port, query, fragment)
+
+**Returns:** Cleaned destination string, or `$null` if entry should be skipped
 
 **Logic:**
 ```powershell
-function Remove-InvalidUrlComponents {
-    param([string]$Url)
+function ConvertTo-CleanDestination {
+    param(
+        [string]$Destination,
+        [string]$LogPath,
+        [bool]$EnableDebugLogging
+    )
     
-    $cleaned = $Url
+    if ([string]::IsNullOrWhiteSpace($Destination)) { return $null }
     
-    # Remove schema
+    $cleaned = $Destination.Trim()
+    $modified = $false
+    
+    # Remove schema (http:// or https://)
     if ($cleaned -match '^https?://') {
-        Write-LogMessage "Removing schema from: $Url" -Level "WARN"
+        Write-LogMessage "Removing schema from: $Destination" -Level "WARN" `
+            -Component "ConvertTo-CleanDestination" -LogPath $LogPath -EnableDebugLogging $EnableDebugLogging
         $cleaned = $cleaned -replace '^https?://', ''
+        $modified = $true
     }
     
-    # Remove port
-    if ($cleaned -match ':\d+') {
-        Write-LogMessage "Removing port from: $Url" -Level "WARN"
+    # Check for IPv4 with port/path (should be skipped)
+    if ($cleaned -match '^(\d{1,3}\.){3}\d{1,3}[:/]') {
+        Write-LogMessage "Skipping IPv4 with port/path: $Destination" -Level "WARN" `
+            -Component "ConvertTo-CleanDestination" -LogPath $LogPath -EnableDebugLogging $EnableDebugLogging
+        return $null
+    }
+    
+    # Remove port (for non-IP entries)
+    if ($cleaned -match ':\d+' -and $cleaned -notmatch '^(\d{1,3}\.){3}\d{1,3}$') {
+        Write-LogMessage "Removing port from: $Destination" -Level "WARN" `
+            -Component "ConvertTo-CleanDestination" -LogPath $LogPath -EnableDebugLogging $EnableDebugLogging
         $cleaned = $cleaned -replace ':\d+', ''
+        $modified = $true
     }
     
-    # Remove query and fragment
+    # Remove query string
     if ($cleaned -contains '?') {
-        Write-LogMessage "Removing query from: $Url" -Level "WARN"
+        Write-LogMessage "Removing query string from: $Destination" -Level "WARN" `
+            -Component "ConvertTo-CleanDestination" -LogPath $LogPath -EnableDebugLogging $EnableDebugLogging
         $cleaned = $cleaned.Split('?')[0]
+        $modified = $true
     }
+    
+    # Remove fragment
     if ($cleaned -contains '#') {
-        Write-LogMessage "Removing fragment from: $Url" -Level "WARN"
+        Write-LogMessage "Removing fragment from: $Destination" -Level "WARN" `
+            -Component "ConvertTo-CleanDestination" -LogPath $LogPath -EnableDebugLogging $EnableDebugLogging
         $cleaned = $cleaned.Split('#')[0]
+        $modified = $true
+    }
+    
+    # Return null if cleaning resulted in empty string
+    if ([string]::IsNullOrWhiteSpace($cleaned)) {
+        Write-LogMessage "Destination became empty after cleaning: $Destination" -Level "WARN" `
+            -Component "ConvertTo-CleanDestination" -LogPath $LogPath -EnableDebugLogging $EnableDebugLogging
+        return $null
     }
     
     return $cleaned
 }
 ```
+
+**Notes:**
+- Call this function BEFORE `Get-DestinationType` for best results
+- Returns `$null` for entries that should be skipped (e.g., IPv4 with port/path)
+- Logs all modifications at WARN level
+- Generic function suitable for reuse in other conversion functions
 
 ### Functions to Reuse from Convert-ZPA2EPA
 
@@ -1120,12 +1236,12 @@ function Convert-ZIA2EIA {
 - [ ] Build lookup tables
 
 ### Phase 2: Helper Functions
-- [ ] Implement Get-UrlType
+- [ ] Implement Get-DestinationType
 - [ ] Implement Get-BaseDomain
-- [ ] Implement Test-ValidIpAddress
+- [ ] Implement Test-ValidIPv4Address
 - [ ] Implement Split-UserEmail
 - [ ] Implement Split-ByCharacterLimit
-- [ ] Implement Remove-InvalidUrlComponents
+- [ ] Implement ConvertTo-CleanDestination
 
 ### Phase 3: Custom Categories
 - [ ] Implement category filtering
