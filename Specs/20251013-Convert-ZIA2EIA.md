@@ -29,6 +29,73 @@ This function follows the same architectural patterns as `Convert-ZPA2EPA.ps1`:
 
 ---
 
+## Policy and Rule Naming Conventions
+
+This section describes the structure and naming conventions used when converting ZIA configurations to EIA policies and rules.
+
+### ZIA Structure
+
+**ZIA URL Filtering Policy:**
+- A ZIA URL filtering policy is a collection of URL filtering rules
+- Each rule is defined in the `url_filtering_policy.json` file
+
+**ZIA URL Filtering Rules:**
+- Each ZIA filtering rule can target ZIA custom or predefined web categories
+- Rules reference categories through the `urlCategories` array field
+- Rules specify actions (ALLOW, BLOCK, CAUTION) and target users/groups
+
+**ZIA Custom Categories:**
+- Custom categories can contain destinations of type: IP address, FQDN, or URL
+- ZIA refers to all these destination entries as "urls" regardless of type
+- Destinations are stored in the `urls` and `dbCategorizedUrls` arrays
+
+**ZIA Predefined Categories:**
+- ZIA provides a set of predefined web categories (e.g., "OTHER_ADULT_MATERIAL")
+- These categories are referenced by ID in filtering rules
+- Predefined categories do not contain individual destination lists
+
+### EIA Structure
+
+**EIA Web Content Filtering Policies:**
+- ZIA custom categories are converted to EIA web content filtering policies
+- Each EIA web content filtering policy contains one or more rules
+- Each rule has a destination type: `FQDN`, `URL`, `ipAddress`, or `webCategory`
+
+**Custom Category Conversion:**
+- Each ZIA custom category becomes one EIA web content filtering policy
+- Within that policy, destinations are grouped by type (FQDN, URL, IP address)
+- URLs are further grouped by base domain to optimize rule count
+- If destinations exceed the 300-character limit, they are split into multiple rules with numeric suffixes
+
+**Predefined Category Conversion:**
+- When a ZIA filtering rule references predefined web categories, we create a single EIA web content filtering policy
+- This policy contains a single rule of type `webCategory`
+- All predefined categories that have a direct mapping to EIA categories (based on the mapping table provided as script input) are included in this single rule
+- Categories are semicolon-separated in the `RuleDestinations` field
+- Web category rules have no character limit and are never split
+
+**Policy Naming:**
+- Custom category policies: `[CategoryName]-Block` or `[CategoryName]-Allow`
+- Predefined category policies: `[RuleName]-WebCategories-[Action]`
+
+**Rule Naming:**
+- FQDN rules: Base domain name (e.g., `example.com`, `example.com-2`, `example.com-3`)
+- URL rules: Base domain name (e.g., `contoso.com`, `contoso.com-2`)
+- IP address rules: `IPs`, `IPs-2`, `IPs-3` (not grouped by domain)
+- Web category rules: `WebCategories` (no numeric suffix, never split)
+
+### Mapping Summary
+
+| ZIA Element | Converts To | EIA Element | Notes |
+|-------------|-------------|-------------|-------|
+| Custom Category | → | Web Content Filtering Policy | One policy per custom category |
+| Custom Category Destinations | → | Policy Rules (FQDN/URL/ipAddress) | Grouped by type and base domain |
+| Predefined Categories in Rule | → | Web Content Filtering Policy | One policy per filtering rule |
+| Predefined Category References | → | Single Rule (webCategory type) | All categories in one rule, semicolon-separated |
+| URL Filtering Rule | → | Security Profile | References all related policies |
+
+---
+
 ## Input Files
 
 ### 1. url_filtering_policy.json
@@ -179,7 +246,8 @@ Contains all policies including web content filtering policies for custom URL ca
 | RuleType | Type of destination | "FQDN", "URL", "webCategory", "ipAddress" | One type per row |
 | RuleDestinations | Semicolon-separated list | "*.example.com;site.com;other.com" | Max 300 chars |
 | RuleName | Sub-rule identifier | "FQDNs1", "URLs2", "WebCategories1" | For grouping/splitting |
-| ReviewNeeded | Manual review flag | "Yes", "No" | "Yes" if unmapped categories |
+| ReviewNeeded | Manual review flag | "Yes", "No" | "Yes" if unmapped categories or CAUTION action |
+| ReviewDetails | Reason for review | "Unmapped categories found; Rule action CAUTION converted to Block" | Semicolon-separated list of reasons |
 
 #### PolicyName Format
 - **Custom Categories:** 
@@ -276,7 +344,29 @@ $logPath = Join-Path $OutputBasePath "${timestamp}_Convert-ZIA2EIA.log"
 #### 1.3 Build Lookup Tables
 - Create hashtable for category mappings (ZIACategory → GSACategory)
 - Create hashtable for custom categories (id → category object)
+- Create hashtable for custom category policies (id → policy info with BlockPolicyName/AllowPolicyName)
 - Initialize collections for policies and security profiles
+
+```powershell
+# Category mappings for predefined categories
+$categoryMappingsHashtable = @{}
+foreach ($mapping in $categoryMappings.MappingData) {
+    $categoryMappingsHashtable[$mapping.ZIACategory] = $mapping
+}
+
+# Custom categories for quick lookup
+$customCategoriesHashtable = @{}
+foreach ($category in $urlCategories | Where-Object { $_.customCategory -eq $true }) {
+    $customCategoriesHashtable[$category.id] = $category
+}
+
+# Custom category policies tracking (populated in Phase 2)
+$customCategoryPoliciesHashtable = @{}
+
+# Collections for output
+$policies = @()
+$securityProfiles = @()
+```
 
 ### Phase 2: Custom Category Processing
 
@@ -355,23 +445,49 @@ For each category in url_categories:
 
 **Grouping Logic:**
 
-```
-For FQDNs and URLs:
-    Group entries by base domain
-    For each group:
-        Calculate combined length (with semicolons)
-        If > 300 characters:
-            Split into multiple sub-groups
-            Respect individual entry boundaries (no truncation)
-        Create policy entry for each sub-group
+```powershell
+# For FQDNs: Group by base domain
+$fqdnsByBaseDomain = @{}
+foreach ($fqdn in $classifiedDestinations['FQDN']) {
+    $baseDomain = Get-BaseDomain -Domain $fqdn
+    if (-not $fqdnsByBaseDomain.ContainsKey($baseDomain)) {
+        $fqdnsByBaseDomain[$baseDomain] = @()
+    }
+    $fqdnsByBaseDomain[$baseDomain] += $fqdn
+}
 
-For ipAddress:
-    Treat all IPs as a single group (no domain-based grouping)
+# For URLs: Group by base domain
+$urlsByBaseDomain = @{}
+foreach ($url in $classifiedDestinations['URL']) {
+    $baseDomain = Get-BaseDomain -Domain $url
+    if (-not $urlsByBaseDomain.ContainsKey($baseDomain)) {
+        $urlsByBaseDomain[$baseDomain] = @()
+    }
+    $urlsByBaseDomain[$baseDomain] += $url
+}
+
+# For IP addresses: Keep as single collection (no domain grouping)
+$ipAddresses = $classifiedDestinations['ipAddress']
+```
+
+**Splitting by Character Limit:**
+
+```
+For each base domain group (FQDNs or URLs):
     Calculate combined length (with semicolons)
     If > 300 characters:
-        Split into multiple sub-groups
+        Split into multiple sub-groups using Split-ByCharacterLimit
         Respect individual entry boundaries (no truncation)
     Create policy entry for each sub-group
+    RuleName: first = baseDomain, subsequent = baseDomain-2, baseDomain-3, etc.
+
+For ipAddress collection:
+    Calculate combined length (with semicolons)
+    If > 300 characters:
+        Split into multiple sub-groups using Split-ByCharacterLimit
+        Respect individual entry boundaries (no truncation)
+    Create policy entry for each sub-group
+    RuleName: first = "IPs", subsequent = "IPs-2", "IPs-3", etc.
 ```
 
 **Note:** Web categories (`webCategory` type) are never grouped or split by character limit. All web categories for a rule are placed in a single policy entry regardless of length.
@@ -417,17 +533,114 @@ Create policy entry with remaining currentGroup
 For each custom category and destination type:
 
 ```powershell
-$policyEntry = @{
-    PolicyName = "$configuredName-Block"  # or "$id-Block" if no configuredName
-    PolicyType = "WebContentFiltering"
-    PolicyAction = "Block"                    # Default action
-    Description = $category.description
-    RuleType = "FQDN" | "URL" | "ipAddress"
-    RuleDestinations = "entry1;entry2;entry3"  # semicolon-separated
-    RuleName = "FQDNs1" | "URLs1" | "IPs1"
-    ReviewNeeded = "No"
+# Determine policy name
+$basePolicyName = if ($category.configuredName) { $category.configuredName } else { $category.id }
+$policyName = "$basePolicyName-Block"
+
+# Process FQDNs grouped by base domain
+if ($classifiedDestinations['FQDN'].Count -gt 0) {
+    # Group FQDNs by base domain
+    $fqdnsByBaseDomain = @{}
+    foreach ($fqdn in $classifiedDestinations['FQDN']) {
+        $baseDomain = Get-BaseDomain -Domain $fqdn
+        if (-not $fqdnsByBaseDomain.ContainsKey($baseDomain)) {
+            $fqdnsByBaseDomain[$baseDomain] = @()
+        }
+        $fqdnsByBaseDomain[$baseDomain] += $fqdn
+    }
+    
+    # Create policy entries for each base domain group
+    foreach ($baseDomain in $fqdnsByBaseDomain.Keys) {
+        $groups = Split-ByCharacterLimit -Entries $fqdnsByBaseDomain[$baseDomain] -MaxLength 300
+        
+        for ($i = 0; $i -lt $groups.Count; $i++) {
+            $ruleName = if ($i -eq 0) { $baseDomain } else { "$baseDomain-$($i + 1)" }
+            
+            $policyEntry = @{
+                PolicyName = $policyName
+                PolicyType = "WebContentFiltering"
+                PolicyAction = "Block"
+                Description = $category.description
+                RuleType = "FQDN"
+                RuleDestinations = $groups[$i] -join ";"
+                RuleName = $ruleName
+                ReviewNeeded = "No"
+                ReviewDetails = ""
+            }
+            
+            $policies += $policyEntry
+        }
+    }
+}
+
+# Process URLs grouped by base domain
+if ($classifiedDestinations['URL'].Count -gt 0) {
+    # Group URLs by base domain
+    $urlsByBaseDomain = @{}
+    foreach ($url in $classifiedDestinations['URL']) {
+        $baseDomain = Get-BaseDomain -Domain $url
+        if (-not $urlsByBaseDomain.ContainsKey($baseDomain)) {
+            $urlsByBaseDomain[$baseDomain] = @()
+        }
+        $urlsByBaseDomain[$baseDomain] += $url
+    }
+    
+    # Create policy entries for each base domain group
+    foreach ($baseDomain in $urlsByBaseDomain.Keys) {
+        $groups = Split-ByCharacterLimit -Entries $urlsByBaseDomain[$baseDomain] -MaxLength 300
+        
+        for ($i = 0; $i -lt $groups.Count; $i++) {
+            $ruleName = if ($i -eq 0) { $baseDomain } else { "$baseDomain-$($i + 1)" }
+            
+            $policyEntry = @{
+                PolicyName = $policyName
+                PolicyType = "WebContentFiltering"
+                PolicyAction = "Block"
+                Description = $category.description
+                RuleType = "URL"
+                RuleDestinations = $groups[$i] -join ";"
+                RuleName = $ruleName
+                ReviewNeeded = "No"
+                ReviewDetails = ""
+            }
+            
+            $policies += $policyEntry
+        }
+    }
+}
+
+# Process IP addresses (not grouped by domain)
+if ($classifiedDestinations['ipAddress'].Count -gt 0) {
+    $groups = Split-ByCharacterLimit -Entries $classifiedDestinations['ipAddress'] -MaxLength 300
+    
+    for ($i = 0; $i -lt $groups.Count; $i++) {
+        $ruleName = if ($i -eq 0) { "IPs" } else { "IPs-$($i + 1)" }
+        
+        $policyEntry = @{
+            PolicyName = $policyName
+            PolicyType = "WebContentFiltering"
+            PolicyAction = "Block"
+            Description = $category.description
+            RuleType = "ipAddress"
+            RuleDestinations = $groups[$i] -join ";"
+            RuleName = $ruleName
+            ReviewNeeded = "No"
+            ReviewDetails = ""
+        }
+        
+        $policies += $policyEntry
+    }
+}
+
+# Track this custom category policy for Phase 3 lookup
+$customCategoryPoliciesHashtable[$category.id] = @{
+    BlockPolicyName = $policyName
+    AllowPolicyName = $null  # Will be populated in Phase 3 if needed
+    BaseName = $basePolicyName
 }
 ```
+
+**Important:** Each policy entry is added to `$policies` collection, and the policy name is tracked in `$customCategoryPoliciesHashtable` for efficient lookup during Phase 3 rule processing.
 
 ### Phase 3: URL Filtering Rule Processing
 
@@ -494,63 +707,157 @@ foreach ($categoryId in $rule.urlCategories) {
 
 #### 3.4 Policy Action Update (Custom Categories)
 
-For each custom category referenced by the rule:
+For each custom category referenced by the rule, determine the appropriate policy name based on the rule's action:
 
-```
-Lookup existing policy entry for custom category
+```powershell
+$customCategoryPolicyNames = @()
+$needsReview = $false
+$reviewReasons = @()
 
-If rule.action == "BLOCK":
-    Use existing policy (already set to Block)
+foreach ($customCatId in $customCategoryRefs) {
+    # Look up policy info from Phase 2
+    $policyInfo = $customCategoryPoliciesHashtable[$customCatId]
     
-If rule.action == "ALLOW":
-    Check if policy with "-Allow" suffix exists
-    If not exists:
-        Duplicate the policy entry
-        Change PolicyName to append "-Allow"
-        Change PolicyAction to "Allow"
-        Add to policy collection
-    Use the "-Allow" version
+    if ($null -eq $policyInfo) {
+        Write-LogMessage "Custom category policy not found: $customCatId" -Level "WARN"
+        continue
+    }
+    
+    # Determine which policy to use based on action
+    if ($rule.action -eq "BLOCK") {
+        # Use existing Block policy
+        $customCategoryPolicyNames += $policyInfo.BlockPolicyName
+    }
+    elseif ($rule.action -eq "CAUTION") {
+        # Convert CAUTION to BLOCK and flag for review
+        Write-LogMessage "Rule '$($rule.name)': Converting CAUTION action to BLOCK for category $customCatId" -Level "WARN"
+        $customCategoryPolicyNames += $policyInfo.BlockPolicyName
+        
+        if ("Rule action CAUTION converted to Block" -notin $reviewReasons) {
+            $reviewReasons += "Rule action CAUTION converted to Block"
+        }
+        $needsReview = $true
+    }
+    elseif ($rule.action -eq "ALLOW") {
+        # Check if Allow version exists
+        if ($null -eq $policyInfo.AllowPolicyName) {
+            # Need to create Allow version by duplicating Block policies
+            $allowPolicyName = "$($policyInfo.BaseName)-Allow"
+            
+            # Find all policy entries with the Block policy name and duplicate them
+            $blockPolicies = $policies | Where-Object { $_.PolicyName -eq $policyInfo.BlockPolicyName }
+            
+            foreach ($blockPolicy in $blockPolicies) {
+                # Manually create new hashtable with copied values
+                $allowPolicy = @{
+                    PolicyName = $allowPolicyName
+                    PolicyType = $blockPolicy.PolicyType
+                    PolicyAction = "Allow"
+                    Description = $blockPolicy.Description
+                    RuleType = $blockPolicy.RuleType
+                    RuleDestinations = $blockPolicy.RuleDestinations
+                    RuleName = $blockPolicy.RuleName
+                    ReviewNeeded = $blockPolicy.ReviewNeeded
+                    ReviewDetails = $blockPolicy.ReviewDetails
+                }
+                
+                # Add to policies collection
+                $policies += $allowPolicy
+            }
+            
+            # Update tracking hashtable
+            $policyInfo.AllowPolicyName = $allowPolicyName
+            
+            Write-LogMessage "Created Allow version of policy: $allowPolicyName" -Level "INFO"
+        }
+        
+        # Use the Allow policy
+        $customCategoryPolicyNames += $policyInfo.AllowPolicyName
+    }
+}
 ```
+
+**Key Points:**
+- Looks up policy info from `$customCategoryPoliciesHashtable` (populated in Phase 2)
+- For BLOCK actions: uses existing Block policy
+- For CAUTION actions: uses existing Block policy, logs WARN message, and tracks review reason
+- For ALLOW actions: creates Allow version if it doesn't exist by duplicating all Block policy entries (preserves ReviewNeeded/ReviewDetails)
+- Updates tracking hashtable so subsequent rules can reuse the Allow policy
+- Stores policy names in `$customCategoryPolicyNames` array for use in security profile
+- Accumulates review reasons in `$reviewReasons` array for later use
 
 **Example:**
-- Custom category: "CUSTOM_01"
-- Initial policy: "CUSTOM_01-Block" (PolicyAction: Block)
+- Custom category: "CUSTOM_01" has 3 policy entries (FQDNs, URLs, IPs)
+- Initial policies: all named "CUSTOM_01-Block" with PolicyAction "Block"
 - Rule1 (Block) references CUSTOM_01 → uses "CUSTOM_01-Block"
-- Rule2 (Allow) references CUSTOM_01 → creates "CUSTOM_01-Allow", uses it
+- Rule2 (Allow) references CUSTOM_01 → creates 3 new policies named "CUSTOM_01-Allow" with PolicyAction "Allow"
+- Rule3 (Allow) references CUSTOM_01 → reuses "CUSTOM_01-Allow" (already exists)
 
 #### 3.5 Policy Creation (Predefined Categories)
 
 If rule references predefined categories:
 
 ```powershell
-$mappedCategories = @()
-$hasUnmapped = $false
+$predefinedPolicyName = $null
 
-foreach ($categoryId in $predefinedCategoryRefs) {
-    $mapping = $categoryMappingsHashtable[$categoryId]
-    
-    if ($null -eq $mapping -or 
-        [string]::IsNullOrWhiteSpace($mapping.GSACategory) -or
-        $mapping.GSACategory -eq 'Unmapped') {
+if ($predefinedCategoryRefs.Count -gt 0) {
+    $mappedCategories = @()
+    $hasUnmapped = $false
+
+    foreach ($categoryId in $predefinedCategoryRefs) {
+        $mapping = $categoryMappingsHashtable[$categoryId]
         
-        $mappedCategories += "${categoryId}_Unmapped"
-        $hasUnmapped = $true
-        Write-LogMessage "Unmapped category: $categoryId" -Level "INFO"
+        if ($null -eq $mapping -or 
+            [string]::IsNullOrWhiteSpace($mapping.GSACategory) -or
+            $mapping.GSACategory -eq 'Unmapped') {
+            
+            $mappedCategories += "${categoryId}_Unmapped"
+            $hasUnmapped = $true
+            Write-LogMessage "Unmapped category: $categoryId" -Level "INFO"
+        }
+        else {
+            $mappedCategories += $mapping.GSACategory
+        }
     }
-    else {
-        $mappedCategories += $mapping.GSACategory
+    
+    # Handle CAUTION action conversion
+    $finalAction = $rule.action
+    if ($rule.action -eq "CAUTION") {
+        Write-LogMessage "Rule '$($rule.name)': Converting CAUTION action to BLOCK for predefined categories" -Level "WARN"
+        $finalAction = "BLOCK"
+        if ("Rule action CAUTION converted to Block" -notin $reviewReasons) {
+            $reviewReasons += "Rule action CAUTION converted to Block"
+        }
+        $needsReview = $true
     }
-}
+    
+    # Build review reasons
+    $policyReviewReasons = @()
+    if ($hasUnmapped) {
+        $policyReviewReasons += "Unmapped categories found"
+        $needsReview = $true
+    }
+    if ($finalAction -ne $rule.action) {
+        $policyReviewReasons += "Rule action CAUTION converted to Block"
+    }
 
-$policyEntry = @{
-    PolicyName = "$($rule.name)-WebCategories-$($rule.action.Substring(0,1) + $rule.action.Substring(1).ToLower())"
-    PolicyType = "WebContentFiltering"
-    PolicyAction = if ($rule.action -eq "ALLOW") { "Allow" } else { "Block" }
-    Description = "Converted from $($rule.name) categories"
-    RuleType = "webCategory"
-    RuleDestinations = $mappedCategories -join ";"  # No character limit for web categories
-    RuleName = "WebCategories"  # Never split, no numeric suffix
-    ReviewNeeded = if ($hasUnmapped) { "Yes" } else { "No" }
+    $policyEntry = @{
+        PolicyName = "$($rule.name)-WebCategories-$($finalAction.Substring(0,1) + $finalAction.Substring(1).ToLower())"
+        PolicyType = "WebContentFiltering"
+        PolicyAction = if ($finalAction -eq "ALLOW") { "Allow" } else { "Block" }
+        Description = "Converted from $($rule.name) categories"
+        RuleType = "webCategory"
+        RuleDestinations = $mappedCategories -join ";"  # No character limit for web categories
+        RuleName = "WebCategories"  # Never split, no numeric suffix
+        ReviewNeeded = if ($needsReview) { "Yes" } else { "No" }
+        ReviewDetails = $policyReviewReasons -join "; "
+    }
+    
+    # Add to policies collection
+    $policies += $policyEntry
+    
+    # Store the created policy name for reference in security profile
+    $predefinedPolicyName = $policyEntry.PolicyName
 }
 ```
 
@@ -558,21 +865,53 @@ $policyEntry = @{
 - Rule "urlRule1" with action "BLOCK" → "urlRule1-WebCategories-Block"
 - Rule "urlRule2" with action "ALLOW" → "urlRule2-WebCategories-Allow"
 
+**Important:** The policy is added to the `$policies` collection and the policy name is stored in `$predefinedPolicyName` variable for use in security profile creation (Section 3.6).
+
+**Note on Custom Category Policy Updates:**
+After processing custom categories for this rule, if `$needsReview` is true and custom category policies were used, update those policies with review information:
+
+```powershell
+# Update custom category policies with review information if needed
+if ($needsReview -and $customCategoryPolicyNames.Count -gt 0 -and $reviewReasons.Count -gt 0) {
+    foreach ($policyName in $customCategoryPolicyNames) {
+        # Find all policy entries with this policy name and update them
+        for ($i = 0; $i -lt $policies.Count; $i++) {
+            if ($policies[$i].PolicyName -eq $policyName) {
+                $policies[$i].ReviewNeeded = "Yes"
+                
+                # Merge review reasons (avoid duplicates)
+                $existingReasons = if ($policies[$i].ReviewDetails) { 
+                    $policies[$i].ReviewDetails -split "; " 
+                } else { 
+                    @() 
+                }
+                
+                foreach ($reason in $reviewReasons) {
+                    if ($reason -notin $existingReasons) {
+                        $existingReasons += $reason
+                    }
+                }
+                
+                $policies[$i].ReviewDetails = $existingReasons -join "; "
+            }
+        }
+    }
+}
+```
+
 #### 3.6 Security Profile Creation
 
 ```powershell
 $policyLinks = @()
 
-# Add custom category policy references
-foreach ($customCatId in $customCategoryRefs) {
-    $policyName = Get-CustomCategoryPolicyName $customCatId $rule.action
-    $policyLinks += $policyName
+# Add custom category policy references (from Section 3.4)
+if ($customCategoryPolicyNames.Count -gt 0) {
+    $policyLinks += $customCategoryPolicyNames
 }
 
-# Add predefined category policy reference (if any)
-if ($predefinedCategoryRefs.Count -gt 0) {
-    $policyName = "$($rule.name)-WebCategories-$($rule.action)"
-    $policyLinks += $policyName
+# Add predefined category policy reference (from Section 3.5)
+if ($null -ne $predefinedPolicyName) {
+    $policyLinks += $predefinedPolicyName
 }
 
 $securityProfile = @{
@@ -583,7 +922,18 @@ $securityProfile = @{
     PolicyLinks = $policyLinks -join ";"
     Description = $rule.description
 }
+
+# Add to security profiles collection
+$securityProfiles += $securityProfile
 ```
+
+**Key Points:**
+- Uses `$customCategoryPolicyNames` array populated in Section 3.4 (not reconstructing names)
+- Uses `$predefinedPolicyName` variable set in Section 3.5 (if predefined categories exist)
+- **Adds the security profile to `$securityProfiles` collection**
+- All policy names are guaranteed to match actually created policies
+- Clear data flow: policy creation → store name → reference in security profile
+- **Important:** PolicyLinks contains policy names (e.g., "CUSTOM_01-Block"), not individual rule names within those policies. A custom category with 3 destination types (FQDN, URL, ipAddress) creates 3 CSV rows sharing the same PolicyName, but only ONE policy name goes into PolicyLinks.
 
 #### 3.7 Priority Conflict Resolution
 
@@ -703,22 +1053,62 @@ None (all have defaults)
 
 ### Optional Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| UrlFilteringPolicyPath | string | `url_filtering_policy.json` | Path to policy file |
-| UrlCategoriesPath | string | `url_categories.json` | Path to categories file |
-| CategoryMappingsPath | string | `ZIA2EIA-CategoryMappings.json` | Path to mappings file |
-| OutputBasePath | string | `$PWD` | Output directory for CSV and log files |
-| EnableDebugLogging | switch | `false` | Enable DEBUG level logging |
+| Parameter | Type | Default | Description | Validation |
+|-----------|------|---------|-------------|------------|
+| UrlFilteringPolicyPath | string | `url_filtering_policy.json` | Path to policy file | ValidateScript - file must exist |
+| UrlCategoriesPath | string | `url_categories.json` | Path to categories file | ValidateScript - file must exist |
+| CategoryMappingsPath | string | `ZIA2EIA-CategoryMappings.json` | Path to mappings file | ValidateScript - file must exist |
+| OutputBasePath | string | `$PWD` | Output directory for CSV and log files | ValidateScript - directory must exist |
+| EnableDebugLogging | switch | `false` | Enable DEBUG level logging | None |
+
+### Parameter Definitions
+
+```powershell
+[CmdletBinding(SupportsShouldProcess = $false)]
+param(
+    [Parameter(HelpMessage = "Path to ZIA URL Filtering Policy JSON export")]
+    [ValidateScript({
+        if (Test-Path $_) { return $true }
+        else { throw "File not found: $_" }
+    })]
+    [string]$UrlFilteringPolicyPath = (Join-Path $PWD "url_filtering_policy.json"),
+    
+    [Parameter(HelpMessage = "Path to ZIA URL Categories JSON export")]
+    [ValidateScript({
+        if (Test-Path $_) { return $true }
+        else { throw "File not found: $_" }
+    })]
+    [string]$UrlCategoriesPath = (Join-Path $PWD "url_categories.json"),
+    
+    [Parameter(HelpMessage = "Path to ZIA to EIA category mappings JSON file")]
+    [ValidateScript({
+        if (Test-Path $_) { return $true }
+        else { throw "File not found: $_" }
+    })]
+    [string]$CategoryMappingsPath = (Join-Path $PWD "ZIA2EIA-CategoryMappings.json"),
+    
+    [Parameter(HelpMessage = "Base directory for output files")]
+    [ValidateScript({
+        if (Test-Path $_ -PathType Container) { return $true }
+        else { throw "Directory not found: $_" }
+    })]
+    [string]$OutputBasePath = $PWD,
+    
+    [Parameter(HelpMessage = "Enable verbose debug logging")]
+    [switch]$EnableDebugLogging
+)
+```
 
 ### Parameters NOT Included
 - No filtering parameters (no TargetAppSegmentName equivalent)
 - No PassThru parameter
 - No batch size or processing limit parameters
 
-### Parameter Validation
-- File paths: Validate existence for input files
-- OutputBasePath: Validate directory exists
+### Parameter Validation Notes
+- **File paths:** All input file parameters use `[ValidateScript()]` to ensure files exist before processing begins
+- **OutputBasePath:** Validates that the directory exists using `-PathType Container`
+- **Default paths:** Use `Join-Path $PWD` to construct default paths relative to current directory (matching Convert-ZPA2EPA pattern)
+- **Error messages:** Validation throws descriptive errors if files/directories are missing
 
 ---
 
@@ -746,7 +1136,7 @@ function Get-DestinationType {
     if ($Destination -match ':.*:') { return 'ipv6' }
     
     # Path check - URLs contain forward slash
-    if ($Destination -contains '/') { return 'URL' }
+    if ($Destination -like '*/*') { return 'URL' }
     
     # Wildcard position check
     if ($Destination -like '*.*') {
@@ -777,7 +1167,7 @@ function Get-BaseDomain {
     $cleanDomain = $Domain -replace '^\*\.', ''
     
     # Extract path-free domain for URLs
-    if ($cleanDomain -contains '/') {
+    if ($cleanDomain -like '*/*') {
         $cleanDomain = $cleanDomain.Split('/')[0]
     }
     
@@ -877,7 +1267,52 @@ function Split-ByCharacterLimit {
 }
 ```
 
-#### 6. ConvertTo-CleanDestination
+#### 6. Get-CustomCategoryPolicyName
+**Purpose:** Look up custom category policy name based on category ID and action, handling Block/Allow duplication
+
+**Returns:** Policy name string, or `$null` if policy not found
+
+**Logic:**
+```powershell
+function Get-CustomCategoryPolicyName {
+    param(
+        [string]$CategoryId,
+        [string]$Action,
+        [hashtable]$CustomCategoryPoliciesHashtable
+    )
+    
+    # Get base policy info from hashtable (created in Phase 2)
+    $basePolicyInfo = $CustomCategoryPoliciesHashtable[$CategoryId]
+    
+    if ($null -eq $basePolicyInfo) {
+        Write-LogMessage "Custom category not found: $CategoryId" -Level "WARN"
+        return $null
+    }
+    
+    # If action is BLOCK or CAUTION, use the base policy (created with -Block suffix in Phase 2)
+    if ($Action -eq "BLOCK" -or $Action -eq "CAUTION") {
+        return $basePolicyInfo.BlockPolicyName
+    }
+    
+    # If action is ALLOW, check if Allow version exists, if not return null (will be created)
+    if ($Action -eq "ALLOW") {
+        if ($null -ne $basePolicyInfo.AllowPolicyName) {
+            return $basePolicyInfo.AllowPolicyName
+        }
+        return $null  # Signal that Allow policy needs to be created
+    }
+    
+    # Default to Block policy for unknown actions
+    return $basePolicyInfo.BlockPolicyName
+}
+```
+
+**Notes:**
+- Uses `$CustomCategoryPoliciesHashtable` created in Phase 2 for fast lookup
+- Returns `$null` for ALLOW action if Allow policy doesn't exist yet (caller creates it)
+- Returns Block policy for CAUTION action (caller is responsible for logging and setting review flags)
+
+#### 7. ConvertTo-CleanDestination
 **Purpose:** Clean and normalize destination entries by removing unsupported components (schema, port, query, fragment)
 
 **Returns:** Cleaned destination string, or `$null` if entry should be skipped
@@ -920,7 +1355,7 @@ function ConvertTo-CleanDestination {
     }
     
     # Remove query string
-    if ($cleaned -contains '?') {
+    if ($cleaned -like '*?*') {
         Write-LogMessage "Removing query string from: $Destination" -Level "WARN" `
             -Component "ConvertTo-CleanDestination" -LogPath $LogPath -EnableDebugLogging $EnableDebugLogging
         $cleaned = $cleaned.Split('?')[0]
@@ -928,7 +1363,7 @@ function ConvertTo-CleanDestination {
     }
     
     # Remove fragment
-    if ($cleaned -contains '#') {
+    if ($cleaned -like '*#*') {
         Write-LogMessage "Removing fragment from: $Destination" -Level "WARN" `
             -Component "ConvertTo-CleanDestination" -LogPath $LogPath -EnableDebugLogging $EnableDebugLogging
         $cleaned = $cleaned.Split('#')[0]
@@ -1012,23 +1447,7 @@ $cleanDomain = Clear-Domain -Domain "*.example.com"
 
 ### Progress Reporting
 
-Use `Write-Progress` for long-running operations:
-
-```powershell
-$totalRules = $rules.Count
-$currentRule = 0
-
-foreach ($rule in $rules) {
-    $currentRule++
-    Write-Progress -Activity "Processing URL Filtering Rules" `
-        -Status "Processing rule $currentRule of $totalRules: $($rule.name)" `
-        -PercentComplete (($currentRule / $totalRules) * 100)
-    
-    # Process rule...
-}
-
-Write-Progress -Activity "Processing URL Filtering Rules" -Completed
-```
+**Not included in initial implementation.** The script is expected to process data quickly for typical ZIA configurations. Progress reporting can be added in future enhancements if needed for larger datasets.
 
 ### Statistics to Track and Log
 
@@ -1264,7 +1683,6 @@ function Convert-ZIA2EIA {
 - [ ] Implement Policies CSV export
 - [ ] Implement Security Profile CSV export
 - [ ] Implement summary statistics
-- [ ] Add progress reporting
 
 ### Phase 6: Testing
 - [ ] Create sample input files
