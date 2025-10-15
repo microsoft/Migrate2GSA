@@ -116,7 +116,7 @@ function Test-RequiredModules {
         @{ Name = 'Microsoft.Graph.Authentication'; Description = 'Microsoft Graph Authentication (required for all Graph modules)' },
         @{ Name = 'Microsoft.Graph.Beta.Groups'; Description = 'Microsoft Graph Beta Groups (required for Entra Groups module)' },
         @{ Name = 'Microsoft.Graph.Beta.Applications'; Description = 'Microsoft Graph Beta Applications (required for Entra modules)' },
-        @{ Name = 'Microsoft.Graph.Beta.Identity.DirectoryManagement'; Description = 'Microsoft Graph Beta Directory Management (required for Entra modules)' },
+        @{ Name = 'Microsoft.Graph.Beta.Identity.DirectoryManagement'; Description = 'Microsoft Graph Beta Directory Management' },
         @{ Name = 'Microsoft.Entra.Beta.Groups'; Description = 'Microsoft Entra Beta Groups' },
         @{ Name = 'Microsoft.Entra.Beta.Authentication'; Description = 'Microsoft Entra Beta Authentication' },
         @{ Name = 'Microsoft.Entra.Beta.NetworkAccess'; Description = 'Microsoft Entra Beta Network Access' }
