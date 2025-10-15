@@ -202,6 +202,9 @@ function Convert-ZIA2EIA {
             [int]$MaxLength = 300
         )
         
+        Write-LogMessage "Split-ByCharacterLimit: Received $($Entries.Count) entries, MaxLength=$MaxLength" -Level "DEBUG" `
+            -Component "Split-ByCharacterLimit" -LogPath $script:logPath -EnableDebugLogging:$script:EnableDebugLogging
+        
         $groups = @()
         $currentGroup = @()
         $currentLength = 0
@@ -210,8 +213,13 @@ function Convert-ZIA2EIA {
             $entryLength = $entry.Length
             $separator = if ($currentGroup.Count -gt 0) { 1 } else { 0 }  # semicolon
             
+            Write-LogMessage "Entry: '$entry' (length=$entryLength), currentLength=$currentLength, separator=$separator, would be=$($currentLength + $entryLength + $separator)" -Level "DEBUG" `
+                -Component "Split-ByCharacterLimit" -LogPath $script:logPath -EnableDebugLogging:$script:EnableDebugLogging
+            
             if (($currentLength + $entryLength + $separator) -gt $MaxLength -and $currentGroup.Count -gt 0) {
                 # Current group is full, start new group
+                Write-LogMessage "Starting new group (current group has $($currentGroup.Count) entries, length=$currentLength)" -Level "DEBUG" `
+                    -Component "Split-ByCharacterLimit" -LogPath $script:logPath -EnableDebugLogging:$script:EnableDebugLogging
                 $groups += ,@($currentGroup)
                 $currentGroup = @($entry)
                 $currentLength = $entryLength
@@ -227,7 +235,11 @@ function Convert-ZIA2EIA {
             $groups += ,@($currentGroup)
         }
         
-        return $groups
+        Write-LogMessage "Split-ByCharacterLimit: Created $($groups.Count) group(s)" -Level "DEBUG" `
+            -Component "Split-ByCharacterLimit" -LogPath $script:logPath -EnableDebugLogging:$script:EnableDebugLogging
+        
+        # Return with comma operator to prevent PowerShell from flattening the array
+        return ,$groups
     }
     
     function Get-CustomCategoryPolicyName {
@@ -597,7 +609,13 @@ function Convert-ZIA2EIA {
             
             # Create policy entries for each base domain group
             foreach ($baseDomain in $fqdnsByBaseDomain.Keys) {
-                $groups = Split-ByCharacterLimit -Entries $fqdnsByBaseDomain[$baseDomain] -MaxLength 300
+                Write-LogMessage "Processing base domain '$baseDomain' with $($fqdnsByBaseDomain[$baseDomain].Count) FQDNs" -Level "DEBUG" `
+                    -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                
+                $groups = Split-ByCharacterLimit -Entries @($fqdnsByBaseDomain[$baseDomain]) -MaxLength 300
+                
+                Write-LogMessage "Split into $($groups.Count) group(s) for base domain '$baseDomain'" -Level "DEBUG" `
+                    -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
                 
                 if ($groups.Count -gt 1) { $stats.GroupsSplitForCharLimit++ }
                 
@@ -635,7 +653,7 @@ function Convert-ZIA2EIA {
             
             # Create policy entries for each base domain group
             foreach ($baseDomain in $urlsByBaseDomain.Keys) {
-                $groups = Split-ByCharacterLimit -Entries $urlsByBaseDomain[$baseDomain] -MaxLength 300
+                $groups = Split-ByCharacterLimit -Entries @($urlsByBaseDomain[$baseDomain]) -MaxLength 300
                 
                 if ($groups.Count -gt 1) { $stats.GroupsSplitForCharLimit++ }
                 
@@ -661,7 +679,7 @@ function Convert-ZIA2EIA {
         
         # Process IP addresses (not grouped by domain)
         if ($classifiedDestinations['ipAddress'].Count -gt 0) {
-            $groups = Split-ByCharacterLimit -Entries $classifiedDestinations['ipAddress'] -MaxLength 300
+            $groups = Split-ByCharacterLimit -Entries @($classifiedDestinations['ipAddress']) -MaxLength 300
             
             if ($groups.Count -gt 1) { $stats.GroupsSplitForCharLimit++ }
             
