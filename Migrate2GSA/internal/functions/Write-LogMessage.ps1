@@ -108,9 +108,13 @@ function Write-LogMessage {
         # Write to log file if LogPath is provided or available in parent scope
         $logFilePath = $LogPath
         if ([string]::IsNullOrEmpty($logFilePath)) {
-            # Try to get LogPath from parent scope (for Convert-ZPA2EPA compatibility)
+            # Try to get LogPath from parent scope (local variable)
             if (Get-Variable -Name 'LogPath' -Scope 1 -ErrorAction SilentlyContinue) {
                 $logFilePath = (Get-Variable -Name 'LogPath' -Scope 1).Value
+            }
+            # Try to get script-scoped LogPath from parent scope
+            elseif (Get-Variable -Name 'LogPath' -Scope Script -ErrorAction SilentlyContinue) {
+                $logFilePath = (Get-Variable -Name 'LogPath' -Scope Script).Value
             }
             # Try OutputBasePath + default log name (for Convert-ZPA2EPA compatibility)
             elseif (Get-Variable -Name 'OutputBasePath' -Scope 1 -ErrorAction SilentlyContinue) {

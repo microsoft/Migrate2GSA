@@ -65,6 +65,7 @@ FunctionsToExport = @(
     'Export-ZPAConfig',
     'Convert-ZPA2EPA',
     'Export-ZIAConfig',
+    'Export-NetskopeConfig',
     'Start-EntraPrivateAccessProvisioning'
 )
 
