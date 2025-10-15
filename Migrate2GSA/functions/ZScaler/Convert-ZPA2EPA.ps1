@@ -269,52 +269,6 @@ function Test-PortRangeOverlap {
     }
 }
 
-function Export-DataToFile {
-    param(
-        [Parameter(Mandatory = $true)]
-        [object[]]$Data,
-        
-        [Parameter(Mandatory = $true)]
-        [string]$FilePath,
-        
-        [Parameter(Mandatory = $true)]
-        [ValidateSet("JSON", "CSV")]
-        [string]$Format
-    )
-    
-    try {
-        # Create output directory if it doesn't exist
-        $outputDir = Split-Path $FilePath -Parent
-        if (-not (Test-Path $outputDir)) {
-            New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
-            Write-LogMessage "Created output directory: $outputDir" -Level "INFO"
-        }
-        
-        # Handle empty datasets
-        if ($null -eq $Data -or $Data.Count -eq 0) {
-            Write-LogMessage "No data to export to $FilePath" -Level "WARN"
-            return $false
-        }
-        
-        # Export data based on format
-        switch ($Format) {
-            "JSON" {
-                $Data | ConvertTo-Json -Depth 10 | Out-File -FilePath $FilePath -Encoding UTF8
-            }
-            "CSV" {
-                $Data | Export-Csv -Path $FilePath -NoTypeInformation -Encoding UTF8
-            }
-        }
-        
-        Write-LogMessage "Successfully exported $($Data.Count) records to $FilePath" -Level "INFO"
-        return $true
-    }
-    catch {
-        Write-LogMessage "Failed to export data to $FilePath : $_" -Level "ERROR"
-        return $false
-    }
-}
-
 function Get-DestinationType {
     param(
         [Parameter(Mandatory = $true)]
@@ -333,26 +287,6 @@ function Get-DestinationType {
     
     # Otherwise, it's an FQDN
     return "FQDN"
-}
-
-function Test-WildcardMatch {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Pattern,
-        
-        [Parameter(Mandatory = $true)]
-        [string]$Text
-    )
-    
-    try {
-        # Convert wildcard pattern to regex
-        $regexPattern = $Pattern.Replace('*', '.*').Replace('?', '.')
-        return $Text -match "^$regexPattern$"
-    }
-    catch {
-        Write-LogMessage "Error in wildcard matching: $_" -Level "ERROR"
-        return $false
-    }
 }
 
 function Clear-Domain {

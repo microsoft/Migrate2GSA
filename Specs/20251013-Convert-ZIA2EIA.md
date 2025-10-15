@@ -6,7 +6,7 @@
 - **Status:** Final
 - **Target Module:** Migrate2GSA
 - **Function Name:** Convert-ZIA2EIA
-
+- **Author:** Andres Canello
 ---
 
 ## Overview
@@ -1387,11 +1387,13 @@ function ConvertTo-CleanDestination {
 - Logs all modifications at WARN level
 - Generic function suitable for reuse in other conversion functions
 
-### Functions to Reuse from Convert-ZPA2EPA
+### Functions to Reuse from Shared Internal Module
 
 #### 1. Write-LogMessage
 **Location:** `Migrate2GSA\internal\functions\Write-LogMessage.ps1`  
 **Purpose:** Write structured log messages to console and file with levels (INFO, WARN, ERROR, DEBUG)
+
+**Status:** ✅ Available in shared module
 
 **Usage:**
 ```powershell
@@ -1400,10 +1402,10 @@ Write-LogMessage "Processing custom category: $categoryName" -Level "INFO" `
 ```
 
 #### 2. Export-DataToFile
-**Source:** Convert-ZPA2EPA.ps1  
+**Location:** `Migrate2GSA\internal\functions\Export-DataToFile.ps1`  
 **Purpose:** Export PowerShell objects to CSV with consistent formatting
 
-**Should Extract:** Yes, to shared internal functions module for reuse
+**Status:** ✅ Extracted and available in shared module
 
 **Usage:**
 ```powershell
@@ -1411,26 +1413,16 @@ Export-DataToFile -Data $policies -FilePath $policiesCsvPath -FileType "CSV"
 ```
 
 #### 3. Test-WildcardMatch
-**Source:** Convert-ZPA2EPA.ps1  
+**Location:** `Migrate2GSA\internal\functions\Test-WildcardMatch.ps1`  
 **Purpose:** Test if a string matches a wildcard pattern (* and ?)
 
-**Should Extract:** Yes, to shared internal functions module for reuse (if filtering added later)
+**Status:** ✅ Extracted and available in shared module (for future filtering features)
 
 **Usage:**
 ```powershell
 if (Test-WildcardMatch -String $categoryName -Pattern "Custom*") { ... }
 ```
 
-#### 4. Clear-Domain
-**Source:** Convert-ZPA2EPA.ps1  
-**Purpose:** Clean domain names by removing wildcards and paths
-
-**Should Extract:** Yes, could be adapted for URL cleaning
-
-**Usage:**
-```powershell
-$cleanDomain = Clear-Domain -Domain "*.example.com"
-```
 
 ---
 
