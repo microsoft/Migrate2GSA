@@ -56,6 +56,79 @@ The script expects a CSV file with the following required columns:
 | `Provision` | Whether to provision this entry (`Yes` or `No`) | `Yes` |
 | `EntraGroups` | Entra ID groups to assign to the application. Supports multiple groups using semicolon (`;`) as separator. Groups are aggregated across all segments and deduplicated. | `WebApp-Users` or `WebApp-Users;WebApp-Admins;Support-Team` |
 
+## JSON Configuration Format
+
+The script also supports a JSON configuration file as an alternative to CSV. The JSON file should contain an array of objects, each representing a segment configuration. Below is the expected structure:
+
+```json
+[
+   {
+      "SegmentId": "DomainController1",
+      "EnterpriseAppName": "GSA-WebApp-Production",
+      "DestinationHost": "webapp.internal.com",
+      "DestinationType": "fqdn",
+      "Protocol": "tcp",
+      "Ports": "443",
+      "ConnectorGroup": "Production-Connectors",
+      "Provision": "Yes",
+      "EntraGroups": [
+         "WebApp-Users",
+         "WebApp-Admins",
+         "Support-Team"
+      ]
+   },
+   {
+      "SegmentId": "DatabaseServer",
+      "EnterpriseAppName": "GSA-DB-Production",
+      "DestinationHost": "10.1.2.3",
+      "DestinationType": "ipAddress",
+      "Protocol": "tcp",
+      "Ports": "1433",
+      "ConnectorGroup": "Database-Connectors",
+      "Provision": "Yes",
+      "EntraGroups": [
+         "DB-Admins"
+      ]
+   }
+]
+```
+
+### Field Descriptions
+
+| Field             | Description                                                                 | Example                          |
+|-------------------|-----------------------------------------------------------------------------|----------------------------------|
+| `SegmentId`       | Segment identifier, used for reporting/logging                              | `DomainController1`             |
+| `EnterpriseAppName` | Name of the Private Access application                                     | `GSA-WebApp-Production`         |
+| `DestinationHost` | Target host/IP address/range                                                | `webapp.internal.com`           |
+| `DestinationType` | Type of destination (`fqdn`, `ipAddress`, `ipRangeCidr`, `ipRange`)         | `fqdn`                          |
+| `Protocol`        | Network protocol (`tcp` or `udp`)                                           | `tcp`                           |
+| `Ports`           | Port specification (single, range, or comma-separated)                     | `443`, `8080-8090`, `80,443`    |
+| `ConnectorGroup`  | Name of the Application Proxy connector group                               | `Production-Connectors`         |
+| `Provision`       | Whether to provision this entry (`Yes` or `No`)                            | `Yes`                           |
+| `EntraGroups`     | Array of Entra ID groups to assign to the application                       | `["WebApp-Users", "Support-Team"]` |
+
+### Notes
+
+- The `EntraGroups` field is an array, allowing multiple groups to be assigned to an application.
+- Placeholder values (e.g., `_Replace_Me`) are ignored during processing.
+- Ensure the JSON file is properly formatted and validated before use.
+
+### Usage Example
+
+```powershell
+Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.json"
+```
+
+### Conversion from CSV to JSON
+
+If you already have a CSV file, you can convert it to JSON using PowerShell:
+
+```powershell
+Import-Csv -Path ".\config.csv" | ConvertTo-Json -Depth 2 | Set-Content -Path ".\config.json"
+```
+
+
+
 ### DestinationType Values
 
 The `DestinationType` field supports the following values:

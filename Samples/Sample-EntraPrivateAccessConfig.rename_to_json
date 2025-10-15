@@ -7,18 +7,27 @@
     "Protocol": "tcp",
     "Ports": "443",
     "ConnectorGroup": "Home",
-    "EntraGroups": ["GSA-Portal-Users", "GSA-Portal-Admins"],
+    "EntraGroups": [
+      "GSA-Portal-Users",
+      "GSA-Portal-Admins"
+    ],
     "Provision": "Yes"
   },
   {
     "EnterpriseAppName": "GSA-WebPortal",
-    "SegmentId": "Portal-Admin", 
+    "SegmentId": "Portal-Admin",
     "destinationHost": "admin.portal.contoso.local",
     "DestinationType": "fqdn",
     "Protocol": "tcp",
-    "Ports": [4438, 443],
+    "Ports": [
+      4438,
+      443
+    ],
     "ConnectorGroup": "Home",
-    "EntraGroups": ["GSA-Portal-Admins", "GSA-Support-Team"],
+    "EntraGroups": [
+      "GSA-Portal-Admins",
+      "GSA-Support-Team"
+    ],
     "Provision": "Yes"
   },
   {
@@ -28,8 +37,11 @@
     "DestinationType": "fqdn",
     "Protocol": "tcp",
     "Ports": "8080-8090",
-    "ConnectorGroup": "Home", 
-    "EntraGroups": ["GSA-Portal-Admins", "GSA-Support-Team"],
+    "ConnectorGroup": "Home",
+    "EntraGroups": [
+      "GSA-Portal-Admins",
+      "GSA-Support-Team"
+    ],
     "Provision": "Yes"
   }
 ]

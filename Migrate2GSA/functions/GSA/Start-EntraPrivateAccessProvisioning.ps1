@@ -40,8 +40,12 @@
 
 .NOTES
     Author: Andres Canello
-    Version: 2.0
+    Version: 2.1
     Requires: PowerShell 7+, Entra PowerShell Beta Modules
+
+.CHANGELOG
+    v2.1 - Added JSON support, some better Module handling and error messages, Michael Morten Sonne
+    v2.0 - Initial version, Andres Canello
 #>
 
 function Start-EntraPrivateAccessProvisioning {
