@@ -538,7 +538,15 @@ function ConvertFrom-JsonApplication {
                                 $value = $value -join ';'
                             }
                             elseif ($prop.Name -match 'port|Port') {
-                                $value = if ($value.Count -gt 1) { '"' + ($value -join ',') + '"' } else { $value[0] }
+                                # Convert port arrays to proper CSV format
+                                if ($value.Count -eq 1) {
+                                    # Single port, no quotes needed
+                                    $value = $value[0].ToString()
+                                } else {
+                                    # Multiple ports, use quotes around comma-separated values
+                                    $portString = ($value | ForEach-Object { $_.ToString() }) -join ','
+                                    $value = '"' + $portString + '"'
+                                }
                             }
                             else {
                                 $value = $value -join ','
@@ -652,8 +660,17 @@ function ConvertFrom-JsonRecord {
                         Write-Verbose "Applied semicolon separator for groups: $value"
                     }
                     elseif ($prop.Name -match 'port|Port') {
-                        $value = if ($value.Count -gt 1) { '"' + ($value -join ',') + '"' } else { $value[0] }
-                        Write-Verbose "Applied comma separator with quotes for ports: $value"
+                        # Convert port arrays to proper CSV format
+                        if ($value.Count -eq 1) {
+                            # Single port, no quotes needed
+                            $value = $value[0].ToString()
+                            Write-Verbose "Single port converted: $value"
+                        } else {
+                            # Multiple ports, use quotes around comma-separated values
+                            $portString = ($value | ForEach-Object { $_.ToString() }) -join ','
+                            $value = '"' + $portString + '"'
+                            Write-Verbose "Multiple ports converted with quotes: $value"
+                        }
                     }
                     else {
                         $value = $value -join ','
@@ -1431,6 +1448,10 @@ function New-ApplicationSegments {
         # Parse ports - convert to string array format expected by Entra API
         $portArray = @()
         $portString = $SegmentConfig.Ports -replace '\s', ''
+        
+        # Remove surrounding quotes if present (for CSV format compatibility)
+        $portString = $portString -replace '^"', '' -replace '"$', ''
+        
         $portParts = $portString -split ','
         
         foreach ($portPart in $portParts) {
