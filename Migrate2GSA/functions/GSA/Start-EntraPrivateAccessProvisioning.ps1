@@ -1,18 +1,21 @@
 <#
 .SYNOPSIS
-    Provisions Microsoft Entra Private Access applications from CSV configuration data.
+    Provisions Microsoft Entra Private Access applications from CSV or JSON configuration data.
 
 .DESCRIPTION
-    This script reads CSV configuration files containing Entra Private Access application details
+    This script reads CSV or JSON configuration files containing Entra Private Access application details
     and provisions them automatically. It provides comprehensive logging, error handling, and
     supports retry scenarios through output CSV generation.
+    
+    JSON format provides enhanced flexibility with nested structures and better integration with
+    discovery tools, while CSV format maintains compatibility with existing workflows.
     
     The script supports assigning multiple Entra ID groups per Enterprise Application using
     semicolon-separated values in the EntraGroups column. Groups are aggregated across all
     segments of an application, deduplicated, and assigned at the application level.
 
 .PARAMETER ProvisioningConfigPath
-    Path to the CSV provisioning configuration file.
+    Path to the CSV or JSON provisioning configuration file.
 
 .PARAMETER AppNamePrefix
     Optional filter to provision only applications with names starting with this prefix.
@@ -30,6 +33,9 @@
     Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv"
 
 .EXAMPLE
+    Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.json"
+
+.EXAMPLE
     Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv" -AppNamePrefix "GSA-" -WhatIf
 
 .NOTES
@@ -41,8 +47,17 @@
 function Start-EntraPrivateAccessProvisioning {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     param (
-        [Parameter(Mandatory=$true, HelpMessage="Path to CSV provisioning config file")]
-        [ValidateScript({Test-Path $_ -PathType Leaf})]
+        [Parameter(Mandatory=$true, HelpMessage="Path to CSV or JSON provisioning config file")]
+        [ValidateScript({
+            if (-not (Test-Path $_ -PathType Leaf)) {
+                throw "File not found: $_"
+            }
+            $extension = [System.IO.Path]::GetExtension($_).ToLower()
+            if ($extension -notin @('.csv', '.json')) {
+                throw "Unsupported file format. Only .csv and .json files are supported."
+            }
+            return $true
+        })]
         [string]$ProvisioningConfigPath,
            
         [Parameter(HelpMessage="Application name filter")]
@@ -81,51 +96,155 @@ $Global:RecordLookup = @{}
 function Test-RequiredModules {
     <#
     .SYNOPSIS
-        Validates that all required PowerShell modules are installed.
+        Validates that all required PowerShell modules are installed and loads them properly.
+        
+    .DESCRIPTION
+        Checks for required Microsoft Entra and Graph modules, handles dependencies,
+        and imports modules in the correct order to avoid dependency conflicts.
     #>
     [CmdletBinding()]
     param()
     
     Write-LogMessage "Validating required PowerShell modules..." -Level INFO -Component "ModuleCheck"
     
+    # Define modules in dependency order (Graph modules must be loaded before Entra modules)
     $requiredModules = @(
-        'Microsoft.Entra.Beta.Groups',
-        'Microsoft.Entra.Beta.Authentication',
-        'Microsoft.Entra.Beta.NetworkAccess'
+        @{ Name = 'Microsoft.Graph.Authentication'; Description = 'Microsoft Graph Authentication (required for all Graph modules)' },
+        @{ Name = 'Microsoft.Graph.Beta.Groups'; Description = 'Microsoft Graph Beta Groups (required for Entra Groups module)' },
+        @{ Name = 'Microsoft.Graph.Beta.Applications'; Description = 'Microsoft Graph Beta Applications (required for Entra modules)' },
+        @{ Name = 'Microsoft.Graph.Beta.Identity.DirectoryManagement'; Description = 'Microsoft Graph Beta Directory Management (required for Entra modules)' },
+        @{ Name = 'Microsoft.Entra.Beta.Groups'; Description = 'Microsoft Entra Beta Groups' },
+        @{ Name = 'Microsoft.Entra.Beta.Authentication'; Description = 'Microsoft Entra Beta Authentication' },
+        @{ Name = 'Microsoft.Entra.Beta.NetworkAccess'; Description = 'Microsoft Entra Beta Network Access' }
     )
     
     $missingModules = @()
     $installedModules = @()
     
-    foreach ($moduleName in $requiredModules) {
+    # First, check if all required modules are available
+    foreach ($moduleInfo in $requiredModules) {
+        $moduleName = $moduleInfo.Name
         try {
             $module = Get-Module -Name $moduleName -ListAvailable -ErrorAction Stop
             if ($module) {
-                $installedModules += $moduleName
+                $installedModules += $moduleInfo
                 $latestVersion = ($module | Sort-Object Version -Descending | Select-Object -First 1).Version
                 Write-LogMessage "✅ $moduleName (v$latestVersion) - Available" -Level SUCCESS -Component "ModuleCheck"
             } else {
-                $missingModules += $moduleName
+                $missingModules += $moduleInfo
             }
         }
         catch {
-            $missingModules += $moduleName
+            $missingModules += $moduleInfo
         }
     }
     
     if ($missingModules.Count -gt 0) {
         Write-LogMessage "❌ Missing required PowerShell modules:" -Level ERROR -Component "ModuleCheck"
-        foreach ($missingModule in $missingModules) {
-            Write-LogMessage "   - $missingModule" -Level ERROR -Component "ModuleCheck"
+        foreach ($moduleInfo in $missingModules) {
+            Write-LogMessage "   - $($moduleInfo.Name): $($moduleInfo.Description)" -Level ERROR -Component "ModuleCheck"
         }
         
         Write-LogMessage "Please install missing modules using the following commands:" -Level INFO -Component "ModuleCheck"
+        Write-LogMessage "Install-Module -Name Microsoft.Graph -Force -AllowClobber" -Level INFO -Component "ModuleCheck"
+        Write-LogMessage "Install-Module -Name Microsoft.Graph.Beta -Force -AllowClobber" -Level INFO -Component "ModuleCheck"
         Write-LogMessage "Install-Module -Name Microsoft.Entra.Beta -Force -AllowClobber" -Level INFO -Component "ModuleCheck"
         
-        throw "Required PowerShell modules are missing: $($missingModules -join ', ')"
+        throw "Required PowerShell modules are missing: $($missingModules.Name -join ', ')"
     }
     
-    Write-LogMessage "All required PowerShell modules are installed" -Level SUCCESS -Component "ModuleCheck"
+    Write-LogMessage "All required PowerShell modules are available" -Level SUCCESS -Component "ModuleCheck"
+    
+    # Now import modules in dependency order
+    Write-LogMessage "Importing required modules in dependency order..." -Level INFO -Component "ModuleCheck"
+    
+    foreach ($moduleInfo in $installedModules) {
+        $moduleName = $moduleInfo.Name
+        try {
+            # Check if module is already imported
+            $importedModule = Get-Module -Name $moduleName -ErrorAction SilentlyContinue
+            if ($importedModule) {
+                Write-LogMessage "✅ $moduleName - Already imported (v$($importedModule.Version))" -Level INFO -Component "ModuleCheck"
+            } else {
+                Write-LogMessage "Importing module: $moduleName..." -Level INFO -Component "ModuleCheck"
+                
+                # Special handling for Entra modules that have strict version dependencies
+                if ($moduleName.StartsWith('Microsoft.Entra.Beta.')) {
+                    Write-LogMessage "Checking version dependencies for $moduleName..." -Level INFO -Component "ModuleCheck"
+                    
+                    # Check the module manifest for required versions
+                    $availableModules = Get-Module -Name $moduleName -ListAvailable
+                    $latestEntraModule = $availableModules | Sort-Object Version -Descending | Select-Object -First 1
+                    
+                    if ($latestEntraModule -and $latestEntraModule.Path) {
+                        $manifestPath = $latestEntraModule.Path
+                        Write-LogMessage "Checking manifest at: $manifestPath" -Level INFO -Component "ModuleCheck"
+                        
+                        try {
+                            # Read the manifest to get exact version requirements
+                            $manifestContent = Get-Content $manifestPath -Raw
+                            
+                            # Check for Graph.Beta.Groups dependency
+                            if ($manifestContent -match "Microsoft\.Graph\.Beta\.Groups.*RequiredVersion.*?'([^']+)'") {
+                                $requiredGraphVersion = $matches[1]
+                                Write-LogMessage "Found required Graph.Beta.Groups version: $requiredGraphVersion" -Level INFO -Component "ModuleCheck"
+                                
+                                # Import the specific version of Graph module
+                                $graphModule = Get-Module -Name 'Microsoft.Graph.Beta.Groups' -ListAvailable | Where-Object { $_.Version -eq $requiredGraphVersion }
+                                if ($graphModule) {
+                                    Write-LogMessage "Importing Microsoft.Graph.Beta.Groups version $requiredGraphVersion..." -Level INFO -Component "ModuleCheck"
+                                    Import-Module -Name 'Microsoft.Graph.Beta.Groups' -RequiredVersion $requiredGraphVersion -Force -Global -ErrorAction Stop
+                                } else {
+                                    Write-LogMessage "Required version $requiredGraphVersion of Microsoft.Graph.Beta.Groups not found. Available versions:" -Level WARN -Component "ModuleCheck"
+                                    $availableGraphVersions = Get-Module -Name 'Microsoft.Graph.Beta.Groups' -ListAvailable | ForEach-Object { $_.Version }
+                                    Write-LogMessage "Available: $($availableGraphVersions -join ', ')" -Level INFO -Component "ModuleCheck"
+                                    
+                                    # Try with the closest available version
+                                    $closestVersion = $availableGraphVersions | Sort-Object | Where-Object { $_ -ge [version]$requiredGraphVersion } | Select-Object -First 1
+                                    if (-not $closestVersion) {
+                                        $closestVersion = $availableGraphVersions | Sort-Object -Descending | Select-Object -First 1
+                                    }
+                                    
+                                    Write-LogMessage "Attempting with closest version: $closestVersion" -Level INFO -Component "ModuleCheck"
+                                    Import-Module -Name 'Microsoft.Graph.Beta.Groups' -RequiredVersion $closestVersion -Force -Global -ErrorAction Stop
+                                }
+                            }
+                        }
+                        catch {
+                            Write-LogMessage "Could not parse manifest for version requirements: $($_.Exception.Message)" -Level WARN -Component "ModuleCheck"
+                            # Fallback to loading latest Graph modules
+                            Import-Module -Name 'Microsoft.Graph.Beta.Groups' -Force -Global -ErrorAction SilentlyContinue
+                        }
+                    }
+                    
+                    # Now try to import the Entra module
+                    Import-Module -Name $moduleName -Force -Global -ErrorAction Stop
+                } else {
+                    # Standard import for Graph modules
+                    Import-Module -Name $moduleName -Force -Global -ErrorAction Stop
+                }
+                
+                $importedModule = Get-Module -Name $moduleName
+                Write-LogMessage "✅ $moduleName - Imported successfully (v$($importedModule.Version))" -Level SUCCESS -Component "ModuleCheck"
+            }
+        }
+        catch {
+            Write-LogMessage "❌ Failed to import module $moduleName : $($_.Exception.Message)" -Level ERROR -Component "ModuleCheck"
+            
+            # For Entra modules, provide specific guidance about version conflicts
+            if ($moduleName.StartsWith('Microsoft.Entra.Beta.')) {
+                Write-LogMessage "This appears to be a version compatibility issue with Microsoft Graph modules." -Level ERROR -Component "ModuleCheck"
+                Write-LogMessage "The Entra module requires specific versions of Graph modules that may not match your installed versions." -Level ERROR -Component "ModuleCheck"
+                Write-LogMessage "Consider installing compatible versions:" -Level INFO -Component "ModuleCheck"
+                Write-LogMessage "Install-Module Microsoft.Graph.Beta -RequiredVersion 2.25.0 -Force -AllowClobber" -Level INFO -Component "ModuleCheck"
+                Write-LogMessage "Install-Module Microsoft.Entra.Beta -Force -AllowClobber" -Level INFO -Component "ModuleCheck"
+            }
+            
+            throw "Failed to import required module: $moduleName"
+        }
+    }
+    
+    Write-LogMessage "All required PowerShell modules imported successfully" -Level SUCCESS -Component "ModuleCheck"
     
     # Check PowerShell version requirement
     $psVersion = $PSVersionTable.PSVersion
@@ -145,6 +264,10 @@ function Test-EntraConnection {
     <#
     .SYNOPSIS
         Validates Entra PowerShell connection and required permissions.
+        
+    .DESCRIPTION
+        Checks if Entra PowerShell is connected with proper authentication context
+        and validates that all required scopes are available for the provisioning operations.
     #>
     [CmdletBinding()]
     param()
@@ -152,8 +275,28 @@ function Test-EntraConnection {
     Write-LogMessage "Validating Entra PowerShell connection..." -Level INFO -Component "Auth"
     
     try {
+        # Ensure authentication module is properly loaded
+        try {
+            $authModule = Get-Module -Name 'Microsoft.Entra.Beta.Authentication' -ErrorAction Stop
+            if (-not $authModule) {
+                Write-LogMessage "Authentication module not loaded, attempting import..." -Level INFO -Component "Auth"
+                Import-Module -Name 'Microsoft.Entra.Beta.Authentication' -Force -ErrorAction Stop
+            }
+        }
+        catch {
+            Write-LogMessage "Failed to load authentication module: $($_.Exception.Message)" -Level ERROR -Component "Auth"
+            Write-LogMessage "Please ensure Microsoft.Entra.Beta.Authentication module is properly installed" -Level ERROR -Component "Auth"
+            throw "Authentication module unavailable: $_"
+        }
+        
         # Check if already connected
-        $context = Get-EntraContext -ErrorAction SilentlyContinue
+        $context = $null
+        try {
+            $context = Get-EntraContext -ErrorAction Stop
+        }
+        catch {
+            Write-LogMessage "Error checking Entra context: $($_.Exception.Message)" -Level WARN -Component "Auth"
+        }
         
         if (-not $context) {
             Write-LogMessage "No active Entra PowerShell connection found." -Level WARN -Component "Auth"
@@ -169,7 +312,7 @@ function Test-EntraConnection {
         # Check required scopes
         $requiredScopes = @(
             'NetworkAccessPolicy.ReadWrite.All',
-            'Application.ReadWrite.All',
+            'Application.ReadWrite.All', 
             'NetworkAccess.ReadWrite.All'
         )
         
@@ -197,10 +340,441 @@ function Test-EntraConnection {
 #endregion
 
 #region Configuration Management
+function ConvertFrom-JsonToConfigArray {
+    <#
+    .SYNOPSIS
+        Converts JSON configuration data to CSV-compatible array format.
+    
+    .DESCRIPTION
+        Dynamically transforms JSON data to match the exact CSV structure without
+        hardcoded mappings. Preserves all column names and data formats exactly.
+        Supports both flat JSON arrays and nested application structures with segments.
+        
+    .PARAMETER JsonData
+        The parsed JSON object from ConvertFrom-Json. Can be a flat array of configuration
+        objects, a nested structure with an 'applications' property, or a single application object.
+        
+    .OUTPUTS
+        System.Object[]
+        Array of configuration objects matching CSV format with proper column structure.
+        
+    .EXAMPLE
+        $jsonContent = Get-Content "config.json" -Raw | ConvertFrom-Json
+        $csvData = ConvertFrom-JsonToConfigArray -JsonData $jsonContent
+        
+        Converts JSON configuration data to CSV-compatible format.
+        
+    .EXAMPLE
+        $flatArray = @(
+            @{ EnterpriseAppName = "GSA-App1"; SegmentId = "Seg1"; destinationHost = "app1.local" }
+            @{ EnterpriseAppName = "GSA-App2"; SegmentId = "Seg2"; destinationHost = "app2.local" }
+        )
+        $csvData = ConvertFrom-JsonToConfigArray -JsonData $flatArray
+        
+        Converts a flat array of PowerShell objects to CSV format.
+        
+    .NOTES
+        Author: Michael Morten Sonne
+        This function is part of the Migrate2GSA toolkit for Entra Private Access provisioning.
+        The function automatically detects JSON structure and handles conversion appropriately.
+        All array properties are converted to appropriate string formats based on naming conventions.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNull()]
+        [PSObject]$JsonData
+    )
+    
+    begin {
+        Write-Verbose "Starting JSON to CSV conversion process"
+        $configArray = @()
+    }
+    
+    process {
+        try {
+            Write-LogMessage "Converting JSON data to CSV format..." -Level INFO -Component "Config"
+            
+            # Detect JSON structure format
+            if ($JsonData.PSObject.Properties.Name -contains 'applications') {
+                Write-LogMessage "Processing nested JSON format with applications array" -Level INFO -Component "Config"
+                foreach ($app in $JsonData.applications) {
+                    $configArray += ConvertFrom-JsonApplication -Application $app
+                }
+            }
+            elseif ($JsonData -is [Array]) {
+                Write-LogMessage "Processing flat JSON array format" -Level INFO -Component "Config"
+                foreach ($item in $JsonData) {
+                    $configArray += ConvertFrom-JsonRecord -Record $item
+                }
+            }
+            else {
+                Write-LogMessage "Processing single application JSON format" -Level INFO -Component "Config"
+                $configArray += ConvertFrom-JsonApplication -Application $JsonData
+            }
+            
+            Write-LogMessage "Converted $($configArray.Count) records from JSON format" -Level SUCCESS -Component "Config"
+        }
+        catch {
+            $errorMessage = "Failed to convert JSON data: $($_.Exception.Message)"
+            Write-LogMessage $errorMessage -Level ERROR -Component "Config"
+            Write-Error $errorMessage -ErrorAction Stop
+        }
+    }
+    
+    end {
+        Write-Verbose "JSON to CSV conversion completed. Converted $($configArray.Count) records"
+        return $configArray
+    }
+}
+
+function ConvertFrom-JsonApplication {
+    <#
+    .SYNOPSIS
+        Converts JSON application to CSV records without hardcoded assumptions.
+        
+    .DESCRIPTION
+        Processes an application object with nested segments and converts to flat
+        configuration records matching the exact CSV structure. Handles group aggregation
+        and applies application-level defaults to segments. Supports flexible property mapping.
+        
+    .PARAMETER Application
+        The JSON application object to convert. Must contain application name and can include
+        segments array. If no segments are provided, treats the application object as a single segment.
+        
+    .OUTPUTS
+        System.Object[]
+        Array of configuration records matching CSV format, one record per segment.
+        
+    .EXAMPLE
+        $app = @{
+            name = "GSA-WebApp"
+            connectorGroup = "Default"
+            segments = @(
+                @{ segmentId = "Web"; destinationHost = "web.local"; ports = @(80, 443) }
+                @{ segmentId = "API"; destinationHost = "api.local"; ports = "8080" }
+            )
+        }
+        $records = ConvertFrom-JsonApplication -Application $app
+        
+        Converts a nested application object with multiple segments to CSV records.
+        
+    .EXAMPLE
+        $singleApp = @{
+            EnterpriseAppName = "GSA-Simple"
+            destinationHost = "simple.local"
+            Protocol = "tcp"
+            Ports = "443"
+        }
+        $records = ConvertFrom-JsonApplication -Application $singleApp
+        
+        Converts a single application object (no nested segments) to a CSV record.
+        
+    .NOTES
+        Author: Michael Morten Sonne
+        This function handles dynamic property mapping and array-to-string conversions.
+        Groups use semicolon separators, ports with multiple values get quoted.
+        Application-level properties serve as defaults for all segments.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNull()]
+        [PSObject]$Application
+    )
+    
+    begin {
+        Write-Verbose "Starting application conversion process"
+        $records = @()
+    }
+    
+    process {
+        try {
+            # Get application name from any reasonable property
+            $appName = Get-PropertyValue -Object $Application -PropertyNames @('EnterpriseAppName', 'name', 'applicationName')
+            if (-not $appName) {
+                $errorMessage = "Application name is required but not found in properties: EnterpriseAppName, name, or applicationName"
+                Write-Error $errorMessage -ErrorAction Stop
+            }
+            
+            Write-Verbose "Processing application: $appName"
+            
+            # Get application-level defaults
+            $appDefaults = @{}
+            foreach ($prop in $Application.PSObject.Properties) {
+                if ($prop.Name -notin @('segments', 'name', 'EnterpriseAppName')) {
+                    $appDefaults[$prop.Name] = $prop.Value
+                }
+            }
+            
+            Write-Verbose "Found $($appDefaults.Count) application-level default properties"
+            
+            # Process segments
+            $segments = $Application.segments
+            if (-not $segments) {
+                Write-Verbose "No segments array found, treating application object as single segment"
+                $segments = @($Application)
+            }
+            
+            $segmentIndex = 1
+            foreach ($segment in $segments) {
+                Write-Verbose "Processing segment $segmentIndex of $($segments.Count)"
+                
+                $record = [PSCustomObject]@{}
+                
+                # Start with application defaults
+                foreach ($key in $appDefaults.Keys) {
+                    $record | Add-Member -NotePropertyName $key -NotePropertyValue $appDefaults[$key] -Force
+                }
+                
+                # Override with segment-specific values
+                foreach ($prop in $segment.PSObject.Properties) {
+                    if ($prop.Name -ne 'segments') {
+                        $value = $prop.Value
+                        
+                        # Convert arrays to appropriate string format based on property name
+                        if ($value -is [Array]) {
+                            if ($prop.Name -match 'group|Group') {
+                                $value = $value -join ';'
+                            }
+                            elseif ($prop.Name -match 'port|Port') {
+                                $value = if ($value.Count -gt 1) { '"' + ($value -join ',') + '"' } else { $value[0] }
+                            }
+                            else {
+                                $value = $value -join ','
+                            }
+                        }
+                        
+                        $record | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $value -Force
+                    }
+                }
+                
+                # Ensure required properties exist
+                if (-not $record.EnterpriseAppName) {
+                    $record | Add-Member -NotePropertyName 'EnterpriseAppName' -NotePropertyValue $appName -Force
+                }
+                
+                if (-not $record.SegmentId) {
+                    $segmentId = "Segment-$segmentIndex"
+                    $record | Add-Member -NotePropertyName 'SegmentId' -NotePropertyValue $segmentId -Force
+                    Write-Verbose "Auto-generated SegmentId: $segmentId"
+                }
+                
+                $records += $record
+                $segmentIndex++
+            }
+        }
+        catch {
+            $errorMessage = "Failed to convert application '$($Application.name -or 'Unknown')': $($_.Exception.Message)"
+            Write-LogMessage $errorMessage -Level ERROR -Component "Config"
+            Write-Error $errorMessage -ErrorAction Stop
+        }
+    }
+    
+    end {
+        Write-Verbose "Application conversion completed. Generated $($records.Count) records"
+        return $records
+    }
+}
+
+function ConvertFrom-JsonRecord {
+    <#
+    .SYNOPSIS
+        Converts flat JSON record with dynamic property mapping.
+        
+    .DESCRIPTION
+        Normalizes property names and formats values to match the exact CSV structure
+        used by the provisioning engine. Handles array-to-string conversions based on
+        property naming conventions and preserves all original properties.
+        
+    .PARAMETER Record
+        The JSON record object to convert. Can contain any properties that will be
+        dynamically mapped to the CSV structure.
+        
+    .OUTPUTS
+        System.Management.Automation.PSCustomObject
+        Configuration object matching CSV format with proper property formatting.
+        
+    .EXAMPLE
+        $record = @{
+            EnterpriseAppName = "GSA-App"
+            destinationHost = "app.local"
+            EntraGroups = @("Group1", "Group2")
+            Ports = @(80, 443)
+        }
+        $csvRecord = ConvertFrom-JsonRecord -Record $record
+        
+        Converts a flat JSON record, formatting arrays appropriately (groups with semicolons, ports with commas).
+        
+    .EXAMPLE
+        $simpleRecord = @{
+            name = "Simple-App"
+            host = "simple.local"
+            protocol = "tcp"
+        }
+        $csvRecord = ConvertFrom-JsonRecord -Record $simpleRecord
+        
+        Converts a simple record with basic properties.
+        
+    .NOTES
+        Author: Michael Morten Sonne
+        Array conversion rules:
+        - Properties containing 'group' or 'Group' use semicolon separators
+        - Properties containing 'port' or 'Port' use comma separators with quotes for multiple values
+        - Other arrays use comma separators
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNull()]
+        [PSObject]$Record
+    )
+    
+    begin {
+        Write-Verbose "Starting flat JSON record conversion"
+    }
+    
+    process {
+        try {
+            $convertedRecord = [PSCustomObject]@{}
+            $propertyCount = ($Record.PSObject.Properties | Measure-Object).Count
+            Write-Verbose "Processing record with $propertyCount properties"
+            
+            foreach ($prop in $Record.PSObject.Properties) {
+                $value = $prop.Value
+                
+                # Convert arrays to appropriate string format based on property name
+                if ($value -is [Array]) {
+                    Write-Verbose "Converting array property '$($prop.Name)' with $($value.Count) items"
+                    
+                    if ($prop.Name -match 'group|Group') {
+                        $value = $value -join ';'
+                        Write-Verbose "Applied semicolon separator for groups: $value"
+                    }
+                    elseif ($prop.Name -match 'port|Port') {
+                        $value = if ($value.Count -gt 1) { '"' + ($value -join ',') + '"' } else { $value[0] }
+                        Write-Verbose "Applied comma separator with quotes for ports: $value"
+                    }
+                    else {
+                        $value = $value -join ','
+                        Write-Verbose "Applied comma separator for array: $value"
+                    }
+                }
+                
+                $convertedRecord | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $value -Force
+            }
+            
+            Write-Verbose "Record conversion completed successfully"
+            return $convertedRecord
+        }
+        catch {
+            $errorMessage = "Failed to convert JSON record: $($_.Exception.Message)"
+            Write-LogMessage $errorMessage -Level ERROR -Component "Config"
+            Write-Error $errorMessage -ErrorAction Stop
+        }
+    }
+    
+    end {
+        Write-Verbose "Flat JSON record conversion process completed"
+    }
+}
+
+function Get-PropertyValue {
+    <#
+    .SYNOPSIS
+        Gets property value from object using multiple possible property names.
+        
+    .DESCRIPTION
+        Searches an object for properties using a list of potential property names,
+        returning the value of the first property found. This enables flexible
+        property mapping when objects may use different naming conventions.
+        
+    .PARAMETER Object
+        The object to search for properties. Must be a PowerShell object with properties.
+        
+    .PARAMETER PropertyNames
+        Array of property names to try in order of preference. The function will return
+        the value of the first property name that exists on the object.
+        
+    .OUTPUTS
+        System.Object
+        The first property value found, or $null if none of the specified properties exist.
+        
+    .EXAMPLE
+        $user = @{ UserName = "jdoe"; Email = "jdoe@company.com" }
+        $name = Get-PropertyValue -Object $user -PropertyNames @('Name', 'UserName', 'LoginName')
+        
+        Returns "jdoe" because UserName is the first matching property from the list.
+        
+    .EXAMPLE
+        $app = @{ name = "MyApp"; displayName = "My Application" }
+        $appName = Get-PropertyValue -Object $app -PropertyNames @('EnterpriseAppName', 'name', 'applicationName')
+        
+        Returns "MyApp" because 'name' is found (EnterpriseAppName doesn't exist).
+        
+    .EXAMPLE
+        $emptyObj = @{ SomeOtherProp = "value" }
+        $result = Get-PropertyValue -Object $emptyObj -PropertyNames @('Name', 'Title')
+        
+        Returns $null because neither Name nor Title properties exist.
+        
+    .NOTES
+        Author: Michael Morten Sonne
+        This function is particularly useful for handling objects from different sources
+        that may use varying property naming conventions (e.g., JSON APIs vs PowerShell objects).
+        Property names are case-sensitive and must match exactly.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNull()]
+        [PSObject]$Object,
+        
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string[]]$PropertyNames
+    )
+    
+    begin {
+        Write-Verbose "Starting property value search for $($PropertyNames.Count) potential property names"
+    }
+    
+    process {
+        try {
+            foreach ($propName in $PropertyNames) {
+                Write-Verbose "Checking for property: $propName"
+                
+                if ($Object.PSObject.Properties[$propName]) {
+                    $value = $Object.$propName
+                    Write-Verbose "Found property '$propName' with value: $value"
+                    return $value
+                }
+            }
+            
+            Write-Verbose "No matching properties found from the specified list: $($PropertyNames -join ', ')"
+            return $null
+        }
+        catch {
+            $errorMessage = "Failed to get property value: $($_.Exception.Message)"
+            Write-Verbose $errorMessage
+            Write-Error $errorMessage -ErrorAction Stop
+        }
+    }
+    
+    end {
+        Write-Verbose "Property value search completed"
+    }
+}
+
 function Import-ProvisioningConfig {
     <#
     .SYNOPSIS
-        Loads and validates CSV provisioning configuration.
+        Loads and validates CSV or JSON provisioning configuration.
+        
+    .DESCRIPTION
+        Imports configuration data from either CSV or JSON format. JSON format supports
+        richer data structures and better integration with discovery tools. The function
+        automatically detects the file format based on extension.
     #>
     [CmdletBinding()]
     param(
@@ -217,14 +791,30 @@ function Import-ProvisioningConfig {
     Write-LogMessage "Loading provisioning configuration from: $ConfigPath" -Level INFO -Component "Config"
     
     try {
-        # Import CSV
-        $configData = Import-Csv -Path $ConfigPath
+        $fileExtension = [System.IO.Path]::GetExtension($ConfigPath).ToLower()
+        $configData = @()
+        
+        # Load data based on file extension
+        switch ($fileExtension) {
+            '.csv' {
+                Write-LogMessage "Detected CSV format" -Level INFO -Component "Config"
+                $configData = Import-Csv -Path $ConfigPath
+            }
+            '.json' {
+                Write-LogMessage "Detected JSON format" -Level INFO -Component "Config"
+                $jsonContent = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
+                $configData = ConvertFrom-JsonToConfigArray -JsonData $jsonContent
+            }
+            default {
+                throw "Unsupported file format: $fileExtension. Only .csv and .json are supported."
+            }
+        }
         
         if (-not $configData -or $configData.Count -eq 0) {
             throw "No data found in configuration file"
         }
         
-        Write-LogMessage "Loaded $($configData.Count) configuration records" -Level INFO -Component "Config"
+        Write-LogMessage "Loaded $($configData.Count) configuration records from $fileExtension file" -Level INFO -Component "Config"
         
         # Validate required columns
         $requiredColumns = @(

@@ -133,9 +133,18 @@ function Invoke-InternalGraphRequest {
                     $commandHeaders = New-EntraBetaCustomHeaders @customHeaderParams
                     
                     # Merge with any additional headers provided
-                    $mergedHeaders = $commandHeaders.Clone()
-                    foreach ($key in $Headers.Keys) {
-                        $mergedHeaders[$key] = $Headers[$key]
+                    $mergedHeaders = @{}
+                    # Copy commandHeaders to mergedHeaders
+                    if ($commandHeaders) {
+                        foreach ($key in $commandHeaders.Keys) {
+                            $mergedHeaders[$key] = $commandHeaders[$key]
+                        }
+                    }
+                    # Add any additional headers
+                    if ($Headers) {
+                        foreach ($key in $Headers.Keys) {
+                            $mergedHeaders[$key] = $Headers[$key]
+                        }
                     }
                     
                     # Build request parameters

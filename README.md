@@ -32,6 +32,21 @@ To check your PowerShell version:
 $PSVersionTable.PSVersion
 ```
 
+### Version Information
+
+This toolkit is compatible with **Microsoft.Graph v2.25.0**. Ensure you have this version installed to avoid compatibility issues. You can install or update the module using the following command:
+
+```powershell
+Install-Module Microsoft.Graph.Beta -RequiredVersion 2.25.0 -Force -AllowClobber
+Install-Module Microsoft.Entra.Beta -Force -AllowClobber
+```
+
+To verify the installed version of Microsoft.Graph:
+
+```powershell
+Get-InstalledModule -Name Microsoft.Graph
+```
+
 ### Import the Module
 
 Once you have the module files locally, you can import the module using one of these methods:
