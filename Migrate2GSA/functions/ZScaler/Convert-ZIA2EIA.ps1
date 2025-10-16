@@ -400,6 +400,9 @@ function Convert-ZIA2EIA {
         SecurityProfilesCreated = 0
         GroupsSplitForCharLimit = 0
         PriorityConflictsResolved = 0
+        TotalFQDNsInPolicies = 0
+        TotalURLsInPolicies = 0
+        TotalRulesInPolicies = 0
     }
     
     # Collections for output
@@ -644,6 +647,8 @@ function Convert-ZIA2EIA {
                     }
                     
                     [void]$policies.Add($policyEntry)
+                    $stats.TotalRulesInPolicies++
+                    $stats.TotalFQDNsInPolicies += $groups[$i].Count
                 }
             }
         }
@@ -682,6 +687,8 @@ function Convert-ZIA2EIA {
                     }
                     
                     [void]$policies.Add($policyEntry)
+                    $stats.TotalRulesInPolicies++
+                    $stats.TotalURLsInPolicies += $groups[$i].Count
                 }
             }
         }
@@ -708,6 +715,7 @@ function Convert-ZIA2EIA {
                 }
                 
                 [void]$policies.Add($policyEntry)
+                $stats.TotalRulesInPolicies++
             }
         }
         
@@ -849,6 +857,17 @@ function Convert-ZIA2EIA {
                         }
                         
                         [void]$policies.Add($allowPolicy)
+                        $stats.TotalRulesInPolicies++
+                        
+                        # Count FQDNs and URLs for allow policies
+                        if ($allowPolicy.RuleType -eq 'FQDN') {
+                            $fqdnCount = ($allowPolicy.RuleDestinations -split ';').Count
+                            $stats.TotalFQDNsInPolicies += $fqdnCount
+                        }
+                        elseif ($allowPolicy.RuleType -eq 'URL') {
+                            $urlCount = ($allowPolicy.RuleDestinations -split ';').Count
+                            $stats.TotalURLsInPolicies += $urlCount
+                        }
                     }
                     
                     # Update tracking hashtable
@@ -951,6 +970,7 @@ function Convert-ZIA2EIA {
             }
             
             [void]$policies.Add($policyEntry)
+            $stats.TotalRulesInPolicies++
             $predefinedPolicyName = $policyEntry.PolicyName
         }
         
@@ -1106,6 +1126,90 @@ function Convert-ZIA2EIA {
     Write-LogMessage "  - Log File: $logPath" -Level "INFO" `
         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     
+    # Phase 5: Validate against Global Secure Access limits
+    Write-LogMessage "" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "=== GLOBAL SECURE ACCESS LIMITS VALIDATION ===" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    
+    # Define limits
+    $limits = @{
+        MaxPolicies = 100
+        MaxRules = 1000
+        MaxFQDNs = 8000
+        MaxSecurityProfiles = 256
+    }
+    
+    # Calculate unique policy count
+    $uniquePolicies = ($policies | Select-Object -Property PolicyName -Unique).Count
+    $totalFQDNsAndURLs = $stats.TotalFQDNsInPolicies + $stats.TotalURLsInPolicies
+    
+    # Display counts
+    Write-LogMessage "Current configuration:" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "  - Web content filtering policies: $uniquePolicies (Limit: $($limits.MaxPolicies))" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "  - Rules across all policies: $($stats.TotalRulesInPolicies) (Limit: $($limits.MaxRules))" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "  - Total FQDNs and URLs: $totalFQDNsAndURLs (Limit: $($limits.MaxFQDNs))" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "    - FQDNs: $($stats.TotalFQDNsInPolicies)" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "    - URLs: $($stats.TotalURLsInPolicies)" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "  - Security profiles: $($stats.SecurityProfilesCreated) (Limit: $($limits.MaxSecurityProfiles))" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    
+    # Check for limit violations and display warnings
+    $hasWarnings = $false
+    Write-LogMessage "" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    
+    if ($uniquePolicies -gt $limits.MaxPolicies) {
+        $hasWarnings = $true
+        $overage = $uniquePolicies - $limits.MaxPolicies
+        Write-LogMessage "WARNING: Web content filtering policies ($uniquePolicies) exceeds the limit of $($limits.MaxPolicies) by $overage policies" -Level "WARN" `
+            -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    }
+    
+    if ($stats.TotalRulesInPolicies -gt $limits.MaxRules) {
+        $hasWarnings = $true
+        $overage = $stats.TotalRulesInPolicies - $limits.MaxRules
+        Write-LogMessage "WARNING: Total rules ($($stats.TotalRulesInPolicies)) exceeds the limit of $($limits.MaxRules) by $overage rules" -Level "WARN" `
+            -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    }
+    
+    if ($totalFQDNsAndURLs -gt $limits.MaxFQDNs) {
+        $hasWarnings = $true
+        $overage = $totalFQDNsAndURLs - $limits.MaxFQDNs
+        Write-LogMessage "WARNING: Total FQDNs and URLs ($totalFQDNsAndURLs) exceeds the limit of $($limits.MaxFQDNs) by $overage entries" -Level "WARN" `
+            -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+        Write-LogMessage "  - FQDNs: $($stats.TotalFQDNsInPolicies)" -Level "WARN" `
+            -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+        Write-LogMessage "  - URLs: $($stats.TotalURLsInPolicies)" -Level "WARN" `
+            -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    }
+    
+    if ($stats.SecurityProfilesCreated -gt $limits.MaxSecurityProfiles) {
+        $hasWarnings = $true
+        $overage = $stats.SecurityProfilesCreated - $limits.MaxSecurityProfiles
+        Write-LogMessage "WARNING: Security profiles ($($stats.SecurityProfilesCreated)) exceeds the limit of $($limits.MaxSecurityProfiles) by $overage profiles" -Level "WARN" `
+            -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    }
+    
+    if (-not $hasWarnings) {
+        Write-LogMessage "All limits are within Global Secure Access boundaries." -Level "INFO" `
+            -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    }
+    else {
+        Write-LogMessage "" -Level "INFO" `
+            -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+        Write-LogMessage "Action required: Please review and reduce the configuration to meet Global Secure Access limits before importing." -Level "WARN" `
+            -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    }
+    
+    Write-LogMessage "" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "Conversion completed successfully" -Level "INFO" `
         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     
