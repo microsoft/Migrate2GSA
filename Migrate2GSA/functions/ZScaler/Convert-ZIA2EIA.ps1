@@ -180,10 +180,19 @@ function Convert-ZIA2EIA {
         <#
         .SYNOPSIS
             Extract email from "Display Name (email@domain.com)" format.
+            Handles multiple parentheses by looking for email pattern or using last parentheses group.
         #>
         param([string]$UserName)
         
-        if ($UserName -match '\(([^)]+)\)') {
+        # First, try to find email pattern within parentheses (most reliable)
+        # Match email pattern: something@something.something
+        if ($UserName -match '\(([^)]*@[^)]+\.[^)]+)\)') {
+            return $Matches[1]
+        }
+        
+        # Fallback: Extract content from the last set of parentheses
+        # This handles cases where there are multiple parentheses groups
+        if ($UserName -match '\(([^)]+)\)[^(]*$') {
             return $Matches[1]
         }
         
