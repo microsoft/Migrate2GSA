@@ -1,0 +1,75 @@
+{
+  "LastUpdated": "2025-10-15",
+  "MappingData": [
+    {
+      "ZIACategory": "OTHER_ADULT_MATERIAL",
+      "ZIADescription": "Sites that contain adult-oriented content",
+      "ExampleURLs": "www.example.com, www.example.org",
+      "GSACategory": "AdultContent",
+      "MappingNotes": "Mapped based on semantic similarity"
+    },
+    {
+      "ZIACategory": "SOCIAL_NETWORKING",
+      "ZIADescription": "Social networking sites like Facebook, Twitter, LinkedIn",
+      "ExampleURLs": "www.facebook.com, www.twitter.com, www.linkedin.com",
+      "GSACategory": "SocialNetworking",
+      "MappingNotes": "Direct mapping to GSA category"
+    },
+    {
+      "ZIACategory": "INTERNET_GAMBLING",
+      "ZIADescription": "Online gambling and lottery sites",
+      "ExampleURLs": "www.example-casino.com, www.lottery.com",
+      "GSACategory": "Gambling",
+      "MappingNotes": "Direct mapping to GSA category"
+    },
+    {
+      "ZIACategory": "MALWARE_SITES",
+      "ZIADescription": "Known malware distribution sites",
+      "ExampleURLs": "malicious-site.example",
+      "GSACategory": "Unmapped",
+      "MappingNotes": "No direct equivalent in GSA - needs manual review"
+    },
+    {
+      "ZIACategory": "PHISHING",
+      "ZIADescription": "Phishing and fraudulent sites",
+      "ExampleURLs": "fake-bank.example",
+      "GSACategory": "",
+      "MappingNotes": "Empty GSACategory - should be treated as unmapped"
+    },
+    {
+      "ZIACategory": "SPAM",
+      "ZIADescription": "Spam and junk sites",
+      "ExampleURLs": "spam-site.example",
+      "GSACategory": null,
+      "MappingNotes": "Null GSACategory - should be treated as unmapped"
+    },
+    {
+      "ZIACategory": "OTHER_EDUCATION",
+      "ZIADescription": "Educational sites and resources",
+      "ExampleURLs": "www.university.edu, www.learning.com",
+      "GSACategory": "Education",
+      "MappingNotes": "Mapped to Education category"
+    },
+    {
+      "ZIACategory": "SHOPPING",
+      "ZIADescription": "Online shopping and e-commerce sites",
+      "ExampleURLs": "www.amazon.com, www.ebay.com",
+      "GSACategory": "Shopping",
+      "MappingNotes": "Direct mapping"
+    },
+    {
+      "ZIACategory": "NEWS_AND_MEDIA",
+      "ZIADescription": "News and media outlets",
+      "ExampleURLs": "www.cnn.com, www.bbc.com",
+      "GSACategory": "NewsAndMedia",
+      "MappingNotes": "Direct mapping"
+    },
+    {
+      "ZIACategory": "BUSINESS",
+      "ZIADescription": "Business and corporate sites",
+      "ExampleURLs": "www.example-corp.com",
+      "GSACategory": "Business",
+      "MappingNotes": "Direct mapping"
+    }
+  ]
+}

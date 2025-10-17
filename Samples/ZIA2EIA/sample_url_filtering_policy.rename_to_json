@@ -1,0 +1,90 @@
+[
+  {
+    "id": 1,
+    "name": "urlRule1",
+    "order": 10,
+    "state": "ENABLED",
+    "action": "BLOCK",
+    "description": "Block adult content and social media",
+    "groups": [
+      { "id": "12345", "name": "Marketing" },
+      { "id": "12346", "name": "Sales" }
+    ],
+    "users": [
+      { "id": "11111", "name": "John Doe (john.doe@contoso.com)", "deleted": false },
+      { "id": "11112", "name": "Jane Smith (jane.smith@contoso.com)", "deleted": false }
+    ],
+    "urlCategories": [
+      "CUSTOM_01",
+      "OTHER_ADULT_MATERIAL",
+      "SOCIAL_NETWORKING"
+    ]
+  },
+  {
+    "id": 2,
+    "name": "urlRule2",
+    "order": 20,
+    "state": "ENABLED",
+    "action": "ALLOW",
+    "description": "Allow development tools for IT team",
+    "groups": [
+      { "id": "12347", "name": "IT Team" }
+    ],
+    "users": [],
+    "urlCategories": [
+      "CUSTOM_02"
+    ]
+  },
+  {
+    "id": 3,
+    "name": "urlRule3",
+    "order": 30,
+    "state": "ENABLED",
+    "action": "CAUTION",
+    "description": "Warn on gambling sites",
+    "groups": [],
+    "users": [],
+    "urlCategories": [
+      "INTERNET_GAMBLING",
+      "CUSTOM_03"
+    ]
+  },
+  {
+    "id": 4,
+    "name": "urlRule4",
+    "order": 40,
+    "state": "DISABLED",
+    "action": "BLOCK",
+    "description": "Disabled rule - should be skipped",
+    "groups": [
+      { "id": "12348", "name": "Test Group" }
+    ],
+    "users": [],
+    "urlCategories": [
+      "MALWARE_SITES"
+    ]
+  },
+  {
+    "id": 5,
+    "name": "urlRule5",
+    "order": 10,
+    "state": "ENABLED",
+    "action": "BLOCK",
+    "description": "Block mixed categories - priority conflict with urlRule1",
+    "groups": [
+      { "id": "12349", "name": "Finance" }
+    ],
+    "users": [
+      { "id": "11113", "name": "Bob Johnson (bob.johnson@contoso.com)", "deleted": false },
+      { "id": "11114", "name": "Deleted User (deleted@contoso.com)", "deleted": true }
+    ],
+    "urlCategories": [
+      "CUSTOM_01",
+      "PHISHING",
+      "SPAM"
+    ],
+    "timeWindows": [
+      { "id": "tw001", "name": "Business Hours" }
+    ]
+  }
+]

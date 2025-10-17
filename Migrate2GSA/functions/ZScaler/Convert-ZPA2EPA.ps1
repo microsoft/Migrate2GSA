@@ -1855,7 +1855,9 @@ try {
     $outputFileName = "${timestamp}_GSA_EnterpriseApps_All.csv"
     $outputFilePath = Join-Path $OutputBasePath $outputFileName
     
-    $exportSuccess = Export-DataToFile -Data $groupedResults -FilePath $outputFilePath -Format "CSV"
+    # Export with UTF-8 BOM for better compatibility with Excel and other applications
+    $groupedResults | Export-Csv -Path $outputFilePath -NoTypeInformation -Encoding utf8BOM
+    $exportSuccess = Test-Path $outputFilePath
     
     if ($exportSuccess) {
         Write-LogMessage "Results exported successfully to: $outputFilePath" -Level "INFO"

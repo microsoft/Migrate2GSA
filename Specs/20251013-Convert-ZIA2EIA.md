@@ -241,21 +241,23 @@ Contains all policies including web content filtering policies for custom URL ca
 |-------|-------------|---------|-------|
 | PolicyName | Policy name | "Custom_Web_Cat_01-Block" | Unique identifier |
 | PolicyType | Type of policy | "WebContentFiltering" | Currently only "WebContentFiltering" supported |
-| PolicyAction | Allow or Block | "Block", "Allow" | From rules or default |
+| PolicyAction | Allow, Block, or Caution | "Block", "Allow", "Caution" | From rules or default |
 | Description | Policy description | "Custom category for dev tools" | From category or generated |
 | RuleType | Type of destination | "FQDN", "URL", "webCategory", "ipAddress" | One type per row |
 | RuleDestinations | Semicolon-separated list | "*.example.com;site.com;other.com" | Max 300 chars |
 | RuleName | Sub-rule identifier | "FQDNs1", "URLs2", "WebCategories1" | For grouping/splitting |
 | ReviewNeeded | Manual review flag | "Yes", "No" | "Yes" if unmapped categories or CAUTION action |
-| ReviewDetails | Reason for review | "Unmapped categories found; Rule action CAUTION converted to Block" | Semicolon-separated list of reasons |
+| ReviewDetails | Reason for review | "Unmapped categories found; Rule action CAUTION requires review" | Semicolon-separated list of reasons |
+| Provision | Provisioning flag | "Yes", "No" | "Yes" for auto-provision, "No" if ReviewNeeded is "Yes" |
 
 #### PolicyName Format
 - **Custom Categories:** 
   - Default: `[configuredName]-Block` or `[id]-Block`
   - If duplicated for Allow: `[configuredName]-Allow`
+  - If duplicated for Caution: `[configuredName]-Caution`
 - **Predefined Categories (from rules):**
   - Format: `[RuleName]-WebCategories-[Action]`
-  - Example: `urlRule1-WebCategories-Block`
+  - Example: `urlRule1-WebCategories-Block`, `urlRule2-WebCategories-Caution`
 
 #### RuleType Values
 - `FQDN` - Fully qualified domain names
@@ -268,6 +270,21 @@ Contains all policies including web content filtering policies for custom URL ca
 - Character limit: 300 characters (not including quotes) for FQDN, URL, and ipAddress types
 - **Web categories (`webCategory` type) have NO character limit** and are never split
 - If FQDN/URL/IP limit exceeded, split into multiple rules with "-2", "-3" suffix
+
+#### Provision Field
+The `Provision` field indicates whether the policy entry should be automatically provisioned by a downstream provisioning script.
+
+**Logic:**
+- **Default:** "Yes" (entry is ready for provisioning)
+- **Exception:** "No" when `ReviewNeeded = "Yes"`
+  - Unmapped categories require manual review before provisioning
+  - CAUTION actions require review (action is preserved, not converted)
+  - Any policy requiring manual intervention is marked for review
+
+**Purpose:**
+- Enables automated provisioning of validated entries
+- Flags entries requiring manual review or adjustment
+- Downstream provisioning scripts can filter by `Provision = "Yes"` for automatic processing
 
 ### 2. Security Profiles CSV
 **Filename:** `[yyyyMMdd_HHmmss]_EIA_SecurityProfiles.csv`
@@ -285,6 +302,7 @@ Contains security profile definitions that reference web content filtering polic
 | EntraUsers | Semicolon-separated emails | "user1@domain.com;user2@domain.com" | Parsed from users |
 | PolicyLinks | Semicolon-separated policy names | "Custom_01-Block;urlRule1-WebCategories-Block" | References to policies |
 | Description | Profile description | "Block adult content" | From rule `description` |
+| Provision | Provisioning flag | "Yes", "No" | "Yes" for auto-provision (always "Yes" for security profiles) |
 
 #### SecurityProfilePriority Calculation and Conflict Resolution
 1. Calculate: `SecurityProfilePriority = order × 10`
@@ -566,6 +584,7 @@ if ($classifiedDestinations['FQDN'].Count -gt 0) {
                 RuleName = $ruleName
                 ReviewNeeded = "No"
                 ReviewDetails = ""
+                Provision = "Yes"
             }
             
             $policies += $policyEntry
@@ -602,6 +621,7 @@ if ($classifiedDestinations['URL'].Count -gt 0) {
                 RuleName = $ruleName
                 ReviewNeeded = "No"
                 ReviewDetails = ""
+                Provision = "Yes"
             }
             
             $policies += $policyEntry
@@ -626,6 +646,7 @@ if ($classifiedDestinations['ipAddress'].Count -gt 0) {
             RuleName = $ruleName
             ReviewNeeded = "No"
             ReviewDetails = ""
+            Provision = "Yes"
         }
         
         $policies += $policyEntry
@@ -636,6 +657,7 @@ if ($classifiedDestinations['ipAddress'].Count -gt 0) {
 $customCategoryPoliciesHashtable[$category.id] = @{
     BlockPolicyName = $policyName
     AllowPolicyName = $null  # Will be populated in Phase 3 if needed
+    CautionPolicyName = $null  # Will be populated in Phase 3 if needed
     BaseName = $basePolicyName
 }
 ```
@@ -729,12 +751,43 @@ foreach ($customCatId in $customCategoryRefs) {
         $customCategoryPolicyNames += $policyInfo.BlockPolicyName
     }
     elseif ($rule.action -eq "CAUTION") {
-        # Convert CAUTION to BLOCK and flag for review
-        Write-LogMessage "Rule '$($rule.name)': Converting CAUTION action to BLOCK for category $customCatId" -Level "WARN"
-        $customCategoryPolicyNames += $policyInfo.BlockPolicyName
+        # Check if Caution version exists
+        if ($null -eq $policyInfo.CautionPolicyName) {
+            # Need to create Caution version by duplicating Block policies
+            $cautionPolicyName = "$($policyInfo.BaseName)-Caution"
+            
+            # Find all policy entries with the Block policy name and duplicate them
+            $blockPolicies = $policies | Where-Object { $_.PolicyName -eq $policyInfo.BlockPolicyName }
+            
+            foreach ($blockPolicy in $blockPolicies) {
+                $cautionPolicy = @{
+                    PolicyName = $cautionPolicyName
+                    PolicyType = $blockPolicy.PolicyType
+                    PolicyAction = "Caution"
+                    Description = $blockPolicy.Description
+                    RuleType = $blockPolicy.RuleType
+                    RuleDestinations = $blockPolicy.RuleDestinations
+                    RuleName = $blockPolicy.RuleName
+                    ReviewNeeded = "Yes"
+                    ReviewDetails = "Rule action CAUTION requires review"
+                    Provision = "No"
+                }
+                
+                # Add to policies collection
+                $policies += $cautionPolicy
+            }
+            
+            # Update tracking hashtable
+            $policyInfo.CautionPolicyName = $cautionPolicyName
+            
+            Write-LogMessage "Created Caution version of policy: $cautionPolicyName" -Level "INFO"
+        }
         
-        if ("Rule action CAUTION converted to Block" -notin $reviewReasons) {
-            $reviewReasons += "Rule action CAUTION converted to Block"
+        # Use the Caution policy
+        $customCategoryPolicyNames += $policyInfo.CautionPolicyName
+        
+        if ("Rule action CAUTION requires review" -notin $reviewReasons) {
+            $reviewReasons += "Rule action CAUTION requires review"
         }
         $needsReview = $true
     }
@@ -759,6 +812,7 @@ foreach ($customCatId in $customCategoryRefs) {
                     RuleName = $blockPolicy.RuleName
                     ReviewNeeded = $blockPolicy.ReviewNeeded
                     ReviewDetails = $blockPolicy.ReviewDetails
+                    Provision = if ($blockPolicy.ReviewNeeded -eq "Yes") { "No" } else { "Yes" }
                 }
                 
                 # Add to policies collection
@@ -820,13 +874,12 @@ if ($predefinedCategoryRefs.Count -gt 0) {
         }
     }
     
-    # Handle CAUTION action conversion
+    # Handle CAUTION action
     $finalAction = $rule.action
     if ($rule.action -eq "CAUTION") {
-        Write-LogMessage "Rule '$($rule.name)': Converting CAUTION action to BLOCK for predefined categories" -Level "WARN"
-        $finalAction = "BLOCK"
-        if ("Rule action CAUTION converted to Block" -notin $reviewReasons) {
-            $reviewReasons += "Rule action CAUTION converted to Block"
+        Write-LogMessage "Rule '$($rule.name)': CAUTION action preserved for predefined categories - review required" -Level "WARN"
+        if ("Rule action CAUTION requires review" -notin $reviewReasons) {
+            $reviewReasons += "Rule action CAUTION requires review"
         }
         $needsReview = $true
     }
@@ -837,20 +890,21 @@ if ($predefinedCategoryRefs.Count -gt 0) {
         $policyReviewReasons += "Unmapped categories found"
         $needsReview = $true
     }
-    if ($finalAction -ne $rule.action) {
-        $policyReviewReasons += "Rule action CAUTION converted to Block"
+    if ($rule.action -eq "CAUTION") {
+        $policyReviewReasons += "Rule action CAUTION requires review"
     }
 
     $policyEntry = @{
         PolicyName = "$($rule.name)-WebCategories-$($finalAction.Substring(0,1) + $finalAction.Substring(1).ToLower())"
         PolicyType = "WebContentFiltering"
-        PolicyAction = if ($finalAction -eq "ALLOW") { "Allow" } else { "Block" }
+        PolicyAction = if ($finalAction -eq "ALLOW") { "Allow" } elseif ($finalAction -eq "CAUTION") { "Caution" } else { "Block" }
         Description = "Converted from $($rule.name) categories"
         RuleType = "webCategory"
         RuleDestinations = $mappedCategories -join ";"  # No character limit for web categories
         RuleName = "WebCategories"  # Never split, no numeric suffix
         ReviewNeeded = if ($needsReview) { "Yes" } else { "No" }
         ReviewDetails = $policyReviewReasons -join "; "
+        Provision = if ($needsReview) { "No" } else { "Yes" }
     }
     
     # Add to policies collection
@@ -864,6 +918,7 @@ if ($predefinedCategoryRefs.Count -gt 0) {
 **PolicyName Examples:**
 - Rule "urlRule1" with action "BLOCK" → "urlRule1-WebCategories-Block"
 - Rule "urlRule2" with action "ALLOW" → "urlRule2-WebCategories-Allow"
+- Rule "urlRule3" with action "CAUTION" → "urlRule3-WebCategories-Caution"
 
 **Important:** The policy is added to the `$policies` collection and the policy name is stored in `$predefinedPolicyName` variable for use in security profile creation (Section 3.6).
 
@@ -893,6 +948,7 @@ if ($needsReview -and $customCategoryPolicyNames.Count -gt 0 -and $reviewReasons
                 }
                 
                 $policies[$i].ReviewDetails = $existingReasons -join "; "
+                $policies[$i].Provision = "No"
             }
         }
     }
@@ -921,6 +977,7 @@ $securityProfile = @{
     EntraUsers = $validUsers -join ";"
     PolicyLinks = $policyLinks -join ";"
     Description = $rule.description
+    Provision = "Yes"
 }
 
 # Add to security profiles collection

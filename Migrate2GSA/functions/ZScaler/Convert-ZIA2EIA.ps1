@@ -644,6 +644,7 @@ function Convert-ZIA2EIA {
                         RuleName = $ruleName
                         ReviewNeeded = "No"
                         ReviewDetails = ""
+                        Provision = "Yes"
                     }
                     
                     [void]$policies.Add($policyEntry)
@@ -684,6 +685,7 @@ function Convert-ZIA2EIA {
                         RuleName = $ruleName
                         ReviewNeeded = "No"
                         ReviewDetails = ""
+                        Provision = "Yes"
                     }
                     
                     [void]$policies.Add($policyEntry)
@@ -712,6 +714,7 @@ function Convert-ZIA2EIA {
                     RuleName = $ruleName
                     ReviewNeeded = "No"
                     ReviewDetails = ""
+                    Provision = "Yes"
                 }
                 
                 [void]$policies.Add($policyEntry)
@@ -723,6 +726,7 @@ function Convert-ZIA2EIA {
         $customCategoryPoliciesHashtable[$category.id] = @{
             BlockPolicyName = $policyName
             AllowPolicyName = $null
+            CautionPolicyName = $null
             BaseName = $basePolicyName
         }
         
@@ -825,12 +829,56 @@ function Convert-ZIA2EIA {
                 [void]$customCategoryPolicyNames.Add($policyInfo.BlockPolicyName)
             }
             elseif ($rule.action -eq "CAUTION") {
-                Write-LogMessage "Rule '$($rule.name)': Converting CAUTION action to BLOCK for category $customCatId" -Level "WARN" `
+                Write-LogMessage "Rule '$($rule.name)': CAUTION action preserved for category $customCatId - review required" -Level "WARN" `
                     -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
-                [void]$customCategoryPolicyNames.Add($policyInfo.BlockPolicyName)
                 
-                if ("Rule action CAUTION converted to Block" -notin $reviewReasons) {
-                    [void]$reviewReasons.Add("Rule action CAUTION converted to Block")
+                # Check if Caution version exists
+                if ($null -eq $policyInfo.CautionPolicyName) {
+                    # Need to create Caution version by duplicating Block policies
+                    $cautionPolicyName = "$($policyInfo.BaseName)-Caution"
+                    
+                    # Find all policy entries with the Block policy name and duplicate them
+                    $blockPolicies = $policies | Where-Object { $_.PolicyName -eq $policyInfo.BlockPolicyName }
+                    
+                    foreach ($blockPolicy in $blockPolicies) {
+                        $cautionPolicy = [PSCustomObject]@{
+                            PolicyName = $cautionPolicyName
+                            PolicyType = $blockPolicy.PolicyType
+                            PolicyAction = "Caution"
+                            Description = $blockPolicy.Description
+                            RuleType = $blockPolicy.RuleType
+                            RuleDestinations = $blockPolicy.RuleDestinations
+                            RuleName = $blockPolicy.RuleName
+                            ReviewNeeded = "Yes"
+                            ReviewDetails = "Rule action CAUTION requires review"
+                            Provision = "No"
+                        }
+                        
+                        [void]$policies.Add($cautionPolicy)
+                        $stats.TotalRulesInPolicies++
+                        
+                        # Count FQDNs and URLs for caution policies
+                        if ($cautionPolicy.RuleType -eq 'FQDN') {
+                            $fqdnCount = ($cautionPolicy.RuleDestinations -split ';').Count
+                            $stats.TotalFQDNsInPolicies += $fqdnCount
+                        }
+                        elseif ($cautionPolicy.RuleType -eq 'URL') {
+                            $urlCount = ($cautionPolicy.RuleDestinations -split ';').Count
+                            $stats.TotalURLsInPolicies += $urlCount
+                        }
+                    }
+                    
+                    # Update tracking hashtable
+                    $policyInfo.CautionPolicyName = $cautionPolicyName
+                    
+                    Write-LogMessage "Created Caution version of policy: $cautionPolicyName" -Level "DEBUG" `
+                        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                }
+                
+                [void]$customCategoryPolicyNames.Add($policyInfo.CautionPolicyName)
+                
+                if ("Rule action CAUTION requires review" -notin $reviewReasons) {
+                    [void]$reviewReasons.Add("Rule action CAUTION requires review")
                 }
                 $needsReview = $true
             }
@@ -854,6 +902,7 @@ function Convert-ZIA2EIA {
                             RuleName = $blockPolicy.RuleName
                             ReviewNeeded = $blockPolicy.ReviewNeeded
                             ReviewDetails = $blockPolicy.ReviewDetails
+                            Provision = if ($blockPolicy.ReviewNeeded -eq "Yes") { "No" } else { "Yes" }
                         }
                         
                         [void]$policies.Add($allowPolicy)
@@ -903,6 +952,7 @@ function Convert-ZIA2EIA {
                         }
                         
                         $policies[$i].ReviewDetails = $existingReasons -join "; "
+                        $policies[$i].Provision = "No"
                     }
                 }
             }
@@ -935,14 +985,13 @@ function Convert-ZIA2EIA {
             
             $stats.PredefinedCategoriesReferenced += $predefinedCategoryRefs.Count
             
-            # Handle CAUTION action conversion
+            # Handle CAUTION action
             $finalAction = $rule.action
             if ($rule.action -eq "CAUTION") {
-                Write-LogMessage "Rule '$($rule.name)': Converting CAUTION action to BLOCK for predefined categories" -Level "WARN" `
+                Write-LogMessage "Rule '$($rule.name)': CAUTION action preserved for predefined categories - review required" -Level "WARN" `
                     -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
-                $finalAction = "BLOCK"
-                if ("Rule action CAUTION converted to Block" -notin $reviewReasons) {
-                    [void]$reviewReasons.Add("Rule action CAUTION converted to Block")
+                if ("Rule action CAUTION requires review" -notin $reviewReasons) {
+                    [void]$reviewReasons.Add("Rule action CAUTION requires review")
                 }
                 $needsReview = $true
             }
@@ -953,20 +1002,21 @@ function Convert-ZIA2EIA {
                 [void]$policyReviewReasons.Add("Unmapped categories found")
                 $needsReview = $true
             }
-            if ($finalAction -ne $rule.action) {
-                [void]$policyReviewReasons.Add("Rule action CAUTION converted to Block")
+            if ($rule.action -eq "CAUTION") {
+                [void]$policyReviewReasons.Add("Rule action CAUTION requires review")
             }
             
             $policyEntry = [PSCustomObject]@{
                 PolicyName = "$($rule.name)-WebCategories-$($finalAction.Substring(0,1) + $finalAction.Substring(1).ToLower())"
                 PolicyType = "WebContentFiltering"
-                PolicyAction = if ($finalAction -eq "ALLOW") { "Allow" } else { "Block" }
+                PolicyAction = if ($finalAction -eq "ALLOW") { "Allow" } elseif ($finalAction -eq "CAUTION") { "Caution" } else { "Block" }
                 Description = "Converted from $($rule.name) categories"
                 RuleType = "webCategory"
                 RuleDestinations = $mappedCategories -join ";"
                 RuleName = "WebCategories"
                 ReviewNeeded = if ($needsReview) { "Yes" } else { "No" }
                 ReviewDetails = $policyReviewReasons -join "; "
+                Provision = if ($needsReview) { "No" } else { "Yes" }
             }
             
             [void]$policies.Add($policyEntry)
@@ -992,6 +1042,7 @@ function Convert-ZIA2EIA {
             EntraUsers = $validUsers -join ";"
             PolicyLinks = $policyLinks -join ";"
             Description = if ($rule.PSObject.Properties['description']) { $rule.description } else { "" }
+            Provision = "Yes"
         }
         
         [void]$securityProfiles.Add($securityProfile)
@@ -1064,13 +1115,15 @@ function Convert-ZIA2EIA {
     
     # Export Policies CSV
     $policiesCsvPath = Join-Path $OutputBasePath "${timestamp}_EIA_Policies.csv"
-    $policies | Export-Csv -Path $policiesCsvPath -NoTypeInformation -Encoding UTF8
+    # Use UTF8 with BOM for better compatibility with Excel and other applications
+    $policies | Export-Csv -Path $policiesCsvPath -NoTypeInformation -Encoding utf8BOM
     Write-LogMessage "Exported $($policies.Count) policies to: $policiesCsvPath" -Level "INFO" `
         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     
     # Export Security Profiles CSV
     $spCsvPath = Join-Path $OutputBasePath "${timestamp}_EIA_SecurityProfiles.csv"
-    $securityProfiles | Export-Csv -Path $spCsvPath -NoTypeInformation -Encoding UTF8
+    # Use UTF8 with BOM for better compatibility with Excel and other applications
+    $securityProfiles | Export-Csv -Path $spCsvPath -NoTypeInformation -Encoding utf8BOM
     Write-LogMessage "Exported $($securityProfiles.Count) security profiles to: $spCsvPath" -Level "INFO" `
         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     

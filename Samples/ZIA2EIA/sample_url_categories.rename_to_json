@@ -1,0 +1,128 @@
+[
+  {
+    "id": "CUSTOM_01",
+    "configuredName": "Custom_Web_Cat_01",
+    "customCategory": true,
+    "type": "URL_CATEGORY",
+    "description": "Custom category with mixed URL types",
+    "urls": [
+      "example.com",
+      "*.contoso.com",
+      "test.*.wildcard.com",
+      "https://site-with-schema.com",
+      "domain-with-port.com:8080",
+      "url-with-path.com/path/to/resource",
+      "url-with-query.com?param=value",
+      "url-with-fragment.com#section",
+      "192.168.1.100",
+      "10.0.0.5",
+      "192.168.1.200:8080",
+      "duplicate.com"
+    ],
+    "dbCategorizedUrls": [
+      "api.internal.company.com",
+      "www.another-site.com",
+      "duplicate.com"
+    ]
+  },
+  {
+    "id": "CUSTOM_02",
+    "configuredName": "Dev_Tools",
+    "customCategory": true,
+    "type": "URL_CATEGORY",
+    "description": "Development tools and resources",
+    "urls": [
+      "github.com",
+      "*.github.io",
+      "stackoverflow.com",
+      "docs.microsoft.com",
+      "developer.mozilla.org"
+    ],
+    "dbCategorizedUrls": []
+  },
+  {
+    "id": "CUSTOM_03",
+    "configuredName": "Test_Category",
+    "customCategory": true,
+    "type": "URL_CATEGORY",
+    "description": "Test category with single domain",
+    "urls": [
+      "test-site.com",
+      "www.test-site.com",
+      "api.test-site.com"
+    ],
+    "dbCategorizedUrls": []
+  },
+  {
+    "id": "CUSTOM_EMPTY",
+    "configuredName": "Empty_Category",
+    "customCategory": true,
+    "type": "URL_CATEGORY",
+    "description": "Empty category that should be skipped",
+    "urls": [],
+    "dbCategorizedUrls": []
+  },
+  {
+    "id": "OTHER_ADULT_MATERIAL",
+    "configuredName": "Other Adult Material",
+    "customCategory": false,
+    "type": "URL_CATEGORY",
+    "description": "Predefined category - sites that contain adult-oriented content",
+    "urls": [],
+    "dbCategorizedUrls": []
+  },
+  {
+    "id": "SOCIAL_NETWORKING",
+    "configuredName": "Social Networking",
+    "customCategory": false,
+    "type": "URL_CATEGORY",
+    "description": "Predefined category - social networking sites",
+    "urls": [],
+    "dbCategorizedUrls": []
+  },
+  {
+    "id": "INTERNET_GAMBLING",
+    "configuredName": "Internet Gambling",
+    "customCategory": false,
+    "type": "URL_CATEGORY",
+    "description": "Predefined category - gambling and lottery sites",
+    "urls": [],
+    "dbCategorizedUrls": []
+  },
+  {
+    "id": "MALWARE_SITES",
+    "configuredName": "Malware Sites",
+    "customCategory": false,
+    "type": "URL_CATEGORY",
+    "description": "Predefined category - known malware distribution sites",
+    "urls": [],
+    "dbCategorizedUrls": []
+  },
+  {
+    "id": "PHISHING",
+    "configuredName": "Phishing",
+    "customCategory": false,
+    "type": "URL_CATEGORY",
+    "description": "Predefined category - phishing sites",
+    "urls": [],
+    "dbCategorizedUrls": []
+  },
+  {
+    "id": "SPAM",
+    "configuredName": "Spam",
+    "customCategory": false,
+    "type": "URL_CATEGORY",
+    "description": "Predefined category - spam and junk sites",
+    "urls": [],
+    "dbCategorizedUrls": []
+  },
+  {
+    "id": "NON_URL_TYPE",
+    "configuredName": "Invalid Type",
+    "customCategory": true,
+    "type": "APPLICATION_CATEGORY",
+    "description": "This should be skipped - wrong type",
+    "urls": ["test.com"],
+    "dbCategorizedUrls": []
+  }
+]
