@@ -79,6 +79,76 @@ function Get-UserProfile {
   - Default to $false when omitted
   - Use clear action names
 
+### Common Parameters
+
+Common parameters are **automatically available** on any function or cmdlet that uses `[CmdletBinding()]` or `[Parameter()]` attributes. You don't need to declare them explicitly—PowerShell adds them for you.
+
+**Available Common Parameters:**
+- `Debug` (db) - Displays programmer-level debugging information
+- `ErrorAction` (ea) - Controls how cmdlet responds to non-terminating errors
+- `ErrorVariable` (ev) - Stores errors in specified variable
+- `InformationAction` (infa) - Controls information stream display
+- `InformationVariable` (iv) - Stores information records
+- `OutVariable` (ov) - Stores output objects in variable
+- `OutBuffer` (ob) - Number of objects to buffer before sending through pipeline
+- `PipelineVariable` (pv) - Stores current pipeline value in named variable
+- `ProgressAction` (proga) - Controls progress bar behavior (PowerShell 7.4+)
+- `Verbose` (vb) - Displays detailed operation information
+- `WarningAction` (wa) - Controls warning message display
+- `WarningVariable` (wv) - Stores warnings in variable
+
+**Key Points:**
+- Common parameters are implemented by PowerShell, not by you
+- They work automatically when you use `[CmdletBinding()]`
+- Don't create parameters with these reserved names
+- You can pass them through to other cmdlets using splatting
+- They override preference variables for the current command only
+
+**When Passing Common Parameters:**
+```powershell
+# Common parameters can be passed through splatting
+function Invoke-MyCommand {
+    [CmdletBinding()]
+    param(
+        [string]$Name
+    )
+    
+    $params = @{
+        Filter = "name eq '$Name'"
+    }
+    
+    # Pass through common parameters like -Debug, -Verbose, -ErrorAction
+    # Check if they're present in bound parameters
+    if ($PSBoundParameters.ContainsKey('Debug')) {
+        $params['Debug'] = $true
+    }
+    
+    # Alternative: Check preference variables
+    if ($DebugPreference -eq 'Continue') {
+        $params['Debug'] = $true
+    }
+    
+    Get-SomeObject @params
+}
+```
+
+**ErrorAction Values:**
+- `Stop` - Treat as terminating error, stop execution
+- `Continue` (default) - Display error and continue
+- `SilentlyContinue` - Suppress error and continue
+- `Ignore` - Suppress error, don't add to `$Error` variable
+- `Inquire` - Prompt user for action
+- `Break` - Enter debugger
+- `Suspend` - For workflows only (deprecated)
+
+**Best Practices:**
+- Let PowerShell handle common parameters automatically
+- Use `-ErrorAction Stop` in try/catch blocks for proper error handling
+- Use `-Verbose` to show operational details with `Write-Verbose`
+- Use `-Debug` to show debug information with `Write-Debug`
+- Never create your own parameters with common parameter names
+- When calling other cmdlets, consider passing through Debug/Verbose based on preference variables
+
 ### Example
 
 ```powershell

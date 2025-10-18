@@ -51,14 +51,15 @@ function Start-EntraPrivateAccessProvisioning {
         [Parameter(HelpMessage="Connector group filter")]
         [string]$ConnectorGroupFilter = "",
          
-        [Parameter(HelpMessage="Log file path")]
-        [string]$LogPath = ".\Provision-EntraPrivateAccessConfig.log",
-        
-        [Parameter(HelpMessage="Skip confirmation prompts")]
-        [switch]$Force
-    )
-
-#region Global Variables
+    [Parameter(HelpMessage="Log file path")]
+    [string]$LogPath = ".\Provision-EntraPrivateAccessConfig.log",
+    
+    [Parameter(HelpMessage="Skip confirmation prompts")]
+    [switch]$Force,
+    
+    [Parameter(HelpMessage="Skip creating segments on existing applications (workaround for duplicate segment bug)")]
+    [switch]$SkipExistingApps = $true
+)#region Global Variables
 $Global:ProvisioningStats = @{
     TotalRecords = 0
     ProcessedRecords = 0
@@ -416,7 +417,7 @@ function Resolve-ConnectorGroups {
         if ($DebugPreference -eq 'Continue') {
             $connectorGroupParams['Debug'] = $true
         }
-        $allConnectorGroups = Get-EntraBetaApplicationProxyConnectorGroup @connectorGroupParams
+        $allConnectorGroups = Get-IntApplicationProxyConnectorGroup @connectorGroupParams
         
         # Extract applicationProxy connector groups from the response
         $applicationProxyConnectorGroups = $allConnectorGroups | Where-Object { $_.connectorGroupType -eq "applicationProxy" }
@@ -511,7 +512,7 @@ function Resolve-EntraGroups {
                 if ($DebugPreference -eq 'Continue') {
                     $groupParams['Debug'] = $true
                 }
-                $group = Get-EntraBetaGroup @groupParams
+                $group = Get-IntGroup @groupParams
                 
                 if ($group) {
                     $Global:EntraGroupCache[$groupName] = $group.Id
@@ -693,7 +694,10 @@ function New-PrivateAccessApplication {
         [string]$AppName,
         
         [Parameter(Mandatory=$true)]
-        [string]$ConnectorGroupName
+        [string]$ConnectorGroupName,
+        
+        [Parameter(Mandatory=$false)]
+        [bool]$SkipExisting = $true
     )
     
     Write-LogMessage "Processing Private Access application: $AppName" -Level INFO -Component "AppProvisioning"
@@ -707,11 +711,22 @@ function New-PrivateAccessApplication {
         if ($DebugPreference -eq 'Continue') {
             $checkAppParams['Debug'] = $true
         }
-        $existingApp = Get-EntraBetaPrivateAccessApplication @checkAppParams
+        $existingApp = Get-IntPrivateAccessApp @checkAppParams
         
         if ($existingApp) {
-            Write-LogMessage "Application '$AppName' already exists. Will add segments to existing app." -Level INFO -Component "AppProvisioning"
-            return @{ Success = $true; AppId = $existingApp.AppId; AppObjectId = $existingApp.Id; Action = "ExistingApp" }
+            # Handle case where multiple apps with same name exist - select the most recent one
+            if ($existingApp -is [array]) {
+                Write-LogMessage "Multiple applications found with name '$AppName' ($($existingApp.Count) apps). Selecting most recent." -Level WARN -Component "AppProvisioning"
+                $existingApp = $existingApp | Sort-Object createdDateTime -Descending | Select-Object -First 1
+            }
+            
+            if ($SkipExisting) {
+                Write-LogMessage "Application '$AppName' already exists. Skipping segment creation (SkipExistingApps enabled)." -Level WARN -Component "AppProvisioning"
+                return @{ Success = $true; AppId = $existingApp.appId; AppObjectId = $existingApp.id; Action = "SkippedExisting" }
+            } else {
+                Write-LogMessage "Application '$AppName' already exists. Will add segments to existing app." -Level INFO -Component "AppProvisioning"
+                return @{ Success = $true; AppId = $existingApp.appId; AppObjectId = $existingApp.id; Action = "ExistingApp" }
+            }
         }
         
         # Get connector group ID
@@ -725,11 +740,10 @@ function New-PrivateAccessApplication {
             return @{ Success = $true; AppId = "whatif-app-id"; Action = "WhatIf" }
         }
         
-        # Create new application
+        # Create new application using internal function
         $appParams = @{
             ApplicationName = $AppName
             ConnectorGroupId = $connectorGroupId
-            # Add other required parameters for Private Access application
         }
         
         # Add Debug parameter if script was called with -Debug
@@ -737,8 +751,17 @@ function New-PrivateAccessApplication {
             $appParams['Debug'] = $true
         }
         
-        New-EntraBetaPrivateAccessApplication @appParams
+        # Create the application and get the result object
+        $createResult = New-IntPrivateAccessApp @appParams
         
+        if (-not $createResult.Success) {
+            throw "Failed to create application: $($createResult.Error)"
+        }
+        
+        Write-LogMessage $createResult.Message -Level SUCCESS -Component "AppProvisioning"
+        
+        # The application was created, but we still need to retrieve it using the Get cmdlet
+        # to ensure we have the full object with all properties needed downstream
         # Retry logic to retrieve the created application with exponential backoff
         $maxRetries = 5
         $baseDelay = 2  # seconds
@@ -755,9 +778,14 @@ function New-PrivateAccessApplication {
                 if ($DebugPreference -eq 'Continue') {
                     $getAppParams['Debug'] = $true
                 }
-                $newApp = Get-EntraBetaPrivateAccessApplication @getAppParams
+                $newApp = Get-IntPrivateAccessApp @getAppParams
                 
                 if ($newApp) {
+                    # Handle case where multiple apps with same name exist - select the most recent one
+                    if ($newApp -is [array]) {
+                        Write-LogMessage "Multiple applications found with name '$AppName' ($($newApp.Count) apps). Selecting most recent." -Level WARN -Component "AppProvisioning"
+                        $newApp = $newApp | Sort-Object createdDateTime -Descending | Select-Object -First 1
+                    }
                     Write-LogMessage "Successfully retrieved created application '$AppName' on attempt $attempt" -Level SUCCESS -Component "AppProvisioning"
                     break
                 }
@@ -786,9 +814,9 @@ function New-PrivateAccessApplication {
             throw "Failed to retrieve created application '$AppName' after creation and $maxRetries retry attempts"
         }
         
-        Write-LogMessage "Successfully created Private Access application: $AppName (ID: $($newApp.Id))" -Level SUCCESS -Component "AppProvisioning"
+        Write-LogMessage "Successfully created Private Access application: $AppName (ID: $($newApp.id))" -Level SUCCESS -Component "AppProvisioning"
         
-        return @{ Success = $true; AppId = $newApp.AppId; AppObjectId = $newApp.Id; Action = "Created" }
+        return @{ Success = $true; AppId = $newApp.appId; AppObjectId = $newApp.id; Action = "Created" }
     }
     catch {
         Write-LogMessage "Failed to create Private Access application '$AppName': $_" -Level ERROR -Component "AppProvisioning"
@@ -879,8 +907,8 @@ function New-ApplicationSegments {
             $segmentParams['Debug'] = $true
         }
         
-        # Create the segment
-        $newSegment = New-EntraBetaPrivateAccessApplicationSegment @segmentParams
+        # Create the segment using internal function
+        $newSegment = New-IntPrivateAccessAppSegment @segmentParams
         
         Write-LogMessage "Successfully created application segment: $segmentName (ID: $($newSegment.Id))" -Level SUCCESS -Component "SegmentProvisioning"
         
@@ -976,18 +1004,45 @@ function Set-ApplicationGroupAssignments {
     
     if (-not $WhatIfPreference) {
         try {
-            # Get the service principal for the application
-            $servicePrincipalParams = @{
-                Filter = "appId eq '$AppId'"
-                ErrorAction = 'Stop'
+            # Get the service principal for the application with retry logic
+            # Service principals may not be immediately available after application creation
+            $maxRetries = 5
+            $baseDelay = 2  # seconds
+            $servicePrincipal = $null
+            
+            for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+                try {
+                    Write-LogMessage "Attempting to retrieve service principal for application (attempt $attempt/$maxRetries)" -Level INFO -Component "GroupAssignment"
+                    
+                    $servicePrincipal = Get-IntServicePrincipal -Filter "appId eq '$AppId'"
+                    
+                    if ($servicePrincipal) {
+                        Write-LogMessage "Successfully retrieved service principal on attempt $attempt" -Level SUCCESS -Component "GroupAssignment"
+                        break
+                    }
+                    
+                    # If no service principal found and not the last attempt, wait before retrying
+                    if ($attempt -lt $maxRetries) {
+                        $delay = $baseDelay * [math]::Pow(2, $attempt - 1)  # Exponential backoff: 2, 4, 8, 16 seconds
+                        Write-LogMessage "Service principal not found on attempt $attempt. Retrying in $delay seconds..." -Level WARN -Component "GroupAssignment"
+                        Start-Sleep -Seconds $delay
+                    }
+                }
+                catch {
+                    $delay = $baseDelay * [math]::Pow(2, $attempt - 1)  # Exponential backoff: 2, 4, 8, 16 seconds
+                    
+                    if ($attempt -eq $maxRetries) {
+                        Write-LogMessage "Failed to retrieve service principal after $maxRetries attempts. Final error: $_" -Level ERROR -Component "GroupAssignment"
+                        throw "Failed to retrieve service principal for application ID '$AppId' after $maxRetries retry attempts"
+                    }
+                    
+                    Write-LogMessage "Failed to retrieve service principal on attempt $attempt. Retrying in $delay seconds... Error: $_" -Level WARN -Component "GroupAssignment"
+                    Start-Sleep -Seconds $delay
+                }
             }
-            if ($DebugPreference -eq 'Continue') {
-                $servicePrincipalParams['Debug'] = $true
-            }
-            $servicePrincipal = Get-EntraBetaServicePrincipal @servicePrincipalParams
             
             if (-not $servicePrincipal) {
-                Write-LogMessage "Service principal not found for application ID: $AppId" -Level ERROR -Component "GroupAssignment"
+                Write-LogMessage "Service principal not found for application ID: $AppId after $maxRetries retry attempts" -Level ERROR -Component "GroupAssignment"
                 $result.Failed = $GroupNames.Count
                 $result.FailedGroups = $GroupNames
                 return $result
@@ -1047,7 +1102,7 @@ function Set-ApplicationGroupAssignments {
                 if ($DebugPreference -eq 'Continue') {
                     $assignmentCheckParams['Debug'] = $true
                 }
-                $existingAssignments = Get-EntraBetaServicePrincipalAppRoleAssignedTo @assignmentCheckParams
+                $existingAssignments = Get-IntServicePrincipalAppRoleAssignedTo @assignmentCheckParams
                 
                 $existingAssignment = $existingAssignments | Where-Object { 
                     $_.PrincipalId -eq $groupId -and $_.AppRoleId -eq $appRoleId 
@@ -1076,7 +1131,7 @@ function Set-ApplicationGroupAssignments {
                 $assignmentParams['Debug'] = $true
             }
             
-            New-EntraBetaGroupAppRoleAssignment @assignmentParams
+            New-IntGroupAppRoleAssignment @assignmentParams
             
             Write-LogMessage "Successfully assigned group '$groupName' to application" -Level SUCCESS -Component "GroupAssignment"
             $result.Succeeded++
@@ -1249,9 +1304,27 @@ function Invoke-ProvisioningProcess {
             Write-LogMessage "╚═══════════════════════════════════════════════════════════════════════════════════════" -Level SUMMARY -Component "Main"
             
             # Create or get application
-            $appResult = New-PrivateAccessApplication -AppName $appName -ConnectorGroupName $connectorGroupName
+            $appResult = New-PrivateAccessApplication -AppName $appName -ConnectorGroupName $connectorGroupName -SkipExisting $SkipExistingApps
             
             if ($appResult.Success) {
+                # Handle skipped existing apps
+                if ($appResult.Action -eq "SkippedExisting") {
+                    Write-LogMessage "⏭️  Skipping all segments and group assignments for existing application '$appName'" -Level WARN -Component "Main"
+                    
+                    # Mark all segments as skipped
+                    foreach ($segment in $segments) {
+                        $resultRecord = $Global:RecordLookup[$segment.UniqueRecordId]
+                        if ($resultRecord) {
+                            $resultRecord.ProvisioningResult = "Skipped: Application already exists (SkipExistingApps enabled)"
+                            $resultRecord.Provision = "No"
+                        }
+                        $Global:ProvisioningStats.ProcessedRecords++
+                    }
+                    
+                    Write-LogMessage "⏭️  Application '$appName' skipped: $($segments.Count) segments not created" -Level WARN -Component "Main"
+                    continue
+                }
+                
                 if ($appResult.Action -eq "Created") {
                     $Global:ProvisioningStats.SuccessfulApps++
                 }

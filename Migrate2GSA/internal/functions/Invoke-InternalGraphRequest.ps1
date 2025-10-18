@@ -23,9 +23,6 @@ function Invoke-InternalGraphRequest {
     .PARAMETER MaxRetries
         Maximum number of retry attempts for throttled requests. Default: 4
     
-    .PARAMETER CallingCommand
-        Name of calling function for header tracking. Auto-detected if not specified.
-    
     .PARAMETER DisablePagination
         Disable automatic pagination. By default, the function follows @odata.nextLink for paginated results.
     
@@ -80,9 +77,6 @@ function Invoke-InternalGraphRequest {
         [int]$MaxRetries = 4,
         
         [Parameter()]
-        [string]$CallingCommand = '',
-        
-        [Parameter()]
         [switch]$DisablePagination,
         
         [Parameter()]
@@ -91,15 +85,8 @@ function Invoke-InternalGraphRequest {
     )
     
     begin {
-        # Auto-detect calling command if not specified
-        if ([string]::IsNullOrWhiteSpace($CallingCommand)) {
-            $callerInfo = Get-PSCallStack | Select-Object -Skip 1 -First 1
-            if ($callerInfo -and $callerInfo.Command) {
-                $CallingCommand = $callerInfo.Command
-            } else {
-                $CallingCommand = 'Unknown'
-            }
-        }
+        # Always use "Start-Migrate2GSA" as the calling command
+        $CallingCommand = 'Start-Migrate2GSA'
         
         # Constants for exponential backoff
         $baseDelayMs = 500
@@ -130,7 +117,7 @@ function Invoke-InternalGraphRequest {
                     if ($DebugPreference -eq 'Continue') {
                         $customHeaderParams['Debug'] = $true
                     }
-                    $commandHeaders = New-EntraBetaCustomHeaders @customHeaderParams
+                    $commandHeaders = New-IntCustomHeaders @customHeaderParams
                     
                     # Merge with any additional headers provided
                     $mergedHeaders = @{}
