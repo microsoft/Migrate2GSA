@@ -1,0 +1,51 @@
+function Get-IntFilteringRule {
+    <#
+    .SYNOPSIS
+        Retrieves filtering rules for a filtering policy.
+    
+    .DESCRIPTION
+        Gets filtering rules from Microsoft Graph API for a specific filtering policy.
+        Can retrieve all rules or a specific rule by ID. Returns all rule types
+        (FQDN, WebCategory, URL).
+    
+    .PARAMETER PolicyId
+        The unique identifier of the filtering policy.
+    
+    .PARAMETER Id
+        The unique identifier of the filtering rule to retrieve.
+    
+    .EXAMPLE
+        Get-IntFilteringRule -PolicyId "12345678-1234-1234-1234-123456789012"
+        Retrieves all filtering rules for the specified policy.
+    
+    .EXAMPLE
+        Get-IntFilteringRule -PolicyId "12345678-1234-1234-1234-123456789012" -Id "87654321-4321-4321-4321-210987654321"
+        Retrieves a specific filtering rule by ID.
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'All')]
+    param (
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$PolicyId,
+        
+        [Parameter(Mandatory = $true, ParameterSetName = 'ById')]
+        [ValidateNotNullOrEmpty()]
+        [string]$Id
+    )
+
+    try {
+        $uri = if ($PSCmdlet.ParameterSetName -eq 'ById') {
+            "https://graph.microsoft.com/beta/networkAccess/filteringPolicies/$PolicyId/policyRules/$Id"
+        }
+        else {
+            "https://graph.microsoft.com/beta/networkAccess/filteringPolicies/$PolicyId/policyRules"
+        }
+
+        $response = Invoke-InternalGraphRequest -Method GET -Uri $uri
+        return $response
+    }
+    catch {
+        Write-Error "Failed to retrieve filtering rule: $_"
+        throw
+    }
+}
