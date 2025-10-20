@@ -1,21 +1,24 @@
-EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,EntraGroups,Provision
-GSA-WebPortal,Portal-Main,portal.contoso.local,fqdn,tcp,443,On-Premises-Connectors,GSA-Portal-Users;GSA-Portal-Admins,Yes
-GSA-WebPortal,Portal-Admin,admin.portal.contoso.local,fqdn,tcp,"4,438,443",On-Premises-Connectors,GSA-Portal-Admins;GSA-Support-Team,Yes
-GSA-WebPortal,Portal-API,api.portal.contoso.local,fqdn,tcp,"80,808,081",On-Premises-Connectors,GSA-Portal-Users,Yes
-GSA-DatabaseServices,DB-Primary,10.101.100.9..10.101.100.10,ipRange,tcp,1433,Database-Connectors,GSA-Database-Users,Yes
-GSA-DatabaseServices,DB-Replica,10.101.100.11..10.101.100.12,ipRange,tcp,1433,Database-Connectors,GSA-Database-Users,Yes
-GSA-DatabaseServices,DB-Analytics,analytics.db.contoso.local,fqdn,tcp,5432,Database-Connectors,GSA-Analytics-Team;GSA-Database-Admins,Yes
-GSA-FileServices,FileShare-Main,files.contoso.local,fqdn,tcp,445,File-Connectors,GSA-File-Users,Yes
-GSA-FileServices,FileShare-Archive,archive.files.contoso.local,fqdn,tcp,445,File-Connectors,GSA-File-Users,Yes
-GSA-DevelopmentTools,DevServer-Web,dev-web.contoso.local,fqdn,tcp,"8,044,330,008,000",Development-Connectors,GSA-Developers,Yes
-GSA-DevelopmentTools,DevServer-API,dev-api.contoso.local,fqdn,tcp,8080-8090,Development-Connectors,GSA-Developers;GSA-DevOps-Team,Yes
-GSA-DevelopmentTools,Jenkins-CI,jenkins.contoso.local,fqdn,tcp,8080,Development-Connectors,GSA-DevOps-Team,Yes
-GSA-MonitoringStack,Grafana-Dashboard,grafana.monitoring.contoso.local,fqdn,tcp,3000,Monitoring-Connectors,GSA-Monitoring-Team,Yes
-GSA-MonitoringStack,Prometheus-Server,prometheus.monitoring.contoso.local,fqdn,tcp,9090,Monitoring-Connectors,GSA-Monitoring-Team,Yes
-GSA-MonitoringStack,AlertManager,alerts.monitoring.contoso.local,fqdn,tcp,9093,Monitoring-Connectors,GSA-Monitoring-Team,Yes
-GSA-LegacyApps,MainframeTerminal,10.2.50.100,ipAddress,tcp,23,Legacy-Connectors,GSA-Legacy-Users,Yes
-GSA-LegacyApps,AS400-Access,as400.legacy.contoso.local,fqdn,tcp,"23,992",Legacy-Connectors,GSA-Legacy-Users,Yes
-GSA-InternalApps,HR-Portal,hr.internal.contoso.local,fqdn,tcp,443,Internal-Connectors,GSA-HR-Users;GSA-HR-Admins,Yes
-GSA-InternalApps,Payroll-System,payroll.internal.contoso.local,fqdn,tcp,"4,438,443",Internal-Connectors,GSA-Payroll-Users,Yes
-GSA-TestEnvironment,TestServer-1,test1.lab.contoso.local,fqdn,tcp,"804,438,080",Test-Connectors,Placeholder_Replace_Me,No
-GSA-DisabledApp,Inactive-Service,inactive.contoso.local,fqdn,tcp,443,Disabled-Connectors,EntraGroup_Replace_Me,No
+"SegmentId","OriginalAppName","EnterpriseAppName","destinationHost","DestinationType","Protocol","Ports","SegmentGroup","ServerGroups","EntraGroups","EntraUsers","ConnectorGroup","Conflict","ConflictingEnterpriseApp","Provision"
+"SEG-000001","DatabaseServices-Analytics","GSA-DatabaseServices-Analytics","analytics.db.contoso.local","FQDN","TCP","5432","DatabaseServices-Group","Database-Servers","Analytics-Team; Database-Admins; Database-Users","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000003","DatabaseServices-Primary","GSA-DatabaseServices-Primary","10.101.100.10","ipAddress","TCP","1433","DatabaseServices-Group","Database-Servers","Database-Users","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000004","DatabaseServices-Primary","GSA-DatabaseServices-Primary","10.101.100.11","ipAddress","TCP","1433","DatabaseServices-Group","Database-Servers","Database-Users","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000005","DatabaseServices-Primary","GSA-DatabaseServices-Primary","10.101.100.12","ipAddress","TCP","1433","DatabaseServices-Group","Database-Servers","Database-Users","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000002","DatabaseServices-Primary","GSA-DatabaseServices-Primary","10.101.100.9","ipAddress","TCP","1433","DatabaseServices-Group","Database-Servers","Database-Users","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000006","DevelopmentTools-API","GSA-DevelopmentTools-API","dev-api.contoso.local","FQDN","TCP","8080-8090","DevelopmentTools-Group","Dev-Servers","Developers; DevOps-Team","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000007","DevelopmentTools-Jenkins","GSA-DevelopmentTools-Jenkins","jenkins.contoso.local","FQDN","TCP","8080","DevelopmentTools-Group","Dev-Servers","DevOps-Team","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000008","DevelopmentTools-Web","GSA-DevelopmentTools-Web","dev-web.contoso.local","FQDN","TCP","3000-3008, 8044","DevelopmentTools-Group","Dev-Servers","Developers","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000010","DisabledApp-InactiveService","GSA-DisabledApp-InactiveService","inactive.contoso.local","FQDN","TCP","443","DisabledApp-Group","Disabled-Servers","No_Access_Policy_Found_Replace_Me","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000012","FileServices-Main","GSA-FileServices-Main","archive.files.contoso.local","FQDN","TCP","445","FileServices-Group","File-Servers","File-Users","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000011","FileServices-Main","GSA-FileServices-Main","files.contoso.local","FQDN","TCP","445","FileServices-Group","File-Servers","File-Users","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000013","InternalApps-HR","GSA-InternalApps-HR","hr.internal.contoso.local","FQDN","TCP","443","InternalApps-Group","Internal-Servers","HR-Admins; HR-Users","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000014","InternalApps-Payroll","GSA-InternalApps-Payroll","payroll.internal.contoso.local","FQDN","TCP","443, 4438","InternalApps-Group","Internal-Servers","Payroll-Users","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000016","LegacyApps-AS400","GSA-LegacyApps-AS400","as400.legacy.contoso.local","FQDN","TCP","23, 992","LegacyApps-Group","Legacy-Servers","Legacy-Users","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000018","LegacyApps-Mainframe","GSA-LegacyApps-Mainframe","10.2.50.100","ipAddress","TCP","23","LegacyApps-Group","Legacy-Servers","Legacy-Users","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000019","Mainframe-Network","GSA-Mainframe-Network","10.2.50.0/24","ipRangeCidr","TCP","23","LegacyApps-Group","Legacy-Servers","No_Access_Policy_Found_Replace_Me","","Placeholder_Replace_Me","Yes","GSA-LegacyApps-Mainframe:SEG-000018","No"
+"SEG-000020","MonitoringStack-AlertManager","GSA-MonitoringStack-AlertManager","alerts.monitoring.contoso.local","FQDN","TCP","9093","MonitoringStack-Group","Monitoring-Servers","Monitoring-Team","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000021","MonitoringStack-Grafana","GSA-MonitoringStack-Grafana","grafana.monitoring.contoso.local","FQDN","TCP","3000","MonitoringStack-Group","Monitoring-Servers","Monitoring-Team","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000022","MonitoringStack-Prometheus","GSA-MonitoringStack-Prometheus","prometheus.monitoring.contoso.local","FQDN","TCP","9090","MonitoringStack-Group","Monitoring-Servers","Monitoring-Team","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000023","TestEnvironment-TestServer1","GSA-TestEnvironment-TestServer1","test1.lab.contoso.local","FQDN","TCP","4438, 80, 8080","TestEnvironment-Group","Test-Servers","No_Access_Policy_Found_Replace_Me","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000031","WebPortal","GSA-WebPortal","admin.portal.contoso.local","FQDN","TCP","443, 4438, 80, 8008, 8080-8081","WebPortal-Group","Portal-Servers","Portal-Admins; Portal-Users; Support-Team","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000036","WebPortal","GSA-WebPortal","api.portal.contoso.local","FQDN","TCP","443, 4438, 80, 8008, 8080-8081","WebPortal-Group","Portal-Servers","Portal-Admins; Portal-Users; Support-Team","","Placeholder_Replace_Me","No","","Yes"
+"SEG-000026","WebPortal","GSA-WebPortal","portal.contoso.local","FQDN","TCP","443, 4438, 80, 8008, 8080-8081","WebPortal-Group","Portal-Servers","Portal-Admins; Portal-Users; Support-Team","","Placeholder_Replace_Me","No","","Yes"

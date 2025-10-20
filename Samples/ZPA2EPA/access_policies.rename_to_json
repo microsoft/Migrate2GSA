@@ -1,0 +1,455 @@
+{
+  "totalCount": 11,
+  "list": [
+    {
+      "id": "216199618143191101",
+      "name": "Policy-WebPortal-PortalUsers",
+      "policyType": "1",
+      "operator": "AND",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "id": "216199618143191201",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191301",
+              "objectType": "APP",
+              "lhs": "id",
+              "rhs": "216199618143191041",
+              "name": "WebPortal"
+            }
+          ]
+        },
+        {
+          "id": "216199618143191202",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191302",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192001",
+              "idpId": "216199618143190001"
+            },
+            {
+              "id": "216199618143191303",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192002",
+              "idpId": "216199618143190001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "216199618143191102",
+      "name": "Policy-WebPortal-Admins",
+      "policyType": "1",
+      "operator": "AND",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "id": "216199618143191203",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191304",
+              "objectType": "APP",
+              "lhs": "id",
+              "rhs": "216199618143191041",
+              "name": "WebPortal"
+            }
+          ]
+        },
+        {
+          "id": "216199618143191204",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191305",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192002",
+              "idpId": "216199618143190001"
+            },
+            {
+              "id": "216199618143191306",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192003",
+              "idpId": "216199618143190001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "216199618143191103",
+      "name": "Policy-DatabaseServices-Group",
+      "policyType": "1",
+      "operator": "AND",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "id": "216199618143191205",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191307",
+              "objectType": "APP_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143191072",
+              "name": "DatabaseServices-Group"
+            }
+          ]
+        },
+        {
+          "id": "216199618143191206",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191308",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192004",
+              "idpId": "216199618143190001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "216199618143191104",
+      "name": "Policy-DatabaseServices-Analytics-Admins",
+      "policyType": "1",
+      "operator": "AND",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "id": "216199618143191207",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191309",
+              "objectType": "APP",
+              "lhs": "id",
+              "rhs": "216199618143191043",
+              "name": "DatabaseServices-Analytics"
+            }
+          ]
+        },
+        {
+          "id": "216199618143191208",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191310",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192005",
+              "idpId": "216199618143190001"
+            },
+            {
+              "id": "216199618143191311",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192006",
+              "idpId": "216199618143190001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "216199618143191105",
+      "name": "Policy-FileServices",
+      "policyType": "1",
+      "operator": "AND",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "id": "216199618143191209",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191312",
+              "objectType": "APP_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143191073",
+              "name": "FileServices-Group"
+            }
+          ]
+        },
+        {
+          "id": "216199618143191210",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191313",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192007",
+              "idpId": "216199618143190001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "216199618143191106",
+      "name": "Policy-DevelopmentTools-Developers",
+      "policyType": "1",
+      "operator": "AND",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "id": "216199618143191211",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191314",
+              "objectType": "APP",
+              "lhs": "id",
+              "rhs": "216199618143191045",
+              "name": "DevelopmentTools-Web"
+            },
+            {
+              "id": "216199618143191315",
+              "objectType": "APP",
+              "lhs": "id",
+              "rhs": "216199618143191046",
+              "name": "DevelopmentTools-API"
+            }
+          ]
+        },
+        {
+          "id": "216199618143191212",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191316",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192008",
+              "idpId": "216199618143190001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "216199618143191107",
+      "name": "Policy-DevelopmentTools-DevOps",
+      "policyType": "1",
+      "operator": "AND",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "id": "216199618143191213",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191317",
+              "objectType": "APP",
+              "lhs": "id",
+              "rhs": "216199618143191046",
+              "name": "DevelopmentTools-API"
+            },
+            {
+              "id": "216199618143191318",
+              "objectType": "APP",
+              "lhs": "id",
+              "rhs": "216199618143191047",
+              "name": "DevelopmentTools-Jenkins"
+            }
+          ]
+        },
+        {
+          "id": "216199618143191214",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191319",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192009",
+              "idpId": "216199618143190001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "216199618143191108",
+      "name": "Policy-MonitoringStack",
+      "policyType": "1",
+      "operator": "AND",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "id": "216199618143191215",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191320",
+              "objectType": "APP_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143191075",
+              "name": "MonitoringStack-Group"
+            }
+          ]
+        },
+        {
+          "id": "216199618143191216",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191321",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192010",
+              "idpId": "216199618143190001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "216199618143191109",
+      "name": "Policy-LegacyApps",
+      "policyType": "1",
+      "operator": "AND",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "id": "216199618143191217",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191322",
+              "objectType": "APP_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143191076",
+              "name": "LegacyApps-Group"
+            }
+          ]
+        },
+        {
+          "id": "216199618143191218",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191323",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192011",
+              "idpId": "216199618143190001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "216199618143191110",
+      "name": "Policy-InternalApps-HR",
+      "policyType": "1",
+      "operator": "AND",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "id": "216199618143191219",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191324",
+              "objectType": "APP",
+              "lhs": "id",
+              "rhs": "216199618143191053",
+              "name": "InternalApps-HR"
+            }
+          ]
+        },
+        {
+          "id": "216199618143191220",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191325",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192012",
+              "idpId": "216199618143190001"
+            },
+            {
+              "id": "216199618143191326",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192013",
+              "idpId": "216199618143190001"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "216199618143191111",
+      "name": "Policy-InternalApps-Payroll",
+      "policyType": "1",
+      "operator": "AND",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "id": "216199618143191221",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191327",
+              "objectType": "APP",
+              "lhs": "id",
+              "rhs": "216199618143191054",
+              "name": "InternalApps-Payroll"
+            }
+          ]
+        },
+        {
+          "id": "216199618143191222",
+          "operator": "OR",
+          "negated": false,
+          "operands": [
+            {
+              "id": "216199618143191328",
+              "objectType": "SCIM_GROUP",
+              "lhs": "id",
+              "rhs": "216199618143192014",
+              "idpId": "216199618143190001"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "totalPages": "1"
+}

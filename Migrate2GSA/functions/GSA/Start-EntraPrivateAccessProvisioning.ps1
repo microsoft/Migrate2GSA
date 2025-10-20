@@ -52,7 +52,7 @@ function Start-EntraPrivateAccessProvisioning {
         [string]$ConnectorGroupFilter = "",
          
     [Parameter(HelpMessage="Log file path")]
-    [string]$LogPath = ".\Provision-EntraPrivateAccessConfig.log",
+    [string]$LogPath = "$PWD\Start-EntraPrivateAccessConfig.log",
     
     [Parameter(HelpMessage="Skip confirmation prompts")]
     [switch]$Force,
@@ -60,6 +60,9 @@ function Start-EntraPrivateAccessProvisioning {
     [Parameter(HelpMessage="Skip creating segments on existing applications (workaround for duplicate segment bug)")]
     [switch]$SkipExistingApps = $true
 )#region Global Variables
+# Set script-scoped LogPath for Write-LogMessage to find
+$script:LogPath = $LogPath
+
 $Global:ProvisioningStats = @{
     TotalRecords = 0
     ProcessedRecords = 0
@@ -763,7 +766,7 @@ function New-PrivateAccessApplication {
         # The application was created, but we still need to retrieve it using the Get cmdlet
         # to ensure we have the full object with all properties needed downstream
         # Retry logic to retrieve the created application with exponential backoff
-        $maxRetries = 5
+        $maxRetries = 6
         $baseDelay = 2  # seconds
         $newApp = $null
         
@@ -1006,7 +1009,7 @@ function Set-ApplicationGroupAssignments {
         try {
             # Get the service principal for the application with retry logic
             # Service principals may not be immediately available after application creation
-            $maxRetries = 5
+            $maxRetries = 6
             $baseDelay = 2  # seconds
             $servicePrincipal = $null
             
@@ -1423,6 +1426,7 @@ function Invoke-ProvisioningProcess {
         
         Write-LogMessage "Provisioning process completed successfully" -Level SUCCESS -Component "Main"
         Write-LogMessage "Results exported to: $outputPath" -Level INFO -Component "Main"
+        Write-LogMessage "Log file written to: $LogPath" -Level INFO -Component "Main"
     }
     catch {
         Write-LogMessage "Provisioning process failed: $_" -Level ERROR -Component "Main"

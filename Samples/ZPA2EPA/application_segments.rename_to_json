@@ -1,0 +1,490 @@
+{
+  "totalCount": 17,
+  "list": [
+    {
+      "id": "216199618143191041",
+      "name": "WebPortal",
+      "enabled": true,
+      "domainNames": [
+        "portal.contoso.local",
+        "admin.portal.contoso.local",
+        "api.portal.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "443",
+          "to": "443"
+        },
+        {
+          "from": "4438",
+          "to": "4438"
+        },
+        {
+          "from": "80",
+          "to": "80"
+        },
+        {
+          "from": "8080",
+          "to": "8081"
+        },
+        {
+          "from": "8008",
+          "to": "8008"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191051",
+          "name": "Portal-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191071",
+      "segmentGroupName": "WebPortal-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "ON_ACCESS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191042",
+      "name": "DatabaseServices-Primary",
+      "enabled": true,
+      "domainNames": [
+        "10.101.100.9",
+        "10.101.100.10",
+        "10.101.100.11",
+        "10.101.100.12"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "1433",
+          "to": "1433"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191052",
+          "name": "Database-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191072",
+      "segmentGroupName": "DatabaseServices-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "ON_ACCESS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191043",
+      "name": "DatabaseServices-Analytics",
+      "enabled": true,
+      "domainNames": [
+        "analytics.db.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "5432",
+          "to": "5432"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191052",
+          "name": "Database-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191072",
+      "segmentGroupName": "DatabaseServices-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "ON_ACCESS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191044",
+      "name": "FileServices-Main",
+      "enabled": true,
+      "domainNames": [
+        "files.contoso.local",
+        "archive.files.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "445",
+          "to": "445"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191053",
+          "name": "File-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191073",
+      "segmentGroupName": "FileServices-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "CONTINUOUS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191045",
+      "name": "DevelopmentTools-Web",
+      "enabled": true,
+      "domainNames": [
+        "dev-web.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "8044",
+          "to": "8044"
+        },
+        {
+          "from": "3000",
+          "to": "3008"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191054",
+          "name": "Dev-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191074",
+      "segmentGroupName": "DevelopmentTools-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "ON_ACCESS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191046",
+      "name": "DevelopmentTools-API",
+      "enabled": true,
+      "domainNames": [
+        "dev-api.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "8080",
+          "to": "8090"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191054",
+          "name": "Dev-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191074",
+      "segmentGroupName": "DevelopmentTools-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "ON_ACCESS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191047",
+      "name": "DevelopmentTools-Jenkins",
+      "enabled": true,
+      "domainNames": [
+        "jenkins.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "8080",
+          "to": "8080"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191054",
+          "name": "Dev-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191074",
+      "segmentGroupName": "DevelopmentTools-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "ON_ACCESS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191048",
+      "name": "MonitoringStack-Grafana",
+      "enabled": true,
+      "domainNames": [
+        "grafana.monitoring.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "3000",
+          "to": "3000"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191055",
+          "name": "Monitoring-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191075",
+      "segmentGroupName": "MonitoringStack-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "CONTINUOUS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191049",
+      "name": "MonitoringStack-Prometheus",
+      "enabled": true,
+      "domainNames": [
+        "prometheus.monitoring.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "9090",
+          "to": "9090"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191055",
+          "name": "Monitoring-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191075",
+      "segmentGroupName": "MonitoringStack-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "CONTINUOUS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191050",
+      "name": "MonitoringStack-AlertManager",
+      "enabled": true,
+      "domainNames": [
+        "alerts.monitoring.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "9093",
+          "to": "9093"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191055",
+          "name": "Monitoring-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191075",
+      "segmentGroupName": "MonitoringStack-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "CONTINUOUS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191051",
+      "name": "LegacyApps-Mainframe",
+      "enabled": true,
+      "domainNames": [
+        "10.2.50.100"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "23",
+          "to": "23"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191056",
+          "name": "Legacy-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191076",
+      "segmentGroupName": "LegacyApps-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "ON_ACCESS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191052",
+      "name": "LegacyApps-AS400",
+      "enabled": true,
+      "domainNames": [
+        "as400.legacy.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "23",
+          "to": "23"
+        },
+        {
+          "from": "992",
+          "to": "992"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191056",
+          "name": "Legacy-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191076",
+      "segmentGroupName": "LegacyApps-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "ON_ACCESS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191053",
+      "name": "InternalApps-HR",
+      "enabled": true,
+      "domainNames": [
+        "hr.internal.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "443",
+          "to": "443"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191057",
+          "name": "Internal-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191077",
+      "segmentGroupName": "InternalApps-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "CONTINUOUS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191054",
+      "name": "InternalApps-Payroll",
+      "enabled": true,
+      "domainNames": [
+        "payroll.internal.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "4438",
+          "to": "4438"
+        },
+        {
+          "from": "443",
+          "to": "443"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191057",
+          "name": "Internal-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191077",
+      "segmentGroupName": "InternalApps-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "CONTINUOUS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191055",
+      "name": "TestEnvironment-TestServer1",
+      "enabled": true,
+      "domainNames": [
+        "test1.lab.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "80",
+          "to": "80"
+        },
+        {
+          "from": "4438",
+          "to": "4438"
+        },
+        {
+          "from": "8080",
+          "to": "8080"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191058",
+          "name": "Test-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191078",
+      "segmentGroupName": "TestEnvironment-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "ON_ACCESS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191056",
+      "name": "DisabledApp-InactiveService",
+      "enabled": false,
+      "domainNames": [
+        "inactive.contoso.local"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "443",
+          "to": "443"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191059",
+          "name": "Disabled-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191079",
+      "segmentGroupName": "DisabledApp-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "ON_ACCESS",
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191057",
+      "name": "Mainframe-Network",
+      "enabled": true,
+      "domainNames": [
+        "10.2.50.0/24"
+      ],
+      "tcpPortRange": [
+        {
+          "from": "23",
+          "to": "23"
+        }
+      ],
+      "udpPortRange": [],
+      "serverGroups": [
+        {
+          "id": "216199618143191056",
+          "name": "Legacy-Servers"
+        }
+      ],
+      "segmentGroupId": "216199618143191076",
+      "segmentGroupName": "LegacyApps-Group",
+      "bypassType": "NEVER",
+      "healthReporting": "ON_ACCESS",
+      "configSpace": "DEFAULT"
+    }
+  ],
+  "totalPages": "1"
+}

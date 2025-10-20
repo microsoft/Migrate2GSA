@@ -1,0 +1,337 @@
+{
+  "totalCount": 8,
+  "list": [
+    {
+      "id": "216199618143191071",
+      "name": "WebPortal-Group",
+      "enabled": true,
+      "applications": [
+        {
+          "id": "216199618143191041",
+          "name": "WebPortal",
+          "enabled": true,
+          "domainNames": [
+            "portal.contoso.local",
+            "admin.portal.contoso.local",
+            "api.portal.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "443",
+              "to": "443"
+            },
+            {
+              "from": "4438",
+              "to": "4438"
+            },
+            {
+              "from": "80",
+              "to": "80"
+            },
+            {
+              "from": "8080",
+              "to": "8081"
+            },
+            {
+              "from": "8008",
+              "to": "8008"
+            }
+          ],
+          "udpPortRange": []
+        }
+      ],
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191072",
+      "name": "DatabaseServices-Group",
+      "enabled": true,
+      "applications": [
+        {
+          "id": "216199618143191042",
+          "name": "DatabaseServices-Primary",
+          "enabled": true,
+          "domainNames": [
+            "10.101.100.9",
+            "10.101.100.10",
+            "10.101.100.11",
+            "10.101.100.12"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "1433",
+              "to": "1433"
+            }
+          ],
+          "udpPortRange": []
+        },
+        {
+          "id": "216199618143191043",
+          "name": "DatabaseServices-Analytics",
+          "enabled": true,
+          "domainNames": [
+            "analytics.db.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "5432",
+              "to": "5432"
+            }
+          ],
+          "udpPortRange": []
+        }
+      ],
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191073",
+      "name": "FileServices-Group",
+      "enabled": true,
+      "applications": [
+        {
+          "id": "216199618143191044",
+          "name": "FileServices-Main",
+          "enabled": true,
+          "domainNames": [
+            "files.contoso.local",
+            "archive.files.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "445",
+              "to": "445"
+            }
+          ],
+          "udpPortRange": []
+        }
+      ],
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191074",
+      "name": "DevelopmentTools-Group",
+      "enabled": true,
+      "applications": [
+        {
+          "id": "216199618143191045",
+          "name": "DevelopmentTools-Web",
+          "enabled": true,
+          "domainNames": [
+            "dev-web.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "8044",
+              "to": "8044"
+            },
+            {
+              "from": "3000",
+              "to": "3008"
+            }
+          ],
+          "udpPortRange": []
+        },
+        {
+          "id": "216199618143191046",
+          "name": "DevelopmentTools-API",
+          "enabled": true,
+          "domainNames": [
+            "dev-api.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "8080",
+              "to": "8090"
+            }
+          ],
+          "udpPortRange": []
+        },
+        {
+          "id": "216199618143191047",
+          "name": "DevelopmentTools-Jenkins",
+          "enabled": true,
+          "domainNames": [
+            "jenkins.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "8080",
+              "to": "8080"
+            }
+          ],
+          "udpPortRange": []
+        }
+      ],
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191075",
+      "name": "MonitoringStack-Group",
+      "enabled": true,
+      "applications": [
+        {
+          "id": "216199618143191048",
+          "name": "MonitoringStack-Grafana",
+          "enabled": true,
+          "domainNames": [
+            "grafana.monitoring.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "3000",
+              "to": "3000"
+            }
+          ],
+          "udpPortRange": []
+        },
+        {
+          "id": "216199618143191049",
+          "name": "MonitoringStack-Prometheus",
+          "enabled": true,
+          "domainNames": [
+            "prometheus.monitoring.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "9090",
+              "to": "9090"
+            }
+          ],
+          "udpPortRange": []
+        },
+        {
+          "id": "216199618143191050",
+          "name": "MonitoringStack-AlertManager",
+          "enabled": true,
+          "domainNames": [
+            "alerts.monitoring.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "9093",
+              "to": "9093"
+            }
+          ],
+          "udpPortRange": []
+        }
+      ],
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191076",
+      "name": "LegacyApps-Group",
+      "enabled": true,
+      "applications": [
+        {
+          "id": "216199618143191051",
+          "name": "LegacyApps-Mainframe",
+          "enabled": true,
+          "domainNames": [
+            "10.2.50.100"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "23",
+              "to": "23"
+            }
+          ],
+          "udpPortRange": []
+        },
+        {
+          "id": "216199618143191052",
+          "name": "LegacyApps-AS400",
+          "enabled": true,
+          "domainNames": [
+            "as400.legacy.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "23",
+              "to": "23"
+            },
+            {
+              "from": "992",
+              "to": "992"
+            }
+          ],
+          "udpPortRange": []
+        }
+      ],
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191077",
+      "name": "InternalApps-Group",
+      "enabled": true,
+      "applications": [
+        {
+          "id": "216199618143191053",
+          "name": "InternalApps-HR",
+          "enabled": true,
+          "domainNames": [
+            "hr.internal.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "443",
+              "to": "443"
+            }
+          ],
+          "udpPortRange": []
+        },
+        {
+          "id": "216199618143191054",
+          "name": "InternalApps-Payroll",
+          "enabled": true,
+          "domainNames": [
+            "payroll.internal.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "4438",
+              "to": "4438"
+            },
+            {
+              "from": "443",
+              "to": "443"
+            }
+          ],
+          "udpPortRange": []
+        }
+      ],
+      "configSpace": "DEFAULT"
+    },
+    {
+      "id": "216199618143191078",
+      "name": "TestEnvironment-Group",
+      "enabled": true,
+      "applications": [
+        {
+          "id": "216199618143191055",
+          "name": "TestEnvironment-TestServer1",
+          "enabled": true,
+          "domainNames": [
+            "test1.lab.contoso.local"
+          ],
+          "tcpPortRange": [
+            {
+              "from": "80",
+              "to": "80"
+            },
+            {
+              "from": "4438",
+              "to": "4438"
+            },
+            {
+              "from": "8080",
+              "to": "8080"
+            }
+          ],
+          "udpPortRange": []
+        }
+      ],
+      "configSpace": "DEFAULT"
+    }
+  ],
+  "totalPages": "1"
+}

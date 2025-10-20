@@ -1,0 +1,90 @@
+{
+  "totalCount": 14,
+  "list": [
+    {
+      "id": "216199618143192001",
+      "name": "Portal-Users",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192002",
+      "name": "Portal-Admins",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192003",
+      "name": "Support-Team",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192004",
+      "name": "Database-Users",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192005",
+      "name": "Analytics-Team",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192006",
+      "name": "Database-Admins",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192007",
+      "name": "File-Users",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192008",
+      "name": "Developers",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192009",
+      "name": "DevOps-Team",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192010",
+      "name": "Monitoring-Team",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192011",
+      "name": "Legacy-Users",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192012",
+      "name": "HR-Users",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192013",
+      "name": "HR-Admins",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    },
+    {
+      "id": "216199618143192014",
+      "name": "Payroll-Users",
+      "idpId": "216199618143190001",
+      "idpName": "EntraID"
+    }
+  ],
+  "totalPages": "1"
+}
