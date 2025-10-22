@@ -77,6 +77,7 @@ $Global:ProvisioningStats = @{
 
 $Global:ConnectorGroupCache = @{}
 $Global:EntraGroupCache = @{}
+$Global:MissingGroups = @()
 $Global:ProvisioningResults = @()
 $Global:RecordLookup = @{}
 #endregion
@@ -521,13 +522,17 @@ function Resolve-EntraGroups {
                     $Global:EntraGroupCache[$groupName] = $group.Id
                     Write-LogMessage "Resolved Entra group '$groupName' to ID: $($group.Id)" -Level SUCCESS -Component "EntraGroups"
                 } else {
-                    Write-LogMessage "Entra group '$groupName' not found" -Level WARN -Component "EntraGroups"
+                    Write-LogMessage "⚠️  Entra group '$groupName' not found in tenant" -Level WARN -Component "EntraGroups"
                     $Global:EntraGroupCache[$groupName] = $null
+                    $Global:MissingGroups += $groupName
                 }
             }
             catch {
                 Write-LogMessage "Failed to resolve Entra group '$groupName': $_" -Level ERROR -Component "EntraGroups"
                 $Global:EntraGroupCache[$groupName] = $null
+                if ($groupName -notin $Global:MissingGroups) {
+                    $Global:MissingGroups += $groupName
+                }
             }
         }
         
@@ -581,6 +586,60 @@ function Get-AggregatedEntraGroups {
     $uniqueGroupNames = $allGroupNames | Sort-Object -Unique
     
     return $uniqueGroupNames
+}
+
+function Test-MissingGroupsAndUsers {
+    <#
+    .SYNOPSIS
+        Validates that all required Entra groups and users exist before provisioning.
+    
+    .DESCRIPTION
+        Checks if any groups or users referenced in the configuration could not be resolved
+        in Entra ID. If missing items are found, displays a comprehensive list and stops
+        script execution to prevent provisioning failures.
+        
+        Note: User provisioning is not currently implemented. EntraUsers column is ignored
+        for now but validated for future enhancement.
+    
+    .PARAMETER ConfigData
+        Array of configuration records to validate.
+    
+    .OUTPUTS
+        Throws an error if missing groups or users are detected, stopping execution.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [array]$ConfigData
+    )
+    
+    Write-LogMessage "Validating all Entra groups and users exist..." -Level INFO -Component "Validation"
+    
+    $hasErrors = $false
+    
+    # Check for missing groups
+    if ($Global:MissingGroups.Count -gt 0) {
+        $hasErrors = $true
+        Write-LogMessage "❌ ERROR: The following Entra groups were not found in the tenant:" -Level ERROR -Component "Validation"
+        foreach ($missingGroup in ($Global:MissingGroups | Sort-Object -Unique)) {
+            Write-LogMessage "   - $missingGroup" -Level ERROR -Component "Validation"
+        }
+        Write-LogMessage "" -Level ERROR -Component "Validation"
+    }
+    
+    # Future Enhancement: User validation
+    # TODO: Add user resolution and validation logic similar to groups
+    # The EntraUsers column exists in the CSV but is not currently processed by this script.
+    # When user provisioning is implemented, add validation here to check for missing users.
+    
+    if ($hasErrors) {
+        Write-LogMessage "" -Level ERROR -Component "Validation"
+        Write-LogMessage "⛔ Provisioning cannot proceed due to missing Entra groups." -Level ERROR -Component "Validation"
+        Write-LogMessage "Please ensure all referenced groups exist in your Entra ID tenant before running this script." -Level ERROR -Component "Validation"
+        throw "Validation failed: Missing Entra groups detected. Cannot proceed with provisioning."
+    }
+    
+    Write-LogMessage "✅ All referenced Entra groups exist in the tenant" -Level SUCCESS -Component "Validation"
 }
 
 function Test-ApplicationDependencies {
@@ -1266,6 +1325,10 @@ function Invoke-ProvisioningProcess {
         # Resolve dependencies
         Resolve-ConnectorGroups -ConfigData $configData
         Resolve-EntraGroups -ConfigData $configData
+        
+        # Validate that all required groups and users exist in Entra ID
+        # This will throw an error and stop execution if any are missing
+        Test-MissingGroupsAndUsers -ConfigData $configData
         
         # Validate dependencies and filter out applications with unresolved dependencies
         $validConfigData = Test-ApplicationDependencies -ConfigData $configData

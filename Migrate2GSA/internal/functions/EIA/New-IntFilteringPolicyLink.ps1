@@ -23,7 +23,7 @@ function New-IntFilteringPolicyLink {
         The logging state. Valid values: enabled, disabled. Default: enabled.
     
     .PARAMETER Action
-        The action to take. Valid values: block, allow. Default: block.
+        The action to take. Valid values: block, allow.
     
     .EXAMPLE
         New-IntFilteringPolicyLink -ProfileId "profile-id" -PolicyId "policy-id" -Priority 100
@@ -57,7 +57,7 @@ function New-IntFilteringPolicyLink {
         
         [Parameter(Mandatory = $false)]
         [ValidateSet('block', 'allow')]
-        [string]$Action = 'block'
+        [string]$Action
     )
 
     try {
