@@ -83,123 +83,6 @@ $Global:RecordLookup = @{}
 #endregion
 
 #region Authentication Functions
-function Test-RequiredModules {
-    <#
-    .SYNOPSIS
-        Validates that all required PowerShell modules are installed.
-    #>
-    [CmdletBinding()]
-    param()
-    
-    Write-LogMessage "Validating required PowerShell modules..." -Level INFO -Component "ModuleCheck"
-    
-    $requiredModules = @(
-        'Microsoft.Entra.Beta.Groups',
-        'Microsoft.Entra.Beta.Authentication',
-        'Microsoft.Entra.Beta.NetworkAccess'
-    )
-    
-    $missingModules = @()
-    $installedModules = @()
-    
-    foreach ($moduleName in $requiredModules) {
-        try {
-            $module = Get-Module -Name $moduleName -ListAvailable -ErrorAction Stop
-            if ($module) {
-                $installedModules += $moduleName
-                $latestVersion = ($module | Sort-Object Version -Descending | Select-Object -First 1).Version
-                Write-LogMessage "✅ $moduleName (v$latestVersion) - Available" -Level SUCCESS -Component "ModuleCheck"
-            } else {
-                $missingModules += $moduleName
-            }
-        }
-        catch {
-            $missingModules += $moduleName
-        }
-    }
-    
-    if ($missingModules.Count -gt 0) {
-        Write-LogMessage "❌ Missing required PowerShell modules:" -Level ERROR -Component "ModuleCheck"
-        foreach ($missingModule in $missingModules) {
-            Write-LogMessage "   - $missingModule" -Level ERROR -Component "ModuleCheck"
-        }
-        
-        Write-LogMessage "Please install missing modules using the following commands:" -Level INFO -Component "ModuleCheck"
-        Write-LogMessage "Install-Module -Name Microsoft.Entra.Beta -Force -AllowClobber" -Level INFO -Component "ModuleCheck"
-        
-        throw "Required PowerShell modules are missing: $($missingModules -join ', ')"
-    }
-    
-    Write-LogMessage "All required PowerShell modules are installed" -Level SUCCESS -Component "ModuleCheck"
-    
-    # Check PowerShell version requirement
-    $psVersion = $PSVersionTable.PSVersion
-    if ($psVersion.Major -lt 7) {
-        Write-LogMessage "❌ PowerShell version $psVersion detected. PowerShell 7.0 or later is required." -Level ERROR -Component "ModuleCheck"
-        Write-LogMessage "Please upgrade to PowerShell 7+ and try again." -Level ERROR -Component "ModuleCheck"
-        Write-LogMessage "Download PowerShell 7+ from: https://github.com/PowerShell/PowerShell/releases" -Level INFO -Component "ModuleCheck"
-        throw "PowerShell 7.0 or later is required. Current version: $psVersion"
-    } else {
-        Write-LogMessage "✅ PowerShell version $psVersion - Compatible" -Level SUCCESS -Component "ModuleCheck"
-    }
-    
-    return $true
-}
-
-function Test-EntraConnection {
-    <#
-    .SYNOPSIS
-        Validates Entra PowerShell connection and required permissions.
-    #>
-    [CmdletBinding()]
-    param()
-    
-    Write-LogMessage "Validating Entra PowerShell connection..." -Level INFO -Component "Auth"
-    
-    try {
-        # Check if already connected
-        $context = Get-EntraContext -ErrorAction SilentlyContinue
-        
-        if (-not $context) {
-            Write-LogMessage "No active Entra PowerShell connection found." -Level WARN -Component "Auth"
-            Write-LogMessage "Please connect to Entra PowerShell with the following command:" -Level INFO -Component "Auth"
-            Write-LogMessage "Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrite.All', 'NetworkAccess.ReadWrite.All' -ContextScope Process" -Level INFO -Component "Auth"
-            throw "Entra PowerShell connection required"
-        }
-        
-        # Validate tenant and account
-        Write-LogMessage "Entra PowerShell connected to tenant: $($context.TenantId)" -Level INFO -Component "Auth"
-        Write-LogMessage "Connected as: $($context.Account)" -Level INFO -Component "Auth"
-        
-        # Check required scopes
-        $requiredScopes = @(
-            'NetworkAccessPolicy.ReadWrite.All',
-            'Application.ReadWrite.All',
-            'NetworkAccess.ReadWrite.All'
-        )
-        
-        $missingScopes = @()
-        foreach ($scope in $requiredScopes) {
-            if ($scope -notin $context.Scopes) {
-                $missingScopes += $scope
-            }
-        }
-        
-        if ($missingScopes.Count -gt 0) {
-            Write-LogMessage "Missing required scopes: $($missingScopes -join ', ')" -Level ERROR -Component "Auth"
-            Write-LogMessage "Please reconnect with: Connect-Entra -Scopes '$($requiredScopes -join "', '")' -ContextScope Process" -Level INFO -Component "Auth"
-            throw "Insufficient Entra permissions"
-        }
-        
-        Write-LogMessage "Entra PowerShell connection validated successfully" -Level SUCCESS -Component "Auth"
-        return $true
-    }
-    catch {
-        Write-LogMessage "Failed to validate Entra PowerShell connection: $_" -Level ERROR -Component "Auth"
-        throw
-    }
-}
-#endregion
 
 #region Configuration Management
 function Import-ProvisioningConfig {
@@ -1294,10 +1177,18 @@ function Invoke-ProvisioningProcess {
         Write-LogMessage "WhatIf Mode: $WhatIfPreference" -Level INFO -Component "Main"
         
         # Validate required PowerShell modules are installed
-        Test-RequiredModules
+        $requiredModules = @(
+            'Microsoft.Graph.Authentication'
+        )
+        Test-RequiredModules -RequiredModules $requiredModules
         
-        # Validate Entra authentication
-        Test-EntraConnection
+        # Validate Microsoft Graph authentication with required scopes
+        $requiredScopes = @(
+            'NetworkAccessPolicy.ReadWrite.All',
+            'Application.ReadWrite.All',
+            'NetworkAccess.ReadWrite.All'
+        )
+        Test-GraphConnection -RequiredScopes $requiredScopes
         
         # Check tenant
         $null = Invoke-InternalGraphRequest -Uri "/beta/networkAccess/tenantStatus"
