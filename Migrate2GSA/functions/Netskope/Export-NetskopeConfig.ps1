@@ -438,7 +438,7 @@ function Export-NetskopeConfig {
             Retrieves Netskope Private Access policies.
         #>
         Write-LogMessage "Retrieving NPA Policies..." -Level INFO -Component "Export"
-        $response = Invoke-NetskopeApi -Endpoint "/api/v2/policy/npa" -DelaySeconds $script:NetskopeRequestDelay
+        $response = Invoke-NetskopeApi -Endpoint "/api/v2/policy/npa/rules" -DelaySeconds $script:NetskopeRequestDelay
         
         if ($null -eq $response) {
             Write-LogMessage "No data retrieved for NPA Policies" -Level WARN -Component "Export"
