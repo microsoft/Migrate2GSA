@@ -212,8 +212,14 @@ function Export-NetskopeConfig {
                         $statusCode = [int]$_.Exception.Response.StatusCode
                         Write-LogMessage "HTTP Status Code: $statusCode" -Level ERROR -Component "Auth"
                         Write-LogMessage "HTTP Status Description: $($_.Exception.Response.StatusDescription)" -Level ERROR -Component "Auth"
-                        
-                        # Try to read response body if available
+                    }
+                    
+                    # Try to get response body from ErrorDetails (PowerShell 7+)
+                    if ($_.ErrorDetails.Message) {
+                        Write-LogMessage "Response Body: $($_.ErrorDetails.Message)" -Level ERROR -Component "Auth"
+                    }
+                    # Fallback for older PowerShell versions
+                    elseif ($_.Exception.Response.GetResponseStream) {
                         try {
                             $reader = [System.IO.StreamReader]::new($_.Exception.Response.GetResponseStream())
                             $responseBody = $reader.ReadToEnd()
@@ -221,7 +227,7 @@ function Export-NetskopeConfig {
                             Write-LogMessage "Response Body: $responseBody" -Level ERROR -Component "Auth"
                         }
                         catch {
-                            Write-LogMessage "Could not read response body" -Level ERROR -Component "Auth"
+                            Write-LogMessage "Could not read response body from stream" -Level ERROR -Component "Auth"
                         }
                     }
                     
