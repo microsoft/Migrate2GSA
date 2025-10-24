@@ -93,9 +93,11 @@ function New-IntTlsInspectionRule {
         }
 
         # Add web category destinations
+        # Note: The API uses tlsInspectionWebCategoryDestination (singular) not tlsInspectionWebCategoriesDestination (plural)
+        # as shown in the official documentation. This is the actual working format as of Oct 2025.
         if ($WebCategories) {
             $destinations += @{
-                '@odata.type' = '#microsoft.graph.networkaccess.tlsInspectionWebCategoriesDestination'
+                '@odata.type' = '#microsoft.graph.networkaccess.tlsInspectionWebCategoryDestination'
                 values        = $WebCategories
             }
         }

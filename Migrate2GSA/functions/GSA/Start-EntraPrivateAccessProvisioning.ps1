@@ -1190,8 +1190,14 @@ function Invoke-ProvisioningProcess {
         )
         Test-GraphConnection -RequiredScopes $requiredScopes
         
-        # Check tenant
-        $null = Invoke-InternalGraphRequest -Uri "/beta/networkAccess/tenantStatus"
+        # Validate Global Secure Access tenant onboarding status
+        Write-LogMessage "Validating Global Secure Access tenant onboarding status..." -Level INFO -Component "Validation"
+        $tenantStatus = Get-IntGSATenantStatus
+        if ($tenantStatus.onboardingStatus -ne 'onboarded') {
+            Write-LogMessage "Global Secure Access has not been activated on this tenant. Current onboarding status: $($tenantStatus.onboardingStatus). Please complete tenant onboarding before running this script." -Level ERROR -Component "Validation"
+            throw "Tenant onboarding validation failed. Status: $($tenantStatus.onboardingStatus)"
+        }
+        Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.onboardingStatus)" -Level SUCCESS -Component "Validation"
 
         # Import and validate configuration
         $configData = Import-ProvisioningConfig -ConfigPath $ProvisioningConfigPath -AppFilter $AppNamePrefix -ConnectorFilter $ConnectorGroupFilter
