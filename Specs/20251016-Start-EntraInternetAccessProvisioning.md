@@ -324,6 +324,84 @@ if (-not $hasUsers -and -not $hasGroups) {
 - If all rows filtered/invalid → Log ERROR, export results, `return` (stop gracefully)
 - If some rows valid → Proceed with provisioning
 
+#### 2.5.4 Priority Conflict Detection
+**Execution Scope:**
+- **Only runs when:** `SecurityProfilesCsvPath` parameter is provided
+- **Skips when:** No Security Profiles CSV specified (regardless of `-SkipCAPoliciesProvisioning` value)
+- **Timing:** Runs after all CSV validation but before any provisioning begins
+
+**Detection Logic:**
+
+**1. Load Tenant Data:**
+- Retrieve all existing Security Profiles from target tenant
+- Extract: `SecurityProfileName` and `Priority` for each existing profile
+- Create tenant lookup: `@{Priority = @(ProfileName1, ProfileName2)}`
+
+**2. Analyze CSV Security Profile Priorities:**
+- Parse Security Profiles CSV data (after row-level validation)
+- Extract `SecurityProfileName` and `Priority` from each valid CSV row
+- Check for three types of conflicts:
+
+**Conflict Type 1: Duplicate Priorities Within CSV**
+```powershell
+# Group CSV rows by Priority, identify duplicates
+$csvDuplicates = $csvData | Group-Object Priority | Where-Object { $_.Count -gt 1 }
+foreach ($duplicate in $csvDuplicates) {
+    $conflictingProfiles = $duplicate.Group.SecurityProfileName -join ", "
+    Write-LogMessage "PRIORITY CONFLICT: Priority $($duplicate.Name) used by multiple CSV profiles: $conflictingProfiles (Source: CSV)" -Level WARN
+}
+```
+
+**Conflict Type 2: CSV Priority Conflicts with Existing Tenant Profiles**
+```powershell
+foreach ($csvRow in $csvData) {
+    if ($tenantPriorities.ContainsKey($csvRow.Priority)) {
+        $existingProfile = $tenantPriorities[$csvRow.Priority]
+        Write-LogMessage "PRIORITY CONFLICT: Security Profile '$($csvRow.SecurityProfileName)' priority $($csvRow.Priority) conflicts with existing tenant profile '$existingProfile' (Sources: CSV vs Tenant)" -Level WARN
+    }
+}
+```
+
+**3. Analyze SecurityProfileLinks Priorities (Within Each Profile):**
+- Parse `SecurityProfileLinks` field: `Policy1:100;Policy2:200;Policy3:100`
+- Check for duplicate priorities within the same Security Profile
+
+**Conflict Type 3: Duplicate Policy Link Priorities Within Same Security Profile**
+```powershell
+foreach ($csvRow in $csvData) {
+    $policyLinks = $csvRow.SecurityProfileLinks -split ';'
+    $linkPriorities = @{}
+    
+    foreach ($link in $policyLinks) {
+        $policyName, $priority = $link -split ':'
+        if ($linkPriorities.ContainsKey($priority)) {
+            $conflictingPolicy = $linkPriorities[$priority]
+            Write-LogMessage "POLICY LINK PRIORITY CONFLICT: Security Profile '$($csvRow.SecurityProfileName)' has duplicate priority $priority for policies '$conflictingPolicy' and '$policyName' (Source: CSV SecurityProfileLinks)" -Level WARN
+        } else {
+            $linkPriorities[$priority] = $policyName
+        }
+    }
+}
+```
+
+**Conflict Detection Results:**
+- **No Conflicts Found:** Continue with provisioning
+- **Any Conflicts Found:** 
+  - Log detailed WARN message for each conflict with specific profile names and sources
+  - Display summary: `"PRIORITY CONFLICTS DETECTED: Found X Security Profile conflicts and Y Policy Link conflicts"`
+  - Instruct user: `"Please fix priority conflicts in CSV files and re-run the script"`
+  - **Stop script execution:** `return` (graceful exit, no provisioning)
+
+**Example Conflict Messages:**
+```
+WARN: PRIORITY CONFLICT: Security Profile 'Finance_Profile' priority 100 conflicts with existing tenant profile 'Legacy_Finance' (Sources: CSV vs Tenant)
+WARN: PRIORITY CONFLICT: Priority 150 used by multiple CSV profiles: Marketing_Profile, Sales_Profile (Source: CSV)
+WARN: POLICY LINK PRIORITY CONFLICT: Security Profile 'Dev_Profile' has duplicate priority 100 for policies 'WebFilter_Policy' and 'TLS_Policy' (Source: CSV SecurityProfileLinks)
+
+PRIORITY CONFLICTS DETECTED: Found 2 Security Profile conflicts and 1 Policy Link conflict
+Please fix priority conflicts in CSV files and re-run the script
+```
+
 ---
 
 ## 3. Provisioning Strategy
@@ -334,7 +412,71 @@ if (-not $hasUsers -and -not $hasGroups) {
 3. **Security Profiles** (referencing the policies created in steps 1-2)
 4. **Conditional Access Policies** (referencing security profiles from step 3)
 
-### 3.2 CSV Data Structure Understanding
+### 3.2 Object Naming and Dependency Rules
+
+#### 3.2.1 Migrate2GSA Naming Convention
+**All created objects are automatically suffixed with `[Migrate2GSA]`:**
+- **Policies:** `PolicyName[Migrate2GSA]` (e.g., `Finance_WebFilter[Migrate2GSA]`)
+- **Security Profiles:** `SecurityProfileName[Migrate2GSA]` (e.g., `Finance_Profile[Migrate2GSA]`)
+- **Conditional Access Policies:** `CADisplayName[Migrate2GSA]` (e.g., `Finance_Access[Migrate2GSA]`)
+
+**CSV Handling:**
+- **Input CSV:** Contains original names without suffix (e.g., `Finance_WebFilter`)
+- **Output CSV:** Updated with actual created names including suffix (e.g., `Finance_WebFilter[Migrate2GSA]`)
+- **Internal Processing:** All API calls use suffixed names for creation and conflict detection
+
+#### 3.2.2 Name Conflict Detection Rules
+**Policy Name Conflicts:**
+- **Lookup Logic:** Check for existing policies with name `PolicyName[Migrate2GSA]`
+- **If Conflict Found:** Reuse existing policy, add only missing rules (idempotent behavior)
+- **Example:** CSV contains `Finance_WebFilter` → Check for existing `Finance_WebFilter[Migrate2GSA]`
+
+**Security Profile Name Conflicts:**
+- **Lookup Logic:** Check for existing profiles with name `SecurityProfileName[Migrate2GSA]`
+- **If Conflict Found:** Reuse existing profile, add only missing policy links (idempotent behavior)
+- **Example:** CSV contains `Finance_Profile` → Check for existing `Finance_Profile[Migrate2GSA]`
+
+#### 3.2.3 Security Profile Policy Link Dependencies
+**Full Provisioning Requirement for CA Policy Creation:**
+- **Rule:** CA policies are ONLY created for Security Profiles that are FULLY provisioned
+- **Full Provisioning Definition:** ALL policy links from CSV `SecurityProfileLinks` field successfully created
+- **Partial Failure Handling:**
+  ```
+  If Security Profile has 3 policy links and only 2 succeed:
+  → Create Security Profile with 2 successful links
+  → Skip CA policy creation entirely
+  → Mark as: "Partial: Security Profile created - 2 policy links successful, 1 failed. CA policy skipped."
+  ```
+
+**Policy Link Addition Restrictions:**
+- **Rule:** Only add policy links to Security Profiles that are NOT linked to any CA policy
+- **Detection Method:** Use Graph API beta endpoint to query Security Profile's linked CA policies
+- **Check Logic:** Before adding new policy links, verify Security Profile has no CA policy associations
+- **If CA Policy Linked:**
+  ```
+  → Skip policy link addition
+  → Mark as: "Skipped: Cannot add policy links - Security Profile is linked to CA policy"
+  → Rationale: Avoid disrupting active CA policy configurations
+  ```
+
+#### 3.2.4 Provisioning Logic Integration
+**Policy Provisioning:**
+1. Check for `PolicyName[Migrate2GSA]` in tenant
+2. If exists: Add missing rules only
+3. If not exists: Create new policy with suffixed name
+
+**Security Profile Provisioning:**
+1. Check for `SecurityProfileName[Migrate2GSA]` in tenant
+2. If exists: Check CA policy linkage before adding policy links
+3. If not exists: Create new profile, track policy link success rate
+4. Create CA policy ONLY if all policy links succeeded
+
+**Output CSV Updates:**
+- Update `PolicyName` fields with actual created names (including suffix)
+- Update `SecurityProfileName` fields with actual created names (including suffix)
+- Update `CADisplayName` fields with actual created names (including suffix)
+
+### 3.3 CSV Data Structure Understanding
 
 #### Policies CSV Structure
 - **Every row is a rule:** CSV uses one row per rule with policy metadata repeated
@@ -362,29 +504,30 @@ if (-not $hasUsers -and -not $hasGroups) {
   - If at least one populated → Create both Security Profile and CA policy
 - **No Grouping Logic:** Each row is independent (one row = one complete entity)
 
-### 3.3 TLS Inspection Policy Handling
+### 3.4 TLS Inspection Policy Handling
 - **TLS Policies:** Create with specified `defaultAction` (bypass or inspect) from CSV `PolicyAction` column
 - **TLS Rules:** Each rule specifies action (bypass or inspect) via CSV `RuleType` column
 - **Policy Default Action:** Applies when no rules match the traffic
 - **Rule Actions:** Override policy default for specific destinations (FQDNs or categories)
 
-### 3.4 Creation Order (Granular)
+### 3.5 Creation Order (Granular)
 1. **Policies** (Web Content Filtering and TLS Inspection policies - create the container first)
 2. **Rules** (Create rules for each policy, now that policies exist with IDs)
 3. **Security Profiles** (linking to the policies created in step 1)
 4. **Conditional Access Policies** (linking to security profiles, created in DISABLED state)
 
-### 3.5 Conditional Access Policy State Management
+### 3.6 Conditional Access Policy State Management
 - **Initial State:** Always create CA policies in `disabled` state regardless of CSV state
 - **Admin Validation Required:** Admin must manually validate configuration and enable CA policies
 - **Rationale:** Safety measure to prevent accidental access restrictions
 
-### 3.6 Idempotent Re-Run Behavior
+### 3.7 Idempotent Re-Run Behavior
 
 **Design Goal:** Script is fully idempotent - running multiple times with the same CSV produces the same final state, creating only missing objects/rules/links.
 
 #### Policy Re-Use (Web Content Filtering & TLS Inspection)
 If policy with same name already exists in target tenant:
+- **Name Lookup:** Check for existing `PolicyName[Migrate2GSA]` in tenant
 - **Behavior:** Reuse existing policy, add only missing rules
 - **Rule Matching:** Check if rule with same `RuleName` already exists in the policy
   - If rule exists: Skip it, mark as `"Reused: Rule already exists"`
@@ -394,29 +537,26 @@ If policy with same name already exists in target tenant:
 
 #### Security Profile Re-Use
 If security profile with same name already exists in target tenant:
+- **Name Lookup:** Check for existing `SecurityProfileName[Migrate2GSA]` in tenant
+- **CA Policy Check:** Query Graph API to determine if profile is linked to any CA policy
 - **Behavior:** Reuse existing profile (ignore priority differences), add only missing policy links
+- **Restriction:** If profile is linked to CA policy, skip policy link addition entirely
 - **Priority Handling:** Ignore difference between CSV priority and actual profile priority
-  - Rationale: Profile may have been created with incremented priority in previous run
   - Keep existing profile as-is, do not attempt to modify priority
-- **Policy Link Matching:** Check if link to same `PolicyName` already exists in the profile
+- **Policy Link Matching:** Check if link to same `PolicyName[Migrate2GSA]` already exists in the profile
   - If link exists: Skip it (ignore priority differences in link)
-  - If link missing: Create new link with priority from CSV
-- **Profile Result:** Mark profile as `"Reused: Profile exists - added X new policy links, Y links already existed"`
+  - If link missing AND no CA policy linked: Create new link with priority from CSV
+  - If CA policy linked: Skip all link additions, mark as `"Skipped: Profile linked to CA policy"`
+- **Profile Result:** Mark profile as `"Reused: Profile exists - added X new policy links, Y links already existed"` or `"Skipped: Cannot modify profile linked to CA policy"`
 - **Use Case:** Recover from partial failures, add new policy links to existing profiles
 
 #### Conditional Access Policy Conflict Detection
 If CA policy with same name already exists in target tenant:
+- **Name Lookup:** Check for existing `CADisplayName[Migrate2GSA]` in tenant
 - **Behavior:** Skip CA policy creation entirely, mark as `"Skipped: CA policy already exists (not modified)"`
 - **Security Profile Handling:** Still create/reuse the Security Profile successfully (partial success)
 - **Rationale:** CA policies are sensitive security controls, never modify existing policies
 - **User/Group Assignments:** Do not update assignments on existing CA policies
-
-#### Priority Conflicts (Security Profiles - New Creation Only)
-If creating a **NEW** security profile and priority number conflicts with a **DIFFERENT** existing profile:
-- **Behavior:** Automatically increment priority by 1 and attempt creation once
-- **Single Attempt:** If incremented priority also fails, log WARN and skip
-- Mark in output CSV with `ProvisioningResult = "Failed: Priority conflict - priority {priority} and {priority+1} already exist"`
-- **Does NOT Apply:** When reusing existing profile with same name (priority ignored)
 
 #### WhatIf Preview for Re-Runs
 - `-WhatIf` mode detects existing objects and shows incremental changes:
@@ -424,7 +564,7 @@ If creating a **NEW** security profile and priority number conflicts with a **DI
   - "Profile_Finance: EXISTS - will add 1 new policy link (2 links already exist)"
   - "CA_Finance_Access: EXISTS - will skip CA policy (name conflict - not modified)"
 
-### 3.7 Filtering Parameters
+### 3.8 Filtering Parameters
 - **Policy Name Filter:**
   - `-PolicyName "ExactPolicyName"` - Provision only the policy with this exact name (case-insensitive)
   - **Exact Match Only:** No wildcards or patterns supported
@@ -457,7 +597,7 @@ If creating a **NEW** security profile and priority number conflicts with a **DI
     - No validation errors for missing users/groups (not needed)
   - **Compatibility:** Can be used with `-PolicyName`, `-SecurityProfilesCsvPath`, `-WhatIf`, and `-Force`
 
-### 3.8 Complete Parameter Design
+### 3.9 Complete Parameter Design
 ```powershell
 .\Start-EntraInternetAccessProvisioning.ps1 
     -PoliciesCsvPath "path\to\policies.csv"                          # REQUIRED
@@ -479,7 +619,7 @@ If creating a **NEW** security profile and priority number conflicts with a **DI
 - `-LogPath` is OPTIONAL - defaults to `$PWD\${timestamp}_Start-EntraInternetAccessProvisioning.log` (current directory where function is called, timestamped); if custom path provided, timestamp is NOT added
 - `-Force` is OPTIONAL - skips user confirmation prompts for automated execution
 
-### 3.9 Force Parameter Behavior
+### 3.10 Force Parameter Behavior
 - **Purpose:** Skip user confirmation prompts for automated/unattended execution
 
 ---
@@ -750,13 +890,11 @@ Target: contoso.onmicrosoft.com
 Objects to Create: 15 total
 ✅ Will Create: 13 objects  
 ❌ Name Conflicts: 1 object (will skip)
-⚠️  Priority Conflicts: 1 object (will attempt with priority+1)
 ⚠️  CA Policy Conflicts: 1 policy (will skip CA, create profile)
 ❌ Errors: 2 missing users/groups - WILL STOP
 
 Conflicts Found:
 • Profile "Profile_Finance_Strict" exists (will be skipped)
-• Priority 100 already used (will attempt with priority 101)
 • CA Policy "CA_Finance_Access" exists (will skip CA creation)
 
 Missing Users/Groups (BLOCKING):
@@ -770,10 +908,9 @@ Ready to proceed? Run without -WhatIf to execute.
 
 ### 6.3 WhatIf Analysis Features
 - **Object Counting:** Total objects to be created by type
-- **Conflict Detection:** Name conflicts, priority collisions, existing objects
+- **Conflict Detection:** Name conflicts, existing objects
 - **Dependency Validation:** Missing references between CSV files, missing users/groups in target tenant
 - **Assignment Verification:** User/group existence in target tenant (blocking errors if missing)
-- **Priority Increment Preview:** Show which objects will use priority+1 strategy
 - **Clear Recommendations:** Next steps for admin based on analysis results
 - **Blocking Errors:** Script will stop if any users or groups are not found in target tenant
 
@@ -1191,14 +1328,6 @@ if ($skipCA) {
 **Duplicate Detection:** Use `Get-IntSecurityProfile -Name` to check existence before creation
 - If exists: Log INFO "Security Profile exists, will add missing policy links", return `@{Success=$true; Action="Reused"; ProfileId=$existingProfile.Id}`
 - If not exists: Create new profile using `New-IntSecurityProfile`, internal function returns ProfileId in response
-**Priority Conflict Handling (New Profile Creation Only):**
-- **Only applies when creating NEW security profile** (not when reusing existing)
-- Uses the `Priority` value from CSV row for profile creation
-- If creation fails due to priority conflict (priority number already used by different profile):
-  - Increment profile priority by 1 and retry once
-  - If second attempt also fails, log WARN and skip profile
-  - Mark with `ProvisioningResult = "Failed: Priority conflict - priority {priority} and {priority+1} already exist"`
-- **Note:** This is for the security profile's priority, not the policy link priorities in SecurityProfileLinks
 **Progress:** Use `Write-ProgressUpdate` showing profile name
 **Policy Linking:**
 - Parse `SecurityProfileLinks` field (e.g., `"Policy1:100;Policy2:200"`)
@@ -1438,7 +1567,6 @@ Start-EntraInternetAccessProvisioning `
 # - ProvisioningResult = "Reused: Profile exists - added 1 new policy link, 2 links already existed" for existing profiles
 # - ProvisioningResult = "Reused: Rule already exists" for duplicate rules (skipped)
 # - ProvisioningResult = "Reused: CA policy already exists" for existing CA policies (not modified)
-# - ProvisioningResult = "Failed: Priority conflict - priority {X} and {X+1} already exist" for priority conflicts (new profiles only)
 
 # Force mode - skip confirmation prompts (re-run behavior still applies)
 Start-EntraInternetAccessProvisioning `
