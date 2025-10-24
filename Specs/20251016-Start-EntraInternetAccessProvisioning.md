@@ -110,11 +110,15 @@ This specification defines how to provision Global Secure Access (GSA) Internet 
   - Values: `WebContentFiltering`, `TLSInspection`
 - `PolicyAction` - Action for the policy (required on all rows)
   - For WebContentFiltering: `Allow`, `Block` (case-insensitive, converted to lowercase for API)
-  - For TLSInspection: `Inspect` (ignored - TLS inspection policies always inspect, action is specified at rule level)
+  - For TLSInspection: `Bypass`, `Inspect` (case-insensitive, converted to lowercase for API)
+    - This sets the policy's `defaultAction` (what happens when no rules match)
+    - Rule-level actions can override the policy default for specific destinations
 - `Description` - Policy description (optional, should be consistent across all rows for same policy)
 - `RuleType` - Type of rule (required on all rows)
   - For WebContentFiltering: `FQDN`, `URL`, `webCategory`
-  - For TLSInspection: `bypass` (TLS rules can bypass or inspect specific destinations)
+  - For TLSInspection: `bypass`, `inspect` (rule action for specific destinations)
+    - Rules specify whether to bypass or inspect TLS traffic for the specified destinations
+    - Can be used to override the policy's defaultAction for specific FQDNs or categories
 - `RuleDestinations` - Semicolon-separated list of destinations (required on all rows)
   - Will be split by semicolon, trimmed, and passed as array to internal functions
 - `RuleName` - Name of the rule (required on all rows)
@@ -137,7 +141,10 @@ Dev_Tools-Allow,WebContentFiltering,Allow,Development tools,FQDN,github.com;*.gi
 Dev_Tools-Allow,WebContentFiltering,Allow,Development tools,URL,https://docs.microsoft.com/*;https://learn.microsoft.com/*,Microsoft_Docs,yes
 Dev_Tools-Allow,WebContentFiltering,Allow,Development tools,webCategory,DeveloperTools;Programming,Dev_Categories,yes
 Social_Media-Block,WebContentFiltering,Block,Block social media sites,webCategory,SocialNetworking;Entertainment,Social_Categories,yes
-TLS_Finance-Inspect,TLSInspection,Inspect,Inspect financial traffic,bypass,*.internal-bank.com;secure-finance.contoso.com,Finance_Bypass,yes
+TLS_Finance-Inspect,TLSInspection,Inspect,Inspect financial traffic (default),bypass,*.internal-bank.com;secure-finance.contoso.com,Finance_Bypass,yes
+TLS_Finance-Inspect,TLSInspection,Inspect,Inspect financial traffic (default),inspect,*.financial-services.com,Finance_Inspect,yes
+TLS_Internal-Bypass,TLSInspection,Bypass,Bypass TLS for internal sites (default),bypass,*.internal.contoso.com;*.corp.local,Internal_Bypass,yes
+TLS_Internal-Bypass,TLSInspection,Bypass,Bypass TLS for internal sites (default),inspect,suspicious.contoso.com,Suspicious_Inspect,yes
 Marketing_Sites-Allow,WebContentFiltering,Allow,Allow marketing tools,FQDN,*.google-analytics.com;*.adobe.com;hubspot.com,Marketing_Tools,yes
 ```
 
@@ -153,9 +160,15 @@ Marketing_Sites-Allow,WebContentFiltering,Allow,Allow marketing tools,FQDN,*.goo
 
 **Required Columns:**
 - `SecurityProfileName` - Name of the security profile (required - always)
+- `Priority` - Processing priority of the security profile itself (required - always)
+  - Integer value (e.g., 100, 200, 300)
+  - Higher numbers = lower priority
+  - This is the **profile's priority**, distinct from policy link priorities specified in `SecurityProfileLinks`
+  - Used for conflict detection and auto-increment logic
 - `SecurityProfileLinks` - Semicolon-separated array of PolicyName:Priority pairs (required - always)
   - Format: `PolicyName1:100;PolicyName2:200`
   - Will be split by semicolon, trimmed, and parsed as PolicyName and Priority
+  - The priorities in this field are for **policy links within the profile**, not the profile itself
   - If empty, the entire row is filtered out during CSV import
 - `CADisplayName` - Conditional Access policy name (conditionally required)
   - Required only if at least one of `EntraUsers` or `EntraGroups` is populated
@@ -173,15 +186,16 @@ Marketing_Sites-Allow,WebContentFiltering,Allow,Allow marketing tools,FQDN,*.goo
 
 **Example Rows:**
 ```csv
-SecurityProfileName,SecurityProfileLinks,CADisplayName,EntraUsers,EntraGroups,Provision
-Profile_Finance_Strict,Policy_Web_Finance:100;Policy_TLS_Finance:200,CA_Finance_Access,john.doe@contoso.com;jane.smith@contoso.com,Finance_Group;Executives_Group,yes
-Profile_Marketing_Standard,Policy_Web_Marketing:150,CA_Marketing_Access,marketing.team@contoso.com,Marketing_Group,yes
-Profile_IT_NoCA,Policy_Web_Admin:50;Policy_TLS_Admin:75,,,,yes
-Profile_Dev_NoCA,Policy_Web_Dev:80,,,,yes
-Profile_Test,Policy_Test:100,CA_Test_Access,test.user@contoso.com,,no
+SecurityProfileName,Priority,SecurityProfileLinks,CADisplayName,EntraUsers,EntraGroups,Provision
+Profile_Finance_Strict,100,Policy_Web_Finance:100;Policy_TLS_Finance:200,CA_Finance_Access,john.doe@contoso.com;jane.smith@contoso.com,Finance_Group;Executives_Group,yes
+Profile_Marketing_Standard,200,Policy_Web_Marketing:150,CA_Marketing_Access,marketing.team@contoso.com,Marketing_Group,yes
+Profile_IT_NoCA,300,Policy_Web_Admin:50;Policy_TLS_Admin:75,,,,yes
+Profile_Dev_NoCA,400,Policy_Web_Dev:80,,,,yes
+Profile_Test,500,Policy_Test:100,CA_Test_Access,test.user@contoso.com,,no
 ```
 
 **Notes:**
+- `Priority` column specifies the security profile's processing priority (distinct from policy link priorities in `SecurityProfileLinks`)
 - Row 3 & 4 examples: Empty `CADisplayName`, empty users/groups → Security Profile created, CA policy skipped
 - Row 5 example: `Provision=no` → Entire row filtered out during import
 
@@ -196,7 +210,7 @@ Profile_Test,Policy_Test:100,CA_Test_Access,test.user@contoso.com,,no
 - ✅ File contains data (not empty)
 - ✅ All required columns present
   - Policies CSV: `PolicyName`, `PolicyType`, `PolicyAction`, `RuleType`, `RuleDestinations`, `RuleName`, `Provision`
-  - Security Profiles CSV: `SecurityProfileName`, `SecurityProfileLinks`, `CADisplayName`, `EntraUsers`, `EntraGroups`, `Provision`
+  - Security Profiles CSV: `SecurityProfileName`, `Priority`, `SecurityProfileLinks`, `CADisplayName`, `EntraUsers`, `EntraGroups`, `Provision`
 - ✅ **Policy Metadata Consistency** (Policies CSV only):
   - Group all rows by PolicyName
   - For each policy group, validate that all rows have identical:
@@ -262,13 +276,14 @@ if (-not $Row.PolicyName -or -not $Row.PolicyType -or -not $Row.PolicyAction -or
 
 **During Import (structural validation - filters rows out):**
 - Missing `SecurityProfileName` → Row filtered out, marked as "Failed: Missing required field SecurityProfileName"
-- Missing `CADisplayName` → Row filtered out, marked as "Failed: Missing required field CADisplayName"
+- Missing `Priority` → Row filtered out, marked as "Failed: Missing required field Priority"
+- Invalid `Priority` (not a valid integer) → Row filtered out, marked as "Failed: Invalid Priority value (must be an integer)"
 - Empty `SecurityProfileLinks` → Row filtered out, marked as "Skipped: No policy links specified"
 - `Provision = no` → Row filtered out, marked as "Filtered: Provision set to 'no'"
 
 **Before Provisioning (business logic validation - skips individual operations):**
 - By this point, all rows have passed structural validation
-- Required fields validated during import: `SecurityProfileName`, `SecurityProfileLinks`
+- Required fields validated during import: `SecurityProfileName`, `Priority`, `SecurityProfileLinks`
 - Check for empty users/groups to determine CA policy creation:
   - If both `EntraUsers` and `EntraGroups` are empty → Skip CA policy creation, create Security Profile only
   - If at least one is populated → Validate `CADisplayName` is present, then create both Security Profile and CA policy
@@ -348,8 +363,10 @@ if (-not $hasUsers -and -not $hasGroups) {
 - **No Grouping Logic:** Each row is independent (one row = one complete entity)
 
 ### 3.3 TLS Inspection Policy Handling
-- **Empty TLS Policies:** Create TLS policy object with just the default action (no rules)
-- **TLS with Rules:** Create policy with default action plus all specified rules
+- **TLS Policies:** Create with specified `defaultAction` (bypass or inspect) from CSV `PolicyAction` column
+- **TLS Rules:** Each rule specifies action (bypass or inspect) via CSV `RuleType` column
+- **Policy Default Action:** Applies when no rules match the traffic
+- **Rule Actions:** Override policy default for specific destinations (FQDNs or categories)
 
 ### 3.4 Creation Order (Granular)
 1. **Policies** (Web Content Filtering and TLS Inspection policies - create the container first)
@@ -387,10 +404,11 @@ If security profile with same name already exists in target tenant:
 - **Profile Result:** Mark profile as `"Reused: Profile exists - added X new policy links, Y links already existed"`
 - **Use Case:** Recover from partial failures, add new policy links to existing profiles
 
-#### Conditional Access Policy Re-Use
+#### Conditional Access Policy Conflict Detection
 If CA policy with same name already exists in target tenant:
-- **Behavior:** Skip CA policy creation entirely, mark as `"Reused: CA policy already exists"`
-- **Rationale:** CA policies are sensitive security controls, do not modify existing policies
+- **Behavior:** Skip CA policy creation entirely, mark as `"Skipped: CA policy already exists (not modified)"`
+- **Security Profile Handling:** Still create/reuse the Security Profile successfully (partial success)
+- **Rationale:** CA policies are sensitive security controls, never modify existing policies
 - **User/Group Assignments:** Do not update assignments on existing CA policies
 
 #### Priority Conflicts (Security Profiles - New Creation Only)
@@ -404,7 +422,7 @@ If creating a **NEW** security profile and priority number conflicts with a **DI
 - `-WhatIf` mode detects existing objects and shows incremental changes:
   - "Policy_Web_Social: EXISTS - will add 3 new rules (12 rules already exist)"
   - "Profile_Finance: EXISTS - will add 1 new policy link (2 links already exist)"
-  - "CA_Finance_Access: EXISTS - will skip (already provisioned)"
+  - "CA_Finance_Access: EXISTS - will skip CA policy (name conflict - not modified)"
 
 ### 3.7 Filtering Parameters
 - **Policy Name Filter:**
@@ -517,6 +535,7 @@ If creating a **NEW** security profile and priority number conflicts with a **DI
 - **Dependencies:** 
   - Microsoft.Graph.Authentication module
   - Internal shared functions: `Write-LogMessage`, `Invoke-InternalGraphRequest`, `Write-ProgressUpdate`, `Export-DataToFile`
+  - Internal validation functions: `Test-RequiredModules`, `Test-GraphConnection`, `Get-IntGSATenantStatus`
   - Internal EIA functions (from `internal\functions\EIA\`):
     - `New-IntFilteringPolicy`, `Get-IntFilteringPolicy`
     - `New-IntFqdnFilteringRule`, `New-IntUrlFilteringRule`, `New-IntWebCategoryFilteringRule`
@@ -538,6 +557,25 @@ If creating a **NEW** security profile and priority number conflicts with a **DI
   - If not connected or scopes missing, throws error with connection instructions
   - **Do NOT attempt to connect** - this is the user's responsibility
   - Function supports both Connect-MgGraph and Connect-Entra authentication
+- **Global Secure Access Tenant Onboarding Status:**
+  - **Validation:** Use `Get-IntGSATenantStatus` internal function from `internal/functions/Get-IntGSATenantStatus.ps1`
+  - Validates that the tenant has been onboarded to Global Secure Access
+  - **Scope Required:** Uses existing `NetworkAccess.ReadWrite.All` scope (already validated by Test-GraphConnection)
+  - **Check in All Modes:** Validation runs in both normal execution and `-WhatIf` mode
+  - **Allowed Status:** Only `onboardingStatus = "onboarded"` is allowed
+  - **Error Handling:** If status is not "onboarded":
+    - Log ERROR with component "Validation"
+    - Include actual status received in error message
+    - Message: "Global Secure Access has not been activated on this tenant. Current onboarding status: {status}. Please complete tenant onboarding before running this script."
+    - Stop script execution (throw error)
+  - **Example Response:**
+    ```powershell
+    @{
+        '@odata.context' = 'https://graph.microsoft.com/beta/$metadata#networkAccess/tenantStatus/$entity'
+        'onboardingStatus' = 'onboarded'
+        'onboardingErrorMessage' = $null
+    }
+    ```
 - **CSV File Validation:** 
   - File existence and readability for policies CSV (required)
   - File existence and readability for security profiles CSV (if provided)
@@ -620,7 +658,7 @@ $PWD/
   Web Content Filtering Policies: 5 created, 1 reused (added 3 rules), 0 failed
   TLS Inspection Policies: 2 created, 1 reused (added 2 rules), 1 failed  
   Security Profiles: 3 created, 1 reused (added 1 policy link), 0 failed
-  Conditional Access Policies: 2 created, 1 reused (skipped), 0 failed
+  Conditional Access Policies: 2 created, 1 skipped (name conflict), 0 failed
   
   Manual Attention Required:
   - 2 CA policies created in DISABLED state (require manual validation)
@@ -680,6 +718,9 @@ CONFLICTS DETECTED:
 ⚠️  Priority 100 already used by existing profile "Legacy_Profile"  
    → Resolution: Will attempt creation with priority 101
 
+⚠️  CA Policy "CA_Finance_Access" already exists
+   → Resolution: Will skip CA policy creation (Security Profile will still be created)
+
 ❌ User "john.doe@contoso.com" not found in target tenant
    → Resolution: Script will STOP - fix CSV before provisioning
 
@@ -710,11 +751,13 @@ Objects to Create: 15 total
 ✅ Will Create: 13 objects  
 ❌ Name Conflicts: 1 object (will skip)
 ⚠️  Priority Conflicts: 1 object (will attempt with priority+1)
+⚠️  CA Policy Conflicts: 1 policy (will skip CA, create profile)
 ❌ Errors: 2 missing users/groups - WILL STOP
 
 Conflicts Found:
 • Profile "Profile_Finance_Strict" exists (will be skipped)
 • Priority 100 already used (will attempt with priority 101)
+• CA Policy "CA_Finance_Access" exists (will skip CA creation)
 
 Missing Users/Groups (BLOCKING):
 • User "john.doe@contoso.com" not found
@@ -827,6 +870,30 @@ if ($SecurityProfilesCsvPath -and -not $SkipCAPoliciesProvisioning) {
 Test-GraphConnection -RequiredScopes $requiredScopes
 ```
 
+#### Get-IntGSATenantStatus
+**Purpose:** Validate Global Secure Access tenant onboarding status
+**Location:** `internal/functions/Get-IntGSATenantStatus.ps1` (already exists)
+**Validation:**
+- Retrieve tenant onboarding status from Graph API
+- Check that `onboardingStatus` equals `"onboarded"`
+- If status is not "onboarded", throw error with actual status
+**Graph API Endpoint:** `GET /beta/networkAccess/tenantStatus`
+**Required Scope:** `NetworkAccess.ReadWrite.All` (already validated by Test-GraphConnection)
+**Return:** PSObject with properties:
+- `@odata.context` - Graph metadata context
+- `onboardingStatus` - Status value (e.g., "onboarded", "onboarding", "notOnboarded")
+- `onboardingErrorMessage` - Error message if onboarding failed (optional)
+**Error Handling:**
+```powershell
+$tenantStatus = Get-IntGSATenantStatus
+if ($tenantStatus.onboardingStatus -ne 'onboarded') {
+    Write-LogMessage "Global Secure Access has not been activated on this tenant. Current onboarding status: $($tenantStatus.onboardingStatus). Please complete tenant onboarding before running this script." -Level ERROR -Component "Validation"
+    throw "Tenant onboarding validation failed. Status: $($tenantStatus.onboardingStatus)"
+}
+Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.onboardingStatus)" -Level SUCCESS -Component "Validation"
+```
+**Usage Context:** Called in both normal execution and `-WhatIf` mode to validate prerequisites
+
 ### 8.2 Configuration Management Functions
 
 #### Import-PoliciesConfig
@@ -838,8 +905,8 @@ Test-GraphConnection -RequiredScopes $requiredScopes
 - File existence and readability
 - Required columns present: `PolicyName`, `PolicyType`, `PolicyAction`, `RuleType`, `RuleDestinations`, `RuleName`, `Provision`
 - Valid PolicyType values: `WebContentFiltering`, `TLSInspection` (case-insensitive)
-- Valid PolicyAction values: `Allow`, `Block` (WebContentFiltering), `Inspect` (TLSInspection) - case-insensitive
-- Valid RuleType values: `FQDN`, `URL`, `webCategory` (WebContentFiltering), `bypass` (TLSInspection) - case-insensitive
+- Valid PolicyAction values: `Allow`, `Block` (WebContentFiltering), `Bypass`, `Inspect` (TLSInspection) - case-insensitive
+- Valid RuleType values: `FQDN`, `URL`, `webCategory` (WebContentFiltering), `bypass`, `inspect` (TLSInspection) - case-insensitive
 - **Policy Metadata Consistency Validation:**
   - Group rows by PolicyName
   - Validate all rows for same policy have identical PolicyType, PolicyAction, Description
@@ -867,8 +934,9 @@ Test-GraphConnection -RequiredScopes $requiredScopes
 - `ConfigPath` - Path to security profiles CSV file (optional)
 **Validation:**
 - File existence and readability
-- Required columns present (headers must exist): `SecurityProfileName`, `SecurityProfileLinks`, `CADisplayName`, `EntraUsers`, `EntraGroups`, `Provision`
+- Required columns present (headers must exist): `SecurityProfileName`, `Priority`, `SecurityProfileLinks`, `CADisplayName`, `EntraUsers`, `EntraGroups`, `Provision`
   - Note: `CADisplayName` header is required, but values can be empty if no users/groups are specified
+- Validate `Priority` field is a valid integer
 - Add UniqueRecordId for tracking
 - Create global lookup hashtable
 - Ignore any additional columns not listed above
@@ -878,6 +946,8 @@ Test-GraphConnection -RequiredScopes $requiredScopes
 - Mark filtered rows with `ProvisioningResult = "Filtered: Provision set to 'no'"`
 - Filter out rows where `SecurityProfileName` is empty
 - Mark rows with `ProvisioningResult = "Failed: Missing required field SecurityProfileName"`
+- Filter out rows where `Priority` is empty or not a valid integer
+- Mark rows with `ProvisioningResult = "Failed: Missing or invalid required field Priority"`
 - Filter out rows where `SecurityProfileLinks` is empty
 - Mark empty links rows with `ProvisioningResult = "Skipped: No policy links specified"`
 - **Do NOT filter rows with empty `CADisplayName`** - this is validated during provisioning based on users/groups presence
@@ -1027,6 +1097,9 @@ $Global:RecordLookup[$Row.UniqueRecordId].ProvisioningResult = "Reused: Rule alr
 **Parameters:**
 - `Name` - Policy name from first row of policy group
 - `Description` - Policy description from first row of policy group (optional)
+- `DefaultAction` - Policy default action from first row of policy group: "bypass" or "inspect" (required)
+  - Converted to lowercase from CSV `PolicyAction` column
+  - Note: Internal function needs to be updated to accept this parameter
 **Idempotent Behavior:**
 - Check if policy exists using `Get-IntTlsInspectionPolicy -Name`
 - If exists: Reuse existing policy, return PolicyId for rule provisioning
@@ -1045,7 +1118,6 @@ if (-not $policyMetadata.PolicyName -or -not $policyMetadata.PolicyType) {
     return @{ Success = $false; Action = "Failed"; Error = "Missing required fields" }
 }
 ```
-**Note:** No Action parameter - TLS inspection policies always inspect; action is specified at rule level
 **Duplicate Detection:** Use `Get-IntTlsInspectionPolicy -Name` to check existence before creation
 - If exists: Log INFO "TLS policy exists, will add missing rules", return `@{Success=$true; Action="Reused"; PolicyId=$existingPolicy.Id}`
 - If not exists: Create new policy, internal function returns PolicyId in response
@@ -1064,7 +1136,7 @@ if (-not $policyMetadata.PolicyName -or -not $policyMetadata.PolicyType) {
 - `PolicyId` - ID of the parent policy
 - `Name` - Rule name from CSV row
 - `Priority` - Rule priority (auto-assigned sequentially)
-- `Action` - Rule action ("bypass" from RuleType column)
+- `Action` - Rule action: "bypass" or "inspect" (from CSV `RuleType` column, converted to lowercase)
 - `Status` - Rule status ("enabled" by default)
 - `Fqdns` - Array from RuleDestinations (split by semicolon, trimmed)
 **Row-Level Validation:** Before creating each rule
@@ -1089,17 +1161,22 @@ $Global:RecordLookup[$Row.UniqueRecordId].ProvisioningResult = "Reused: Rule alr
 
 #### New-SecurityProfile
 **Purpose:** Create security profiles linking to policies, or reuse existing profile and add missing links
+**Parameters:**
+- `SecurityProfileName` - Name from CSV row
+- `Priority` - Profile priority from CSV row (distinct from policy link priorities)
+- `SecurityProfileLinks` - Parsed array of policy links with priorities from CSV
+- `State` - Profile state ("enabled" by default)
 **Idempotent Behavior:**
 - Check if profile exists using `Get-IntSecurityProfile -Name`
-- If exists: Reuse existing profile (ignore priority differences between CSV and actual)
+- If exists: Reuse existing profile (ignore priority differences between CSV and actual profile priority)
   - Retrieve existing policy links from profile
   - For each policy link in CSV: Check if link to same `PolicyName` already exists
-  - If link exists: Skip it (ignore priority differences)
-  - If link missing: Create new link with priority from CSV
+  - If link exists: Skip it (ignore priority differences in link priorities)
+  - If link missing: Create new link with priority from CSV (using policy link priority, not profile priority)
 - If not exists: Create new profile with all policy links
 **Internal Functions:**
-- `New-IntSecurityProfile` - Create the profile (from internal/functions/EIA)
-- `New-IntFilteringPolicyLink` - Link policies to profile (from internal/functions/EIA)
+- `New-IntSecurityProfile` - Create the profile (from internal/functions/EIA) - requires Name, Priority, State
+- `New-IntFilteringPolicyLink` - Link policies to profile (from internal/functions/EIA) - uses policy link priorities
 **Business Logic Validation:** Before creating profile
 ```powershell
 # Note: All required fields validated during import
@@ -1116,9 +1193,12 @@ if ($skipCA) {
 - If not exists: Create new profile using `New-IntSecurityProfile`, internal function returns ProfileId in response
 **Priority Conflict Handling (New Profile Creation Only):**
 - **Only applies when creating NEW security profile** (not when reusing existing)
-- If creation fails due to priority conflict, increment priority by 1 and retry once
-- If second attempt also fails, log WARN and skip profile
-- Mark with `ProvisioningResult = "Failed: Priority conflict - priority {priority} and {priority+1} already exist"`
+- Uses the `Priority` value from CSV row for profile creation
+- If creation fails due to priority conflict (priority number already used by different profile):
+  - Increment profile priority by 1 and retry once
+  - If second attempt also fails, log WARN and skip profile
+  - Mark with `ProvisioningResult = "Failed: Priority conflict - priority {priority} and {priority+1} already exist"`
+- **Note:** This is for the security profile's priority, not the policy link priorities in SecurityProfileLinks
 **Progress:** Use `Write-ProgressUpdate` showing profile name
 **Policy Linking:**
 - Parse `SecurityProfileLinks` field (e.g., `"Policy1:100;Policy2:200"`)
@@ -1256,19 +1336,20 @@ if (-not $Row.CADisplayName) {
 **Flow:**
 1. Test-RequiredModules
 2. Test-GraphConnection (with conditional scopes based on parameters)
-3. Validate parameter mutual exclusivity (PolicyName vs SecurityProfilesCsvPath)
-4. Log prominent message if `-SkipCAPoliciesProvisioning` is enabled
-5. Import-PoliciesConfig (required parameter, with optional PolicyName filter)
-6. Import-SecurityProfilesConfig (if provided and PolicyName not specified)
-7. Show-ProvisioningPlan
-8. Resolve-EntraUsers (parse and cache all users from Security Profiles CSV) - **SKIP if `-SkipCAPoliciesProvisioning` is set**
-9. Resolve-EntraGroups (parse and cache all groups from Security Profiles CSV) - **SKIP if `-SkipCAPoliciesProvisioning` is set**
-10. Test-UserGroupDependencies (validate all users/groups exist, stop if any missing) - **SKIP if `-SkipCAPoliciesProvisioning` is set**
-11. User confirmation (unless -Force or -WhatIf)
-12. Test-ObjectDependencies (validate policy references)
-13. Provision objects in dependency order (CA policies skipped if `-SkipCAPoliciesProvisioning` is set)
-14. Export-ProvisioningResults
-15. Show-ExecutionSummary
+3. Get-IntGSATenantStatus (validate tenant onboarding status = "onboarded", runs in all modes including -WhatIf)
+4. Validate parameter mutual exclusivity (PolicyName vs SecurityProfilesCsvPath)
+5. Log prominent message if `-SkipCAPoliciesProvisioning` is enabled
+6. Import-PoliciesConfig (required parameter, with optional PolicyName filter)
+7. Import-SecurityProfilesConfig (if provided and PolicyName not specified)
+8. Show-ProvisioningPlan
+9. Resolve-EntraUsers (parse and cache all users from Security Profiles CSV) - **SKIP if `-SkipCAPoliciesProvisioning` is set**
+10. Resolve-EntraGroups (parse and cache all groups from Security Profiles CSV) - **SKIP if `-SkipCAPoliciesProvisioning` is set**
+11. Test-UserGroupDependencies (validate all users/groups exist, stop if any missing) - **SKIP if `-SkipCAPoliciesProvisioning` is set**
+12. User confirmation (unless -Force or -WhatIf)
+13. Test-ObjectDependencies (validate policy references)
+14. Provision objects in dependency order (CA policies skipped if `-SkipCAPoliciesProvisioning` is set)
+15. Export-ProvisioningResults
+16. Show-ExecutionSummary
 
 ---
 
