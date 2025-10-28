@@ -247,10 +247,15 @@ foreach ($policyGroup in $policyGroups) {
 ```
 
 #### 2.5.2 Row-Level Field Validation
-**When:** During CSV import (for structural validation) and before provisioning (for business logic validation)
-**Behavior:** 
-- During import: Filter out invalid rows, mark with appropriate result, exclude from provisioning
-- Before provisioning: Log ERROR, mark row as failed in output CSV, continue with next object
+**Two-Phase Validation Approach:**
+
+| Phase | When | What Gets Validated | Behavior on Failure | Tools Used |
+|-------|------|---------------------|---------------------|------------|
+| **Phase 1: Structural** | During CSV import | Required fields present, data types correct, field format valid | Filter out row, mark in results, exclude from provisioning | Import functions |
+| **Phase 2: Business Logic** | Before each provisioning operation | Business rules, object relationships, assignment logic | Log ERROR, mark as failed, continue with next object | Provisioning functions |
+
+**Phase 1 Example:** Missing `SecurityProfileName` → Row filtered during import, never sent to provisioning
+**Phase 2 Example:** Security Profile with empty users/groups → Decision made during provisioning whether to create CA policy
 
 **Validation Checks by Object Type:**
 
@@ -264,13 +269,14 @@ foreach ($policyGroup in $policyGroups) {
   - `RuleName` - Must be populated
 - Optional fields:
   - `Description` - Can be empty, but should be consistent across all rows for same policy
-- Validation pattern:
+- Validation pattern (Phase 2 - during provisioning):
 ```powershell
 if (-not $Row.PolicyName -or -not $Row.PolicyType -or -not $Row.PolicyAction -or 
     -not $Row.RuleType -or -not $Row.RuleDestinations -or -not $Row.RuleName) {
     Write-LogMessage "Skipping rule: missing required fields" -Level ERROR -Component "PolicyProvisioning"
-    $Row.ProvisioningResult = "Failed: Missing required fields"
+    $Global:RecordLookup[$Row.UniqueRecordId].ProvisioningResult = "Failed: Missing required fields"
     # Continue with next row
+    continue
 }
 ```
 
@@ -289,7 +295,7 @@ if (-not $Row.PolicyName -or -not $Row.PolicyType -or -not $Row.PolicyAction -or
 - Check for empty users/groups to determine CA policy creation:
   - If both `EntraUsers` and `EntraGroups` are empty → Skip CA policy creation, create Security Profile only
   - If at least one is populated → CADisplayName is guaranteed to be present (validated during import), create both Security Profile and CA policy
-- Validation pattern:
+- Validation pattern (Phase 2 - during provisioning):
 ```powershell
 # This validation happens DURING PROVISIONING
 
@@ -298,11 +304,12 @@ $hasUsers = -not [string]::IsNullOrWhiteSpace($Row.EntraUsers)
 $hasGroups = -not [string]::IsNullOrWhiteSpace($Row.EntraGroups)
 
 if (-not $hasUsers -and -not $hasGroups) {
-    Write-LogMessage "Security Profile will be created without CA policy (no users/groups specified)" -Level INFO
+    Write-LogMessage "Security Profile will be created without CA policy (no users/groups specified)" -Level INFO -Component "SecurityProfileProvisioning"
     # Continue - create profile but skip CA policy
+    continue
 } else {
     # CA policy should be created - CADisplayName is guaranteed to be present (validated during import)
-    Write-LogMessage "Security Profile will be created with linked CA policy" -Level INFO
+    Write-LogMessage "Security Profile will be created with linked CA policy" -Level INFO -Component "ConditionalAccessProvisioning"
 }
 ```
 
@@ -328,7 +335,7 @@ if (-not $hasUsers -and -not $hasGroups) {
 - **Skips when:** No Security Profiles CSV specified
   - Priority detection is only relevant to Security Profiles and their policy links
   - If not provisioning Security Profiles (SecurityProfilesCsvPath missing), no priority conflict detection is performed
-  - Note: `-SkipCAPoliciesProvisioning` without `SecurityProfilesCsvPath` has no impact (no CA policies to provision anyway)
+  - Priority detection runs regardless of `-SkipCAPoliciesProvisioning` setting (priorities matter for Security Profiles themselves)
 - **Timing:** Runs after all CSV validation but before any provisioning begins
 - **WhatIf Mode:** Priority conflict detection runs in both normal execution and `-WhatIf` mode (requires READ-only Graph API calls)
 
@@ -386,7 +393,7 @@ foreach ($csvRow in $csvData) {
         $policyName, $priority = $link -split ':'
         if ($linkPriorities.ContainsKey($priority)) {
             $conflictingPolicy = $linkPriorities[$priority]
-            Write-LogMessage "POLICY LINK PRIORITY CONFLICT: Security Profile '$($csvRow.SecurityProfileName)' has duplicate priority $priority for policies '$conflictingPolicy' and '$policyName' (Source: CSV SecurityProfileLinks)" -Level WARN
+            Write-LogMessage "POLICY LINK PRIORITY CONFLICT: Security Profile '$($csvRow.SecurityProfileName)' has duplicate priority $priority for policies '$conflictingPolicy' and '$policyName' (Source: CSV SecurityProfileLinks)" -Level ERROR
         } else {
             $linkPriorities[$priority] = $policyName
         }
@@ -400,7 +407,7 @@ foreach ($csvRow in $csvData) {
   - Log detailed ERROR message for each conflict with specific profile names and sources
   - **Conflict Type 1 (CSV vs CSV):** ERROR - stop script execution
   - **Conflict Type 2 (CSV vs Tenant):** ERROR - stop script execution (new profile priorities cannot clash with existing tenant profiles)
-  - **Conflict Type 3 (Policy Links):** WARN - stop script execution
+  - **Conflict Type 3 (Policy Links):** ERROR - stop script execution (duplicate priorities within a profile will cause unpredictable policy evaluation order)
   - Display summary: `"PRIORITY CONFLICTS DETECTED: Found X Security Profile conflicts and Y Policy Link conflicts"`
   - Instruct user: `"Please fix priority conflicts in CSV files and re-run the script"`
   - **Stop script execution:** `throw` error with detailed message (no provisioning)
@@ -414,7 +421,7 @@ foreach ($csvRow in $csvData) {
 ```
 ERROR: PRIORITY CONFLICT: Security Profile 'Finance_Profile' priority 100 conflicts with existing tenant profile 'Legacy_Finance' (Sources: CSV vs Tenant)
 ERROR: PRIORITY CONFLICT: Priority 150 used by multiple CSV profiles: Marketing_Profile, Sales_Profile (Source: CSV)
-WARN: POLICY LINK PRIORITY CONFLICT: Security Profile 'Dev_Profile' has duplicate priority 100 for policies 'WebFilter_Policy' and 'TLS_Policy' (Source: CSV SecurityProfileLinks)
+ERROR: POLICY LINK PRIORITY CONFLICT: Security Profile 'Dev_Profile' has duplicate priority 100 for policies 'WebFilter_Policy' and 'TLS_Policy' (Source: CSV SecurityProfileLinks)
 
 PRIORITY CONFLICTS DETECTED: Found 2 Security Profile conflicts and 1 Policy Link conflict
 Please fix priority conflicts in CSV files and re-run the script
@@ -432,6 +439,27 @@ Script execution stopped.
 4. **Conditional Access Policies** (referencing security profiles from step 3)
 
 ### 3.2 Object Naming and Dependency Rules
+
+#### 3.2.0 Priority Types and Their Usage
+**Understanding Two Types of Priorities:**
+
+| Priority Type | Defined In | Used For | Example |
+|--------------|-----------|----------|----------|
+| **Security Profile Priority** | Security Profiles CSV `Priority` column | Controls profile processing order and conflict detection | Profile with Priority=100 is processed before Priority=200 |
+| **Policy Link Priority** | Security Profiles CSV `SecurityProfileLinks` field (after colon) | Controls policy evaluation order within a single profile | In `Policy1:100;Policy2:200`, Policy1 is evaluated before Policy2 |
+
+**Key Distinctions:**
+- **Security Profile Priority:** Set once when profile is created, used for global profile ordering, checked during conflict detection
+- **Policy Link Priority:** Set for each policy-to-profile link, determines order of policy evaluation within that specific profile
+- **Independence:** These two priority systems are completely independent; a profile can have Priority=300 while its policy links use priorities 100, 200, etc.
+
+**CSV Example Clarification:**
+```csv
+SecurityProfileName,Priority,SecurityProfileLinks,CADisplayName,EntraUsers,EntraGroups
+Profile_Finance,100,WebFilter:50;TLSInspect:75,CA_Finance,user@contoso.com,Finance_Group
+```
+- Security Profile Priority: **100** (profile-level ordering)
+- Policy Link Priorities: **50** for WebFilter, **75** for TLSInspect (policy evaluation order within this profile)
 
 #### 3.2.1 Migrate2GSA Naming Convention
 **All created objects are automatically suffixed with `[Migrate2GSA]`:**
@@ -480,6 +508,8 @@ Script execution stopped.
   ```
 
 #### 3.2.4 Provisioning Logic Integration
+**Note:** This section describes high-level orchestration logic. For detailed implementation specifications of each provisioning function, see Section 8.4 (Provisioning Functions).
+
 **Policy Provisioning:**
 1. Check for `PolicyName[Migrate2GSA]` in tenant
 2. If exists: Add missing rules only
@@ -560,12 +590,18 @@ If policy with same name already exists in target tenant:
 If security profile with same name already exists in target tenant:
 - **Name Lookup:** Check for existing `SecurityProfileName[Migrate2GSA]` in tenant
 - **CA Policy Check:** Query Graph API to determine if profile is linked to any CA policy
-- **Behavior:** Reuse existing profile (ignore priority differences), add only missing policy links
+- **Behavior:** Reuse existing profile, add only missing policy links
 - **Restriction:** If profile is linked to CA policy, skip policy link addition entirely
-- **Priority Handling:** Ignore difference between CSV priority and actual profile priority
-  - Keep existing profile as-is, do not attempt to modify priority
+- **Priority Handling for Reused Profiles:**
+  - The `[Migrate2GSA]` suffix indicates this object was created by a previous run of this script
+  - **Security Profile Priority:** CSV priority is ignored; existing profile retains its original priority (no updates)
+    - Rationale: Profile was already created successfully; priority conflicts were resolved in the original run
+    - No conflict re-checking needed (profile already exists in tenant with valid priority)
+  - **Policy Link Priorities:** CSV link priorities are ignored for existing links; new links use CSV priorities
+    - Existing links retain their original priorities (no updates)
+    - New links are created with priorities specified in CSV `SecurityProfileLinks` field
 - **Policy Link Matching:** Check if link to same `PolicyName[Migrate2GSA]` already exists in the profile
-  - If link exists: Skip it (ignore priority differences in link)
+  - If link exists: Skip it (existing link is unchanged)
   - If link missing AND no CA policy linked: Create new link with priority from CSV
   - If CA policy linked: Skip all link additions, mark as `"Skipped: Profile linked to CA policy"`
 - **Profile Result:** Mark profile as `"Reused: Profile exists - added X new policy links, Y links already existed"` or `"Skipped: Cannot modify profile linked to CA policy"`
@@ -665,7 +701,10 @@ If CA policy with same name already exists in target tenant:
 - **Default Log Location:** `$PWD\20251028_143022_Start-EntraInternetAccessProvisioning.log` (current directory where function is called, timestamped)
 - **Custom Log Path:** User can override with `-LogPath` parameter (custom path does not get timestamped)
 - **Log File Initialization:** Generate timestamp and set `$script:LogPath` variable at function start for Write-LogMessage to use
-- **Timestamp Format:** `yyyyMMdd_HHmmss` (e.g., `20251028_143022`) - no underscores within date or time components
+- **Timestamp Format:** `yyyyMMdd_HHmmss` - Compact format with single underscore separating date and time
+  - Date part: `yyyyMMdd` (8 digits, no separators) - Example: `20251028`
+  - Time part: `HHmmss` (6 digits, no separators) - Example: `143022`
+  - Combined: `20251028_143022` (one underscore between date and time components)
 - **Timestamp Consistency:** Same timestamp used for all output files (logs and CSVs) in a single execution
 - **Debug Logging Approach:**
   - Function uses `[CmdletBinding(SupportsShouldProcess = $true)]` which provides `-Debug` switch
@@ -691,9 +730,9 @@ If CA policy with same name already exists in target tenant:
   - Internal shared functions: `Write-LogMessage`, `Invoke-InternalGraphRequest`, `Write-ProgressUpdate`, `Export-DataToFile`
   - Internal validation functions: `Test-RequiredModules`, `Test-GraphConnection`, `Get-IntGSATenantStatus`
   - Internal EIA functions (from `internal\functions\EIA\`):
-    - `New-IntFilteringPolicy`, `Get-IntFilteringPolicy`
+    - `New-IntFilteringPolicy`, `Get-IntFilteringPolicy`, `Get-IntFilteringRule`
     - `New-IntFqdnFilteringRule`, `New-IntUrlFilteringRule`, `New-IntWebCategoryFilteringRule`
-    - `New-IntTlsInspectionPolicy`, `Get-IntTlsInspectionPolicy`
+    - `New-IntTlsInspectionPolicy`, `Get-IntTlsInspectionPolicy`, `Get-IntTlsInspectionRule`
     - `New-IntTlsInspectionRule`
     - `New-IntSecurityProfile`, `Get-IntSecurityProfile`
     - `New-IntFilteringPolicyLink`
@@ -1003,15 +1042,20 @@ Ready to proceed? Run without -WhatIf to execute.
 - Verify required scopes are present in the context (case-insensitive comparison)
 - If connection not found or scopes missing, throw error with detailed instructions
 - Do NOT handle authentication - user must connect before running script
-**Scopes (conditional based on parameters):**
+**Scopes (conditional based on user intent):**
 - Always required: `NetworkAccess.ReadWrite.All`
-- Required if provisioning CA policies: `Policy.ReadWrite.ConditionalAccess`, `User.Read.All`, `Group.Read.All`
-- CA policies are provisioned when: SecurityProfilesCsvPath is provided AND SkipCAPoliciesProvisioning is NOT set
+- Required if user intends to provision CA policies: `Policy.ReadWrite.ConditionalAccess`, `User.Read.All`, `Group.Read.All`
+- **User Intent Detection:** CA policy scopes are required when SecurityProfilesCsvPath is provided AND SkipCAPoliciesProvisioning is NOT set
+  - This represents user intent to provision CA policies (even if some CSV rows have empty users/groups)
+  - Scope validation happens early (before CSV parsing) to fail fast if permissions are missing
+  - Individual CA policy creation may be skipped during provisioning based on CSV content (empty users/groups)
+  - **Rationale:** Conservative validation ensures all necessary permissions exist upfront; actual operations are filtered during execution
 **Usage Pattern:**
 ```powershell
-# Determine required scopes based on parameters
+# Determine required scopes based on user intent (parameters)
 $requiredScopes = @('NetworkAccess.ReadWrite.All')
 if ($SecurityProfilesCsvPath -and -not $SkipCAPoliciesProvisioning) {
+    # User intends to provision CA policies - validate all CA scopes
     $requiredScopes += @(
         'Policy.ReadWrite.ConditionalAccess',
         'User.Read.All',
@@ -1216,7 +1260,7 @@ if (-not $policyMetadata.PolicyName -or -not $policyMetadata.PolicyType -or -not
 **Purpose:** Create rules for web content filtering policies from rule rows, skipping existing rules
 **Idempotent Behavior:**
 - For each rule, check if rule with same `RuleName` already exists in policy
-- **Rule Lookup:** Retrieve existing rules from policy using internal Get function
+- **Rule Lookup:** Use `Get-IntFilteringRule -PolicyId $policyId -Name $ruleName` to check if rule exists
 - If rule exists: Skip creation, mark as `"Reused: Rule already exists"`
 - If rule missing: Create new rule, mark as `"Provisioned: Rule created successfully"`
 **Row-Level Validation:** Before creating each rule
@@ -1282,7 +1326,7 @@ if (-not $policyMetadata.PolicyName -or -not $policyMetadata.PolicyType) {
 **Purpose:** Create rules for TLS inspection policies from rule rows, skipping existing rules
 **Idempotent Behavior:**
 - For each rule, check if rule with same `RuleName` already exists in policy
-- **Rule Lookup:** Retrieve existing rules from policy using internal Get function
+- **Rule Lookup:** Use `Get-IntTlsInspectionRule -PolicyId $policyId -Name $ruleName` to check if rule exists
 - If rule exists: Skip creation, mark as `"Reused: Rule already exists"`
 - If rule missing: Create new rule, mark as `"Provisioned: Rule created successfully"`
 **Internal Function:** `New-IntTlsInspectionRule` (from internal/functions/EIA)
