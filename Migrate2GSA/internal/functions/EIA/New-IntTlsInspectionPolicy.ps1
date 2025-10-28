@@ -13,13 +13,17 @@ function New-IntTlsInspectionPolicy {
     .PARAMETER Description
         Optional description of the TLS inspection policy.
     
-    .EXAMPLE
-        New-IntTlsInspectionPolicy -Name "Corporate TLS Policy"
-        Creates a new TLS inspection policy.
+    .PARAMETER DefaultAction
+        The default action to take when no rules in the policy match the traffic.
+        Valid values: 'bypass', 'inspect'. Required.
     
     .EXAMPLE
-        New-IntTlsInspectionPolicy -Name "TLS Bypass Policy" -Description "Bypass TLS inspection for trusted sites"
-        Creates a new TLS inspection policy with description.
+        New-IntTlsInspectionPolicy -Name "Corporate TLS Policy" -DefaultAction "bypass"
+        Creates a new TLS inspection policy with bypass as default action.
+    
+    .EXAMPLE
+        New-IntTlsInspectionPolicy -Name "TLS Bypass Policy" -Description "Bypass TLS inspection for trusted sites" -DefaultAction "bypass"
+        Creates a new TLS inspection policy with description and bypass action.
     #>
     [CmdletBinding()]
     param (
@@ -28,13 +32,20 @@ function New-IntTlsInspectionPolicy {
         [string]$Name,
         
         [Parameter(Mandatory = $false)]
-        [string]$Description
+        [string]$Description,
+        
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('bypass', 'inspect')]
+        [string]$DefaultAction
     )
 
     try {
         $body = @{
             name        = $Name
             policyRules = @()
+            settings    = @{
+                defaultAction = $DefaultAction
+            }
         }
 
         if ($Description) {

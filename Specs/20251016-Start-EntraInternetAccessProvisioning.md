@@ -65,13 +65,14 @@ This specification defines how to provision Global Secure Access (GSA) Internet 
 
 ### 2.0.1 Parameter Validation and Mutual Exclusivity
 - **Mutual Exclusivity Rule:** `-PolicyName` and `-SecurityProfilesCsvPath` cannot be used together
+- **Validation Timing:** This validation is performed FIRST, before any other operations (CSV import, authentication checks, etc.)
 - **Validation Logic:**
   ```powershell
   if ($PolicyName -and $SecurityProfilesCsvPath) {
-      throw "PolicyName filter cannot be used with SecurityProfilesCsvPath. Use PolicyName for policy-only provisioning."
+      throw "PolicyName filter cannot be used with SecurityProfilesCsvPath. Policy filtering is for testing/incremental updates of individual policies. Provisioning a single policy would lead to incomplete security profiles and no CA policies."
   }
   ```
-- **Rationale:** Policy filtering is for testing/incremental updates of individual policies; security profiles require complete policy context
+- **Rationale:** Policy filtering is for testing/incremental updates of individual policies; provisioning a single policy would create incomplete security profiles (missing policy links) and prevent CA policy creation entirely
 
 - **SkipCAPoliciesProvisioning Parameter:**
   - Can be used with any other parameter combination
@@ -87,13 +88,13 @@ This specification defines how to provision Global Secure Access (GSA) Internet 
 
 ### 2.2 User/Group Assignment Handling
 - **Resolution Before Provisioning:** All users and groups referenced in the Security Profiles CSV are resolved and cached before any provisioning begins
-  - **Exception:** If `-SkipCAPoliciesProvisioning` is specified, user/group resolution is skipped entirely (not needed without CA policies)
+  - **Exception:** If no CA policies will be provisioned (either `-SkipCAPoliciesProvisioning` is specified OR `SecurityProfilesCsvPath` is not provided), user/group resolution is skipped entirely (not needed without CA policies)
 - **Missing Users/Groups:** If any user/group names don't exist in target tenant:
   - Log WARNING for each missing user/group with details
   - After checking all users/groups, STOP script execution if any are missing
   - Provide summary of all missing assignments in error message
   - User must fix CSV and re-run
-  - **Exception:** If `-SkipCAPoliciesProvisioning` is specified, no validation is performed (CA policies won't be created)
+  - **Exception:** If no CA policies will be provisioned, no validation is performed (CA policies won't be created)
 - **Rationale:** Prevents creating incomplete CA policies; ensures all assignments are valid before provisioning
 
 ### 2.3 Policies CSV File Format
@@ -172,6 +173,7 @@ Marketing_Sites-Allow,WebContentFiltering,Allow,Allow marketing tools,FQDN,*.goo
   - If empty, the entire row is filtered out during CSV import
 - `CADisplayName` - Conditional Access policy name (conditionally required)
   - Required only if at least one of `EntraUsers` or `EntraGroups` is populated
+  - Validation is performed during CSV import: if either `EntraUsers` or `EntraGroups` has a value, `CADisplayName` must be populated
   - If both `EntraUsers` and `EntraGroups` are empty, `CADisplayName` can be empty (no CA policy will be created)
 - `EntraUsers` - User Principal Names (email format), semicolon-separated (optional)
 - `EntraGroups` - Group display names, semicolon-separated (optional)
@@ -282,11 +284,11 @@ if (-not $Row.PolicyName -or -not $Row.PolicyType -or -not $Row.PolicyAction -or
 - `Provision = no` → Row filtered out, marked as "Filtered: Provision set to 'no'"
 
 **Before Provisioning (business logic validation - skips individual operations):**
-- By this point, all rows have passed structural validation
-- Required fields validated during import: `SecurityProfileName`, `Priority`, `SecurityProfileLinks`
+- By this point, all rows have passed structural validation and CADisplayName validation
+- Required fields validated during import: `SecurityProfileName`, `Priority`, `SecurityProfileLinks`, `CADisplayName` (if users/groups present)
 - Check for empty users/groups to determine CA policy creation:
   - If both `EntraUsers` and `EntraGroups` are empty → Skip CA policy creation, create Security Profile only
-  - If at least one is populated → Validate `CADisplayName` is present, then create both Security Profile and CA policy
+  - If at least one is populated → CADisplayName is guaranteed to be present (validated during import), create both Security Profile and CA policy
 - Validation pattern:
 ```powershell
 # This validation happens DURING PROVISIONING
@@ -299,12 +301,8 @@ if (-not $hasUsers -and -not $hasGroups) {
     Write-LogMessage "Security Profile will be created without CA policy (no users/groups specified)" -Level INFO
     # Continue - create profile but skip CA policy
 } else {
-    # CA policy should be created - validate CADisplayName is present
-    if ([string]::IsNullOrWhiteSpace($Row.CADisplayName)) {
-        Write-LogMessage "Skipping row: CADisplayName is required when users or groups are specified" -Level ERROR -Component "SecurityProfileProvisioning"
-        $Global:RecordLookup[$Row.UniqueRecordId].ProvisioningResult = "Failed: Missing required field CADisplayName (needed for CA policy)"
-        return # Skip this row
-    }
+    # CA policy should be created - CADisplayName is guaranteed to be present (validated during import)
+    Write-LogMessage "Security Profile will be created with linked CA policy" -Level INFO
 }
 ```
 
@@ -327,8 +325,12 @@ if (-not $hasUsers -and -not $hasGroups) {
 #### 2.5.4 Priority Conflict Detection
 **Execution Scope:**
 - **Only runs when:** `SecurityProfilesCsvPath` parameter is provided
-- **Skips when:** No Security Profiles CSV specified (regardless of `-SkipCAPoliciesProvisioning` value)
+- **Skips when:** No Security Profiles CSV specified
+  - Priority detection is only relevant to Security Profiles and their policy links
+  - If not provisioning Security Profiles (SecurityProfilesCsvPath missing), no priority conflict detection is performed
+  - Note: `-SkipCAPoliciesProvisioning` without `SecurityProfilesCsvPath` has no impact (no CA policies to provision anyway)
 - **Timing:** Runs after all CSV validation but before any provisioning begins
+- **WhatIf Mode:** Priority conflict detection runs in both normal execution and `-WhatIf` mode (requires READ-only Graph API calls)
 
 **Detection Logic:**
 
@@ -355,9 +357,17 @@ foreach ($duplicate in $csvDuplicates) {
 **Conflict Type 2: CSV Priority Conflicts with Existing Tenant Profiles**
 ```powershell
 foreach ($csvRow in $csvData) {
+    $csvProfileNameWithSuffix = "$($csvRow.SecurityProfileName)[Migrate2GSA]"
+    
     if ($tenantPriorities.ContainsKey($csvRow.Priority)) {
         $existingProfile = $tenantPriorities[$csvRow.Priority]
-        Write-LogMessage "PRIORITY CONFLICT: Security Profile '$($csvRow.SecurityProfileName)' priority $($csvRow.Priority) conflicts with existing tenant profile '$existingProfile' (Sources: CSV vs Tenant)" -Level WARN
+        
+        # Skip conflict if it's the same profile being reused (idempotent rerun)
+        # This allows reruns with the same CSV without false conflicts
+        if ($existingProfile -ne $csvProfileNameWithSuffix) {
+            Write-LogMessage "PRIORITY CONFLICT: Security Profile '$($csvRow.SecurityProfileName)' priority $($csvRow.Priority) conflicts with existing tenant profile '$existingProfile' (Sources: CSV vs Tenant)" -Level ERROR
+            # Priority conflicts with existing tenant profiles STOP script execution
+        }
     }
 }
 ```
@@ -387,19 +397,28 @@ foreach ($csvRow in $csvData) {
 **Conflict Detection Results:**
 - **No Conflicts Found:** Continue with provisioning
 - **Any Conflicts Found:** 
-  - Log detailed WARN message for each conflict with specific profile names and sources
+  - Log detailed ERROR message for each conflict with specific profile names and sources
+  - **Conflict Type 1 (CSV vs CSV):** ERROR - stop script execution
+  - **Conflict Type 2 (CSV vs Tenant):** ERROR - stop script execution (new profile priorities cannot clash with existing tenant profiles)
+  - **Conflict Type 3 (Policy Links):** WARN - stop script execution
   - Display summary: `"PRIORITY CONFLICTS DETECTED: Found X Security Profile conflicts and Y Policy Link conflicts"`
   - Instruct user: `"Please fix priority conflicts in CSV files and re-run the script"`
-  - **Stop script execution:** `return` (graceful exit, no provisioning)
+  - **Stop script execution:** `throw` error with detailed message (no provisioning)
+
+**Conflict Detection Scope:**
+- Checks CSV-to-CSV conflicts (duplicate priorities within CSV)
+- Checks CSV-to-Tenant conflicts (CSV priorities clashing with existing tenant profiles)
+- Does NOT check CSV-to-Reused-Profiles conflicts (reused profiles keep their existing priorities, validation only ensures no NEW profile clashes)
 
 **Example Conflict Messages:**
 ```
-WARN: PRIORITY CONFLICT: Security Profile 'Finance_Profile' priority 100 conflicts with existing tenant profile 'Legacy_Finance' (Sources: CSV vs Tenant)
-WARN: PRIORITY CONFLICT: Priority 150 used by multiple CSV profiles: Marketing_Profile, Sales_Profile (Source: CSV)
+ERROR: PRIORITY CONFLICT: Security Profile 'Finance_Profile' priority 100 conflicts with existing tenant profile 'Legacy_Finance' (Sources: CSV vs Tenant)
+ERROR: PRIORITY CONFLICT: Priority 150 used by multiple CSV profiles: Marketing_Profile, Sales_Profile (Source: CSV)
 WARN: POLICY LINK PRIORITY CONFLICT: Security Profile 'Dev_Profile' has duplicate priority 100 for policies 'WebFilter_Policy' and 'TLS_Policy' (Source: CSV SecurityProfileLinks)
 
 PRIORITY CONFLICTS DETECTED: Found 2 Security Profile conflicts and 1 Policy Link conflict
 Please fix priority conflicts in CSV files and re-run the script
+Script execution stopped.
 ```
 
 ---
@@ -422,8 +441,9 @@ Please fix priority conflicts in CSV files and re-run the script
 
 **CSV Handling:**
 - **Input CSV:** Contains original names without suffix (e.g., `Finance_WebFilter`)
-- **Output CSV:** Updated with actual created names including suffix (e.g., `Finance_WebFilter[Migrate2GSA]`)
-- **Internal Processing:** All API calls use suffixed names for creation and conflict detection
+- **Output CSV:** Maintains original names without suffix (e.g., `Finance_WebFilter`)
+- **Internal Processing:** All API calls automatically append suffix to CSV names for creation and conflict detection
+- **Rationale:** Keeping CSV names clean simplifies re-runs and avoids suffix-stripping logic
 
 #### 3.2.2 Name Conflict Detection Rules
 **Policy Name Conflicts:**
@@ -472,9 +492,10 @@ Please fix priority conflicts in CSV files and re-run the script
 4. Create CA policy ONLY if all policy links succeeded
 
 **Output CSV Updates:**
-- Update `PolicyName` fields with actual created names (including suffix)
-- Update `SecurityProfileName` fields with actual created names (including suffix)
-- Update `CADisplayName` fields with actual created names (including suffix)
+- Object names remain unchanged (original names without `[Migrate2GSA]` suffix)
+- Update `Provision` field based on provisioning success/failure
+- Update `ProvisioningResult` field with detailed status messages
+- Update `ObjectId` fields with actual tenant object IDs for successfully created/reused objects
 
 ### 3.3 CSV Data Structure Understanding
 
@@ -641,28 +662,21 @@ If CA policy with same name already exists in target tenant:
   - Writes to console with color-coded output based on log level
   - Writes to log file simultaneously
   - Supports component tagging for categorization
-- **Default Log Location:** `$PWD\${timestamp}_Start-EntraInternetAccessProvisioning.log` (current directory where function is called, timestamped)
+- **Default Log Location:** `$PWD\20251028_143022_Start-EntraInternetAccessProvisioning.log` (current directory where function is called, timestamped)
 - **Custom Log Path:** User can override with `-LogPath` parameter (custom path does not get timestamped)
 - **Log File Initialization:** Generate timestamp and set `$script:LogPath` variable at function start for Write-LogMessage to use
+- **Timestamp Format:** `yyyyMMdd_HHmmss` (e.g., `20251028_143022`) - no underscores within date or time components
 - **Timestamp Consistency:** Same timestamp used for all output files (logs and CSVs) in a single execution
 - **Debug Logging Approach:**
   - Function uses `[CmdletBinding(SupportsShouldProcess = $true)]` which provides `-Debug` switch
-  - Check `$DebugPreference -eq 'Continue'` to conditionally pass `-Debug` to internal functions
-  - Example pattern:
-    ```powershell
-    $params = @{
-        Name = $policyName
-        Action = $action
-    }
-    if ($DebugPreference -eq 'Continue') {
-        $params['Debug'] = $true
-    }
-    $result = New-IntFilteringPolicy @params
-    ```
+  - Internal functions use `[CmdletBinding()]` which automatically supports `-Debug` switch
+  - Check `$DebugPreference -eq 'Continue'` to conditionally enable debug output
+  - All debug logging works through `$DebugPreference` automatic variable and `[CmdletBinding()]` attribute
   - Debug messages use component tagging like other log levels: `Write-LogMessage "Details..." -Level DEBUG -Component "PolicyProvisioning"`
 - **WhatIf Mode:** Dedicated analysis log for preview operations (separate from execution logs)
-  - WhatIf log file: `$PWD\${timestamp}_Start-EntraInternetAccessProvisioning_WhatIf.log`
+  - WhatIf log file: `$PWD\20251028_143022_Start-EntraInternetAccessProvisioning_WhatIf.log`
   - Uses same timestamp as other output files from the same execution
+  - **WhatIf API Behavior:** Makes READ-ONLY Graph API calls (Get operations) to check for existing objects, detect conflicts, and validate prerequisites; NO Write/Create operations are performed
 
 ---
 
@@ -737,10 +751,10 @@ If CA policy with same name already exists in target tenant:
 **Log Files (in $PWD by default):**
 ```
 $PWD/
-  └── YYYYMMDD_HHMMSS_Start-EntraInternetAccessProvisioning.log                # Main log file (timestamped)
-  └── YYYYMMDD_HHMMSS_Start-EntraInternetAccessProvisioning_WhatIf.log         # WhatIf analysis log (if -WhatIf used)
-  └── YYYYMMDD_HHMMSS_policies_provisioned.csv                                 # Policies results CSV (Provision field updated based on results)
-  └── YYYYMMDD_HHMMSS_security_profiles_provisioned.csv                        # Security profiles results CSV (Provision field updated based on results, if provided)
+  └── 20251028_143022_Start-EntraInternetAccessProvisioning.log                # Main log file (timestamped)
+  └── 20251028_143022_Start-EntraInternetAccessProvisioning_WhatIf.log         # WhatIf analysis log (if -WhatIf used)
+  └── 20251028_143022_policies_provisioned.csv                                 # Policies results CSV (Provision field updated based on results)
+  └── 20251028_143022_security_profiles_provisioned.csv                        # Security profiles results CSV (Provision field updated based on results, if provided)
 ```
 
 **Output CSV Provision Field:**
@@ -750,7 +764,7 @@ $PWD/
 
 **Timestamp Consistency:**
 - All output files (logs and CSVs) use the same timestamp generated at script start
-- Timestamp format: `yyyyMMdd_HHmmss` (e.g., `20251022_143022`)
+- Timestamp format: `yyyyMMdd_HHmmss` (e.g., `20251028_143022`)
 - Makes it easy to correlate logs and results from the same execution
 
 **Write-LogMessage Usage:**
@@ -807,17 +821,66 @@ $PWD/
 
 ---
 
-## 6. WhatIf Mode - Preview and Analysis
+## 6. Technical Implementation Details
 
-### 6.1 Purpose and Benefits
+### 6.1 Required Microsoft Graph API Permissions
+- `NetworkAccess.ReadWrite.All` - For creating/updating GSA configurations
+- `Policy.ReadWrite.ConditionalAccess` - For creating CA policies
+- `User.Read.All` - For resolving user assignments
+- `Group.Read.All` - For resolving group assignments
+
+### 6.2 Graph API Integration
+
+**All Graph API calls are abstracted through internal helper functions** that use `Invoke-InternalGraphRequest` internally for consistent error handling, automatic throttling detection, and retry logic.
+
+**Architecture Pattern:**
+- Main function (`Start-EntraInternetAccessProvisioning`) does NOT call `Invoke-InternalGraphRequest` directly
+- All API interactions go through internal helper functions (e.g., `New-IntFilteringPolicy`, `Get-IntUser`, `Get-IntGroup`)
+- Internal helper functions use `Invoke-InternalGraphRequest` for all Graph API calls
+- This ensures consistent error handling, logging, and retry logic across all operations
+
+**Key Features (via Invoke-InternalGraphRequest):**
+- Automatic 429 throttling detection with exponential backoff
+- Respects Retry-After headers
+- Component-based logging via Write-LogMessage
+- Automatic pagination for collection responses
+
+**Internal Helper Functions Usage:**
+```powershell
+# Main function calls internal helper functions, NOT Invoke-InternalGraphRequest directly
+
+# Create filtering policy
+$result = New-IntFilteringPolicy -Name "Policy_Web_Social" -Action "allow" -Description "Social media policy"
+
+# Resolve user
+$user = Get-IntUser -Filter "userPrincipalName eq 'john@contoso.com'"
+
+# Resolve group
+$group = Get-IntGroup -Filter "displayName eq 'Finance_Group'"
+
+# Create conditional access policy
+$caPolicy = New-IntConditionalAccessPolicy -DisplayName "CA_Finance" -State "disabled" -Conditions $conditions -GrantControls $grants
+```
+
+### 6.3 Error Handling Categories
+- **Validation Errors:** CSV format issues, missing dependencies
+- **API Errors:** Permissions, throttling, service unavailable, object conflicts
+- **Business Logic Errors:** Invalid configurations, circular references
+- **Assignment Errors:** Unresolvable user/group names in CA policies
+
+---
+
+## 7. WhatIf Mode - Preview and Analysis
+
+### 7.1 Purpose and Benefits
 - **Safe Planning:** Preview all operations before execution
 - **Conflict Detection:** Identify naming conflicts, priority collisions, and missing dependencies
 - **Assignment Validation:** Check user/group existence in target tenant
 - **Admin Confidence:** Provide clear visibility into what will be created, skipped, or failed
 
-### 6.2 WhatIf Output Structure
+### 7.2 WhatIf Output Structure
 
-#### 6.2.1 Dedicated WhatIf Log
+#### 7.2.1 Dedicated WhatIf Log
 **File:** `$PWD\${timestamp}_Start-EntraInternetAccessProvisioning_WhatIf.log` (default location, timestamped)
 
 **Content Structure:****
@@ -882,7 +945,7 @@ RECOMMENDATION:
 - Verify user/group names in target tenant or remove from CSV
 ```
 
-#### 6.2.2 Enhanced Console Output
+#### 7.2.2 Enhanced Console Output
 ```powershell
 === PROVISION WHAT-IF ANALYSIS ===
 Target: contoso.onmicrosoft.com
@@ -906,7 +969,7 @@ Missing Users/Groups (BLOCKING):
 Ready to proceed? Run without -WhatIf to execute.
 ```
 
-### 6.3 WhatIf Analysis Features
+### 7.3 WhatIf Analysis Features
 - **Object Counting:** Total objects to be created by type
 - **Conflict Detection:** Name conflicts, existing objects
 - **Dependency Validation:** Missing references between CSV files, missing users/groups in target tenant
@@ -914,60 +977,11 @@ Ready to proceed? Run without -WhatIf to execute.
 - **Clear Recommendations:** Next steps for admin based on analysis results
 - **Blocking Errors:** Script will stop if any users or groups are not found in target tenant
 
-### 6.4 WhatIf vs Execution Logs
+### 7.4 WhatIf vs Execution Logs
 - **WhatIf Log:** Contains analysis, predictions, and recommendations (no actual changes)
 - **Execution Logs:** Contains actual API calls, success/failure results, and audit trail
 - **No Overlap:** WhatIf and execution create separate, distinct log files
 - **Reference Value:** WhatIf log serves as planning document for stakeholder review
-
----
-
-## 7. Technical Implementation Details
-
-### 7.1 Required Microsoft Graph API Permissions
-- `NetworkAccess.ReadWrite.All` - For creating/updating GSA configurations
-- `Policy.ReadWrite.ConditionalAccess` - For creating CA policies
-- `User.Read.All` - For resolving user assignments
-- `Group.Read.All` - For resolving group assignments
-
-### 7.2 Graph API Integration
-
-**All Graph API calls are abstracted through internal helper functions** that use `Invoke-InternalGraphRequest` internally for consistent error handling, automatic throttling detection, and retry logic.
-
-**Architecture Pattern:**
-- Main function (`Start-EntraInternetAccessProvisioning`) does NOT call `Invoke-InternalGraphRequest` directly
-- All API interactions go through internal helper functions (e.g., `New-IntFilteringPolicy`, `Get-IntUser`, `Get-IntGroup`)
-- Internal helper functions use `Invoke-InternalGraphRequest` for all Graph API calls
-- This ensures consistent error handling, logging, and retry logic across all operations
-
-**Key Features (via Invoke-InternalGraphRequest):**
-- Automatic 429 throttling detection with exponential backoff
-- Respects Retry-After headers
-- Component-based logging via Write-LogMessage
-- Automatic pagination for collection responses
-
-**Internal Helper Functions Usage:**
-```powershell
-# Main function calls internal helper functions, NOT Invoke-InternalGraphRequest directly
-
-# Create filtering policy
-$result = New-IntFilteringPolicy -Name "Policy_Web_Social" -Action "allow" -Description "Social media policy"
-
-# Resolve user
-$user = Get-IntUser -Filter "userPrincipalName eq 'john@contoso.com'"
-
-# Resolve group
-$group = Get-IntGroup -Filter "displayName eq 'Finance_Group'"
-
-# Create conditional access policy
-$caPolicy = New-IntConditionalAccessPolicy -DisplayName "CA_Finance" -State "disabled" -Conditions $conditions -GrantControls $grants
-```
-
-### 7.3 Error Handling Categories
-- **Validation Errors:** CSV format issues, missing dependencies
-- **API Errors:** Permissions, throttling, service unavailable, object conflicts
-- **Business Logic Errors:** Invalid configurations, circular references
-- **Assignment Errors:** Unresolvable user/group names in CA policies
 
 ---
 
@@ -1074,8 +1088,10 @@ Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.
 - Required columns present (headers must exist): `SecurityProfileName`, `Priority`, `SecurityProfileLinks`, `CADisplayName`, `EntraUsers`, `EntraGroups`, `Provision`
   - Note: `CADisplayName` header is required, but values can be empty if no users/groups are specified
 - Validate `Priority` field is a valid integer
-- Add UniqueRecordId for tracking
-- Create global lookup hashtable
+- **CADisplayName Validation:** If either `EntraUsers` or `EntraGroups` has a value, `CADisplayName` must be populated
+  - If validation fails, filter out row and mark as "Failed: CADisplayName is required when users or groups are specified"
+- Add UniqueRecordId for tracking (implementation detail: can be GUID, sequential number, or row index)
+- Create global lookup hashtable `$Global:RecordLookup` for O(1) access by UniqueRecordId
 - Ignore any additional columns not listed above
 **Content:** One row per Security Profile with combined CA policy (1:1 relationship)
 **Filtering Logic (EPA Pattern):**
@@ -1107,6 +1123,7 @@ Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.
 
 #### Resolve-EntraUsers
 **Purpose:** Find and cache Entra ID users for CA policy assignments  
+**Execution Condition:** Only called if CA policies will be provisioned (SecurityProfilesCsvPath provided AND -SkipCAPoliciesProvisioning NOT set)
 **Parameters:**
 - `ConfigData` - Security profiles configuration data (one row per profile with combined CA)
 **Validation:**
@@ -1123,6 +1140,7 @@ Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.
 
 #### Resolve-EntraGroups
 **Purpose:** Find and cache Entra ID groups for CA policy assignments  
+**Execution Condition:** Only called if CA policies will be provisioned (SecurityProfilesCsvPath provided AND -SkipCAPoliciesProvisioning NOT set)
 **Parameters:**
 - `ConfigData` - Security profiles configuration data (one row per profile with combined CA)
 **Validation:**
@@ -1230,13 +1248,12 @@ $Global:RecordLookup[$Row.UniqueRecordId].ProvisioningResult = "Reused: Rule alr
 
 #### New-TLSInspectionPolicy
 **Purpose:** Create TLS inspection policies from grouped rule rows, or reuse existing policy
-**Internal Function:** `New-IntTlsInspectionPolicy` (from internal/functions/EIA)
+**Internal Function:** `New-IntTlsInspectionPolicy` (from internal/functions/EIA) - already supports `-DefaultAction` parameter
 **Parameters:**
 - `Name` - Policy name from first row of policy group
 - `Description` - Policy description from first row of policy group (optional)
 - `DefaultAction` - Policy default action from first row of policy group: "bypass" or "inspect" (required)
   - Converted to lowercase from CSV `PolicyAction` column
-  - Note: Internal function needs to be updated to accept this parameter
 **Idempotent Behavior:**
 - Check if policy exists using `Get-IntTlsInspectionPolicy -Name`
 - If exists: Reuse existing policy, return PolicyId for rule provisioning
@@ -1306,13 +1323,16 @@ $Global:RecordLookup[$Row.UniqueRecordId].ProvisioningResult = "Reused: Rule alr
 **Idempotent Behavior:**
 - Check if profile exists using `Get-IntSecurityProfile -Name`
 - If exists: Reuse existing profile (ignore priority differences between CSV and actual profile priority)
-  - Retrieve existing policy links from profile
-  - For each policy link in CSV: Check if link to same `PolicyName` already exists
-  - If link exists: Skip it (ignore priority differences in link priorities)
-  - If link missing: Create new link with priority from CSV (using policy link priority, not profile priority)
+  - Check if profile is linked to any CA policy using `Get-IntSecurityProfile -Name -ExpandLinks` (checks ConditionalAccessPolicies property)
+  - If CA policy linked: Skip all policy link additions, mark as "Skipped: Cannot modify profile linked to CA policy"
+  - If no CA policy linked: Retrieve existing policy links from profile
+    - For each policy link in CSV: Check if link to same `PolicyName` already exists
+    - If link exists: Skip it (ignore priority differences in link priorities)
+    - If link missing: Create new link with priority from CSV (using policy link priority, not profile priority)
 - If not exists: Create new profile with all policy links
 **Internal Functions:**
 - `New-IntSecurityProfile` - Create the profile (from internal/functions/EIA) - requires Name, Priority, State
+- `Get-IntSecurityProfile` - Retrieve profile and check CA policy linkage using `-ExpandLinks` switch (from internal/functions/EIA)
 - `New-IntFilteringPolicyLink` - Link policies to profile (from internal/functions/EIA) - uses policy link priorities
 **Business Logic Validation:** Before creating profile
 ```powershell
@@ -1437,7 +1457,9 @@ if (-not $Row.CADisplayName) {
 #### Export-ProvisioningResults
 **Pattern:** Same as Start-EntraPrivateAccessProvisioning implementation  
 **Purpose:** Export results CSV with ProvisioningResult column and updated Provision field
-**Filename:** `${timestamp}_${baseName}_provisioned.csv`
+**Filename Examples:**
+- Policies CSV: `20251028_143022_policies_provisioned.csv`
+- Security Profiles CSV: `20251028_143022_security_profiles_provisioned.csv`
 **Provision Field Update Logic:**
 - Set `Provision=no` if provisioning was successful or object was reused:
   - ProvisioningResult starts with `"Provisioned: "`
@@ -1463,28 +1485,29 @@ if (-not $Row.CADisplayName) {
 #### Invoke-ProvisioningProcess
 **Purpose:** Main orchestration function  
 **Flow:**
-1. Test-RequiredModules
-2. Test-GraphConnection (with conditional scopes based on parameters)
-3. Get-IntGSATenantStatus (validate tenant onboarding status = "onboarded", runs in all modes including -WhatIf)
-4. Validate parameter mutual exclusivity (PolicyName vs SecurityProfilesCsvPath)
+1. Validate parameter mutual exclusivity FIRST (PolicyName vs SecurityProfilesCsvPath) - throw error if both specified
+2. Test-RequiredModules
+3. Test-GraphConnection (with conditional scopes based on parameters)
+4. Get-IntGSATenantStatus (validate tenant onboarding status = "onboarded", runs in all modes including -WhatIf)
 5. Log prominent message if `-SkipCAPoliciesProvisioning` is enabled
 6. Import-PoliciesConfig (required parameter, with optional PolicyName filter)
 7. Import-SecurityProfilesConfig (if provided and PolicyName not specified)
-8. Show-ProvisioningPlan
-9. Resolve-EntraUsers (parse and cache all users from Security Profiles CSV) - **SKIP if `-SkipCAPoliciesProvisioning` is set**
-10. Resolve-EntraGroups (parse and cache all groups from Security Profiles CSV) - **SKIP if `-SkipCAPoliciesProvisioning` is set**
-11. Test-UserGroupDependencies (validate all users/groups exist, stop if any missing) - **SKIP if `-SkipCAPoliciesProvisioning` is set**
-12. User confirmation (unless -Force or -WhatIf)
-13. Test-ObjectDependencies (validate policy references)
-14. Provision objects in dependency order (CA policies skipped if `-SkipCAPoliciesProvisioning` is set)
-15. Export-ProvisioningResults
-16. Show-ExecutionSummary
+8. Priority Conflict Detection (only if SecurityProfilesCsvPath provided) - runs in both normal execution and -WhatIf mode
+9. Show-ProvisioningPlan
+10. Resolve-EntraUsers (parse and cache all users from Security Profiles CSV) - **SKIP if no CA policies will be provisioned** (either `-SkipCAPoliciesProvisioning` set OR `SecurityProfilesCsvPath` not provided)
+11. Resolve-EntraGroups (parse and cache all groups from Security Profiles CSV) - **SKIP if no CA policies will be provisioned**
+12. Test-UserGroupDependencies (validate all users/groups exist, stop if any missing) - **SKIP if no CA policies will be provisioned**
+13. User confirmation (unless -Force or -WhatIf)
+14. Test-ObjectDependencies (validate policy references)
+15. Provision objects in dependency order (CA policies skipped if `-SkipCAPoliciesProvisioning` is set)
+16. Export-ProvisioningResults
+17. Show-ExecutionSummary
 
 ---
 
 ## 9. Usage Examples
 
-### 8.1 Full Provisioning with Preview
+### 9.1 Full Provisioning with Preview
 ```powershell
 # Preview what would be created
 Start-EntraInternetAccessProvisioning `
@@ -1510,7 +1533,7 @@ Start-EntraInternetAccessProvisioning `
     -Force
 ```
 
-### 8.2 Policy Name Filtering
+### 9.2 Policy Name Filtering
 ```powershell
 # Provision only a specific policy by exact name (for testing/incremental updates)
 Start-EntraInternetAccessProvisioning `
@@ -1525,7 +1548,7 @@ Start-EntraInternetAccessProvisioning `
     -PolicyName "Dev_Tools-Allow"  # ❌ Not allowed
 ```
 
-### 8.3 Selective Provisioning via Provision Field and Parameters
+### 9.3 Selective Provisioning via Provision Field and Parameters
 ```powershell
 # Control what to provision by setting Provision = "no" in CSV
 # Example: Set Provision = "no" for all Security Profiles and CA policies in security_profiles.csv
@@ -1554,7 +1577,7 @@ Start-EntraInternetAccessProvisioning `
     -WhatIf
 ```
 
-### 8.4 Idempotent Re-Run Examples
+### 9.4 Idempotent Re-Run Examples
 ```powershell
 # Re-run provisioning - script automatically reuses existing objects and adds missing items
 Start-EntraInternetAccessProvisioning `
@@ -1589,7 +1612,7 @@ Start-EntraInternetAccessProvisioning `
 
 ## 10. Success Criteria
 
-### 9.1 Functional Requirements Met
+### 10.1 Functional Requirements Met
 - ✅ Selective provisioning by object type
 - ✅ Idempotent re-run behavior (reuse existing objects, add missing items)
 - ✅ Conflict detection and resolution
@@ -1599,7 +1622,7 @@ Start-EntraInternetAccessProvisioning `
 - ✅ Missing assignment graceful handling
 - ✅ Recovery from partial failures
 
-### 9.2 Quality Requirements
+### 10.2 Quality Requirements
 - ✅ Comprehensive logging for audit and troubleshooting
 - ✅ Clear summary reporting for admin visibility
 - ✅ Safe defaults (CA policies disabled, conflicts logged)

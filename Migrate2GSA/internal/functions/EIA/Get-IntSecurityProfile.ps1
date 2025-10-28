@@ -13,6 +13,10 @@ function Get-IntSecurityProfile {
     .PARAMETER Name
         The exact name of the security profile to retrieve.
     
+    .PARAMETER ExpandLinks
+        When specified, expands both policy links (filtering policies, threat intelligence, etc.) 
+        and Conditional Access policy links associated with the security profile.
+    
     .EXAMPLE
         Get-IntSecurityProfile
         Retrieves all security profiles.
@@ -24,6 +28,14 @@ function Get-IntSecurityProfile {
     .EXAMPLE
         Get-IntSecurityProfile -Name "Production Profile"
         Retrieves security profile(s) with exact name match.
+    
+    .EXAMPLE
+        Get-IntSecurityProfile -ExpandLinks
+        Retrieves all security profiles with expanded policy links and Conditional Access policy links.
+    
+    .EXAMPLE
+        Get-IntSecurityProfile -Id "12345678-1234-1234-1234-123456789012" -ExpandLinks
+        Retrieves a specific security profile by ID with expanded links.
     #>
     [CmdletBinding(DefaultParameterSetName = 'All')]
     param (
@@ -33,10 +45,14 @@ function Get-IntSecurityProfile {
         
         [Parameter(Mandatory = $true, ParameterSetName = 'ByName')]
         [ValidateNotNullOrEmpty()]
-        [string]$Name
+        [string]$Name,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$ExpandLinks
     )
 
     try {
+        # Build base URI
         $uri = switch ($PSCmdlet.ParameterSetName) {
             'ById' {
                 "https://graph.microsoft.com/beta/networkAccess/filteringProfiles/$Id"
@@ -46,6 +62,19 @@ function Get-IntSecurityProfile {
             }
             default {
                 "https://graph.microsoft.com/beta/networkAccess/filteringProfiles"
+            }
+        }
+
+        # Add expand query parameter if switch is specified
+        if ($ExpandLinks) {
+            $expandParam = '?$expand=policies($expand=policy),ConditionalAccessPolicies'
+            
+            # Determine correct separator based on whether URI already has query parameters
+            if ($uri -match '\?') {
+                $uri += "&$($expandParam.TrimStart('?'))"
+            }
+            else {
+                $uri += $expandParam
             }
         }
 
