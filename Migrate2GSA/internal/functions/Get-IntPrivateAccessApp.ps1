@@ -13,9 +13,9 @@ function Get-IntPrivateAccessApp {
     )
 
     begin {
-        # Ensure connection to Microsoft Entra
-        if (-not (Get-EntraContext)) {
-            $errorMessage = "Not connected to Microsoft Graph. Use 'Connect-Entra -Scopes NetworkAccessPolicy.ReadWrite.All, Application.ReadWrite.All, NetworkAccess.ReadWrite.All' to authenticate."
+        # Ensure connection to Microsoft Graph
+        if (-not (Get-MgContext)) {
+            $errorMessage = "Not connected to Microsoft Graph. Use 'Connect-Graph -Scopes NetworkAccessPolicy.ReadWrite.All, Application.ReadWrite.All, NetworkAccess.ReadWrite.All' to authenticate."
             Write-Error -Message $errorMessage -ErrorAction Stop
             return
         }
