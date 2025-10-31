@@ -115,6 +115,10 @@ function Convert-NPA2EPA {
     # Set strict mode for better error handling
     Set-StrictMode -Version Latest
 
+    # Establish shared timestamp and log destination
+    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $LogPath = Join-Path -Path $OutputBasePath -ChildPath "${timestamp}_Convert-NPA2EPA.log"
+
 #region Helper Functions (Reused from Convert-ZPA2EPA)
 
 function Convert-CIDRToRange {
@@ -777,6 +781,13 @@ try {
             
             Write-LogMessage "Processing app: $appName" -Level "DEBUG" -Component 'Process'
             
+            # Ensure Enterprise App names carry the required GSA- prefix
+            $enterpriseAppName = if ($appName -like 'GSA-*') {
+                $appName
+            } else {
+                "GSA-$appName"
+            }
+
             # Skip if no protocols
             if ($app.PSObject.Properties.Name -notcontains 'protocols' -or 
                 $null -eq $app.protocols) {
@@ -866,7 +877,7 @@ try {
                     
                     # Create current app info for tracking
                     $currentAppInfo = @{
-                        Name = $appName
+                        Name = $enterpriseAppName
                         SegmentId = $segmentId
                     }
                     
@@ -993,7 +1004,7 @@ try {
                     
                     # Create result object
                     $resultObj = [PSCustomObject]@{
-                        EnterpriseAppName = $appName
+                        EnterpriseAppName = $enterpriseAppName
                         SegmentId = $segmentId
                         destinationHost = $destinationHost
                         DestinationType = $destType
@@ -1059,7 +1070,6 @@ try {
     Write-LogMessage "" -Level "INFO"
     Write-LogMessage "=== EXPORTING RESULTS ===" -Level "INFO" -Component 'Export'
     
-    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
     $outputFileName = "${timestamp}_GSA_EnterpriseApps_NPA.csv"
     $outputFilePath = Join-Path $OutputBasePath $outputFileName
     

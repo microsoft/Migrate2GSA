@@ -176,6 +176,7 @@ See Section 11.1 for the complete list of functions to reuse from `Convert-ZPA2E
 #### 3.1.1 Application Name Processing
 - **Strip brackets**: `[Finance Portal]` → `Finance Portal`
 - **Clean whitespace**: Trim leading/trailing spaces
+- **Prefix `GSA-`**: Ensure output names start with `GSA-`; do not duplicate the prefix if it already exists
 - **Validation**: Ensure unique application names
 
 #### 3.1.2 Host to Segment Expansion
@@ -373,7 +374,7 @@ CONFLICT: Application 'Finance Portal' segment 'finance.fabrikam.com:443'
 ### 5.1 CSV Structure
 
 **Columns** (in order):
-1. `EnterpriseAppName` - Application name (brackets stripped)
+1. `EnterpriseAppName` - Application name (brackets stripped, forced `GSA-` prefix)
 2. `SegmentId` - Unique segment identifier
 3. `destinationHost` - FQDN, IP, or CIDR
 4. `DestinationType` - `fqdn`, `ipAddress`, or `ipRangeCidr`
@@ -419,8 +420,8 @@ CONFLICT: Application 'Finance Portal' segment 'finance.fabrikam.com:443'
 **Output CSV**:
 ```csv
 EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
-HR Portal,HR Portal-Segment-001,hr.fabrikam.com,fqdn,tcp,"80,443",Placeholder_Replace_Me,Yes,HR Users,alice@fabrikam.com,No,
-HR Portal,HR Portal-Segment-002,hrapp.fabrikam.com,fqdn,tcp,"80,443",Placeholder_Replace_Me,Yes,HR Users,alice@fabrikam.com,No,
+GSA-HR Portal,HR Portal-Segment-001,hr.fabrikam.com,fqdn,tcp,"80,443",Placeholder_Replace_Me,Yes,HR Users,alice@fabrikam.com,No,
+GSA-HR Portal,HR Portal-Segment-002,hrapp.fabrikam.com,fqdn,tcp,"80,443",Placeholder_Replace_Me,Yes,HR Users,alice@fabrikam.com,No,
 ```
 
 #### Example 2: Mixed IP/FQDN with Different Transports
@@ -457,10 +458,10 @@ HR Portal,HR Portal-Segment-002,hrapp.fabrikam.com,fqdn,tcp,"80,443",Placeholder
 **Output CSV**:
 ```csv
 EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
-Database Server,Database Server-Segment-001,10.50.10.100/32,ipRangeCidr,tcp,1433,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
-Database Server,Database Server-Segment-002,10.50.10.100/32,ipRangeCidr,udp,1434,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
-Database Server,Database Server-Segment-003,db.fabrikam.com,fqdn,tcp,1433,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
-Database Server,Database Server-Segment-004,db.fabrikam.com,fqdn,udp,1434,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
+GSA-Database Server,Database Server-Segment-001,10.50.10.100/32,ipRangeCidr,tcp,1433,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
+GSA-Database Server,Database Server-Segment-002,10.50.10.100/32,ipRangeCidr,udp,1434,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
+GSA-Database Server,Database Server-Segment-003,db.fabrikam.com,fqdn,tcp,1433,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
+GSA-Database Server,Database Server-Segment-004,db.fabrikam.com,fqdn,udp,1434,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
 ```
 
 #### Example 3: Wildcard Domains
@@ -480,12 +481,12 @@ Database Server,Database Server-Segment-004,db.fabrikam.com,fqdn,udp,1434,Placeh
 **Output CSV**:
 ```csv
 EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
-Active Directory DNS,Active Directory DNS-Segment-001,*._msdcs.fabrikam.com,fqdn,tcp,53,Placeholder_Replace_Me,Yes,,,No,
-Active Directory DNS,Active Directory DNS-Segment-002,*._msdcs.fabrikam.com,fqdn,udp,53,Placeholder_Replace_Me,Yes,,,No,
-Active Directory DNS,Active Directory DNS-Segment-003,*._tcp.fabrikam.com,fqdn,tcp,53,Placeholder_Replace_Me,Yes,,,No,
-Active Directory DNS,Active Directory DNS-Segment-004,*._tcp.fabrikam.com,fqdn,udp,53,Placeholder_Replace_Me,Yes,,,No,
-Active Directory DNS,Active Directory DNS-Segment-005,*._udp.fabrikam.com,fqdn,tcp,53,Placeholder_Replace_Me,Yes,,,No,
-Active Directory DNS,Active Directory DNS-Segment-006,*._udp.fabrikam.com,fqdn,udp,53,Placeholder_Replace_Me,Yes,,,No,
+GSA-Active Directory DNS,Active Directory DNS-Segment-001,*._msdcs.fabrikam.com,fqdn,tcp,53,Placeholder_Replace_Me,Yes,,,No,
+GSA-Active Directory DNS,Active Directory DNS-Segment-002,*._msdcs.fabrikam.com,fqdn,udp,53,Placeholder_Replace_Me,Yes,,,No,
+GSA-Active Directory DNS,Active Directory DNS-Segment-003,*._tcp.fabrikam.com,fqdn,tcp,53,Placeholder_Replace_Me,Yes,,,No,
+GSA-Active Directory DNS,Active Directory DNS-Segment-004,*._tcp.fabrikam.com,fqdn,udp,53,Placeholder_Replace_Me,Yes,,,No,
+GSA-Active Directory DNS,Active Directory DNS-Segment-005,*._udp.fabrikam.com,fqdn,tcp,53,Placeholder_Replace_Me,Yes,,,No,
+GSA-Active Directory DNS,Active Directory DNS-Segment-006,*._udp.fabrikam.com,fqdn,udp,53,Placeholder_Replace_Me,Yes,,,No,
 ```
 
 #### Example 4: Multiple Policies Aggregation
@@ -528,7 +529,7 @@ Active Directory DNS,Active Directory DNS-Segment-006,*._udp.fabrikam.com,fqdn,u
 **Output CSV**:
 ```csv
 EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
-Engineering Tools,Engineering Tools-Segment-001,eng.fabrikam.com,fqdn,tcp,443,Placeholder_Replace_Me,Yes,"Engineers;Managers","bob@fabrikam.com;carol@fabrikam.com;dave@fabrikam.com",No,
+GSA-Engineering Tools,Engineering Tools-Segment-001,eng.fabrikam.com,fqdn,tcp,443,Placeholder_Replace_Me,Yes,"Engineers;Managers","bob@fabrikam.com;carol@fabrikam.com;dave@fabrikam.com",No,
 ```
 
 **Note**: Users deduplicated (carol appears in both policies but only once in output)
@@ -734,6 +735,9 @@ foreach ($app in $filteredApps) {
     
     # Clean app name (strip brackets)
     $appName = $app.app_name -replace '^\[|\]$', ''
+
+    # Force GSA- prefix without duplicating existing prefixes
+    $enterpriseAppName = if ($appName -like 'GSA-*') { $appName } else { "GSA-$appName" }
     
     # Skip if no protocols
     if ($null -eq $app.protocols -or $app.protocols.Count -eq 0) {
@@ -758,7 +762,7 @@ foreach ($app in $filteredApps) {
             $ports = ($protocolGroup.Group | Select-Object -ExpandProperty port) -join ','
             
             $segment = [PSCustomObject]@{
-                EnterpriseAppName = $appName
+              EnterpriseAppName = $enterpriseAppName
                 SegmentId = "$appName-Segment-{0:D3}" -f $segmentCounter
                 destinationHost = $host
                 DestinationType = $destType
@@ -839,6 +843,7 @@ Throw errors for:
 - Use `-Level DEBUG` for detailed diagnostic information (only shown when `-EnableDebugLogging` is specified)
 - Use `-Level SUMMARY` for summary statistics at completion
 - Include `-Component` parameter to identify the operation context (e.g., 'Main', 'Policies', 'ProcessApp', 'Export', 'Conflicts')
+- Log file name must reuse the export timestamp and follow the pattern `${timestamp}_Convert-NPA2EPA.log` under `OutputBasePath`
 
 **Progress updates must use `Write-ProgressUpdate`:**
 - Update progress bar during app processing loop
