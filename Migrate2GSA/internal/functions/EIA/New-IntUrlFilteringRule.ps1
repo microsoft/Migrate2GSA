@@ -49,7 +49,7 @@ function New-IntUrlFilteringRule {
         }
 
         $body = @{
-            '@odata.type' = '#microsoft.graph.networkaccess.urlFilteringRule'
+            '@odata.type' = '#microsoft.graph.networkaccess.fqdnFilteringRule'
             name          = $Name
             ruleType      = 'url'
             destinations  = $destinations

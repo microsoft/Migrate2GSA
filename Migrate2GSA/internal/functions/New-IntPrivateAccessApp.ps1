@@ -39,22 +39,6 @@ function New-IntPrivateAccessApp {
         [string]$ConnectorGroupId
     )
 
-    begin {
-        # Write-Verbose "Starting Private Access application creation process"
-        
-        # Verify Graph connection
-        try {
-            $context = Get-MgContext
-            if (-not $context) {
-                throw "Not connected to Microsoft Graph. Please run 'Connect-MgGraph -Scopes Application.ReadWrite.All,Directory.ReadWrite.All'"
-            }
-            # Write-Verbose "Graph connection verified. Connected as: $($context.Account)"
-        }
-        catch {
-            throw "Microsoft Graph connection check failed: $_"
-        }
-    }
-
     process {
         try {
             # Prepare the request body for instantiating the Private Access app

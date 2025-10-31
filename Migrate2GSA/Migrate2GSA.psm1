@@ -17,5 +17,6 @@ Export-ModuleMember -Function @(
     'Export-ZIAConfig',
     'Convert-ZIA2EIA',
     'Export-NetskopeConfig',
-    'Start-EntraPrivateAccessProvisioning'
+    'Start-EntraPrivateAccessProvisioning',
+    'Start-EntraInternetAccessProvisioning'
 )

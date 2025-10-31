@@ -64,10 +64,13 @@ Get-Command -Module Migrate2GSA
 ```
 
 The module provides the following functions:
-- `Export-ZPAConfig`
-- `Convert-ZPA2EPA`
-- `Export-ZIAConfig`
-- `Start-EntraPrivateAccessProvisioning`
+- `Export-ZPAConfig` - Export ZScaler Private Access configuration
+- `Convert-ZPA2EPA` - Convert ZPA configuration to Entra Private Access format
+- `Export-ZIAConfig` - Export ZScaler Internet Access configuration
+- `Convert-ZIA2EIA` - Convert ZIA configuration to Entra Internet Access format
+- `Export-NetskopeConfig` - Export Netskope configuration
+- `Start-EntraPrivateAccessProvisioning` - Provision Entra Private Access applications
+- `Start-EntraInternetAccessProvisioning` - Provision Entra Internet Access policies and security profiles
 
 ## Contributing
 

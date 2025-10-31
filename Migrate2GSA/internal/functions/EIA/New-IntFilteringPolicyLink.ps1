@@ -23,15 +23,23 @@ function New-IntFilteringPolicyLink {
         The logging state. Valid values: enabled, disabled. Default: enabled.
     
     .PARAMETER Action
-        The action to take. Valid values: block, allow.
+        The action to take. Valid values: block, allow. Only used for filtering policies.
+    
+    .PARAMETER PolicyType
+        The type of policy being linked. Valid values: WebContentFiltering, TLSInspection.
+        This determines the correct @odata.type to use in the request.
     
     .EXAMPLE
-        New-IntFilteringPolicyLink -ProfileId "profile-id" -PolicyId "policy-id" -Priority 100
-        Creates a new policy link with default enabled state and block action.
+        New-IntFilteringPolicyLink -ProfileId "profile-id" -PolicyId "policy-id" -Priority 100 -PolicyType "WebContentFiltering"
+        Creates a new web content filtering policy link with default enabled state.
     
     .EXAMPLE
-        New-IntFilteringPolicyLink -ProfileId "profile-id" -PolicyId "policy-id" -Priority 50 -State enabled -LoggingState disabled -Action allow
-        Creates a new policy link with custom settings.
+        New-IntFilteringPolicyLink -ProfileId "profile-id" -PolicyId "policy-id" -Priority 50 -State enabled -LoggingState disabled -Action allow -PolicyType "WebContentFiltering"
+        Creates a new web content filtering policy link with custom settings.
+    
+    .EXAMPLE
+        New-IntFilteringPolicyLink -ProfileId "profile-id" -PolicyId "policy-id" -Priority 100 -PolicyType "TLSInspection"
+        Creates a new TLS inspection policy link.
     #>
     [CmdletBinding()]
     param (
@@ -57,20 +65,43 @@ function New-IntFilteringPolicyLink {
         
         [Parameter(Mandatory = $false)]
         [ValidateSet('block', 'allow')]
-        [string]$Action
+        [string]$Action,
+        
+        [Parameter(Mandatory = $false)]
+        [ValidateSet('WebContentFiltering', 'TLSInspection')]
+        [string]$PolicyType = 'WebContentFiltering'
     )
 
     try {
+        # Determine @odata.type based on policy type
+        $policyLinkOdataType = if ($PolicyType -eq 'TLSInspection') {
+            '#microsoft.graph.networkaccess.tlsInspectionPolicyLink'
+        }
+        else {
+            '#microsoft.graph.networkaccess.filteringPolicyLink'
+        }
+        
+        $policyOdataType = if ($PolicyType -eq 'TLSInspection') {
+            '#microsoft.graph.networkaccess.tlsInspectionPolicy'
+        }
+        else {
+            '#microsoft.graph.networkaccess.filteringPolicy'
+        }
+        
         $body = @{
             priority             = $Priority
             state                = $State
-            '@odata.type'        = '#microsoft.graph.networkaccess.filteringPolicyLink'
+            '@odata.type'        = $policyLinkOdataType
             loggingState         = $LoggingState
-            action               = $Action
             policy               = @{
                 id            = $PolicyId
-                '@odata.type' = '#microsoft.graph.networkaccess.filteringPolicy'
+                '@odata.type' = $policyOdataType
             }
+        }
+        
+        # Only add action for filtering policies (not for TLS inspection)
+        if ($PolicyType -eq 'WebContentFiltering' -and $Action) {
+            $body['action'] = $Action
         }
 
         $bodyJson = $body | ConvertTo-Json -Depth 10
