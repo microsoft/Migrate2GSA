@@ -696,6 +696,8 @@ function Convert-ZIA2EIA {
         }
         
         # Process IP addresses (not grouped by domain)
+        # NOTE: Entra Internet Access does NOT support IP-based filtering rules
+        # These are exported for reference only
         if ($classifiedDestinations['ipAddress'].Count -gt 0) {
             $groups = Split-ByCharacterLimit -Entries @($classifiedDestinations['ipAddress']) -MaxLength 300
             
@@ -712,14 +714,17 @@ function Convert-ZIA2EIA {
                     RuleType = "ipAddress"
                     RuleDestinations = $groups[$i] -join ";"
                     RuleName = $ruleName
-                    ReviewNeeded = "No"
-                    ReviewDetails = ""
-                    Provision = "Yes"
+                    ReviewNeeded = "Yes"
+                    ReviewDetails = "IP addresses are not currently supported by Entra Internet Access web content filtering."
+                    Provision = "No"
                 }
                 
                 [void]$policies.Add($policyEntry)
                 $stats.TotalRulesInPolicies++
             }
+            
+            Write-LogMessage "IP addresses detected in category $($category.id): $($classifiedDestinations['ipAddress'].Count) IPs exported for manual review (not supported by Entra Internet Access)" -Level "WARN" `
+                -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
         }
         
         # Track this custom category policy for Phase 3 lookup
@@ -1037,10 +1042,11 @@ function Convert-ZIA2EIA {
         
         $securityProfile = [PSCustomObject]@{
             SecurityProfileName = $rule.name
-            SecurityProfilePriority = $rule.order * 10
-            EntraGroups = $groups -join ";"
+            Priority = $rule.order * 10
+            SecurityProfileLinks = $policyLinks -join ";"
+            CADisplayName = "InternetAccess-$($rule.name)"
             EntraUsers = $validUsers -join ";"
-            PolicyLinks = $policyLinks -join ";"
+            EntraGroups = $groups -join ";"
             Description = if ($rule.PSObject.Properties['description']) { $rule.description } else { "" }
             Provision = "Yes"
         }
@@ -1059,14 +1065,14 @@ function Convert-ZIA2EIA {
     $priorityTracker = @{}
     
     foreach ($secProfile in $securityProfiles) {
-        while ($priorityTracker.ContainsKey($secProfile.SecurityProfilePriority)) {
-            Write-LogMessage "Priority conflict at $($secProfile.SecurityProfilePriority), incrementing" -Level "INFO" `
+        while ($priorityTracker.ContainsKey($secProfile.Priority)) {
+            Write-LogMessage "Priority conflict at $($secProfile.Priority), incrementing" -Level "INFO" `
                 -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
-            $secProfile.SecurityProfilePriority++
+            $secProfile.Priority++
             $stats.PriorityConflictsResolved++
         }
         
-        $priorityTracker[$secProfile.SecurityProfilePriority] = $secProfile.SecurityProfileName
+        $priorityTracker[$secProfile.Priority] = $secProfile.SecurityProfileName
     }
     
     # Cleanup unreferenced policies
@@ -1075,7 +1081,7 @@ function Convert-ZIA2EIA {
     
     $referencedPolicies = @{}
     foreach ($secProfile in $securityProfiles) {
-        $policyNames = $secProfile.PolicyLinks -split ';'
+        $policyNames = $secProfile.SecurityProfileLinks -split ';'
         foreach ($policyName in $policyNames) {
             $referencedPolicies[$policyName] = $true
         }
@@ -1123,7 +1129,22 @@ function Convert-ZIA2EIA {
     # Export Security Profiles CSV
     $spCsvPath = Join-Path $OutputBasePath "${timestamp}_EIA_SecurityProfiles.csv"
     # Use UTF8 with BOM for better compatibility with Excel and other applications
-    $securityProfiles | Export-Csv -Path $spCsvPath -NoTypeInformation -Encoding utf8BOM
+    
+    # Add priority suffixes to policy links during export
+    $securityProfilesForExport = $securityProfiles | ForEach-Object {
+        $profile = $_.PSObject.Copy()
+        $policyLinks = $_.SecurityProfileLinks -split ';'
+        $formattedLinks = @()
+        $linkPriority = 100
+        foreach ($link in $policyLinks) {
+            $formattedLinks += "${link}:${linkPriority}"
+            $linkPriority += 100
+        }
+        $profile.SecurityProfileLinks = $formattedLinks -join ';'
+        $profile
+    }
+    
+    $securityProfilesForExport | Export-Csv -Path $spCsvPath -NoTypeInformation -Encoding utf8BOM
     Write-LogMessage "Exported $($securityProfiles.Count) security profiles to: $spCsvPath" -Level "INFO" `
         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     
