@@ -13,6 +13,7 @@ foreach ($file in Get-ChildItem -Path "$PSScriptRoot/internal/scripts" -Filter *
 # Export only public functions
 Export-ModuleMember -Function @(
     'Export-ZPAConfig',
+    'Export-ZPAConfigOneAPI',
     'Convert-ZPA2EPA',
     'Export-ZIAConfig',
     'Convert-ZIA2EIA',
