@@ -4,32 +4,29 @@ import styles from './styles.module.css';
 
 const FeatureList = [
   {
-    title: 'Easy to Use',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
+    title: 'Automated Migration Toolkit',
+    Svg: require('@site/static/img/undraw_programming_j1zw.svg').default,
     description: (
       <>
-        Docusaurus was designed from the ground up to be easily installed and
-        used to get your website up and running quickly.
+        Simplify your transition from other SSE solutions to Microsoft Global Secure Access with automated export, transformation, and provisioning tools.
       </>
     ),
   },
   {
-    title: 'Focus on What Matters',
-    Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
+    title: 'Reduce Migration Risk',
+    Svg: require('@site/static/img/undraw_spreadsheet_uj8z.svg').default,
     description: (
       <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go
-        ahead and move your docs into the <code>docs</code> directory.
+        Validate and transform policies accurately with built-in mapping logic that handles architectural differences between platforms.
       </>
     ),
   },
   {
-    title: 'Powered by React',
-    Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
+    title: 'Open Source & Extensible',
+    Svg: require('@site/static/img/undraw_online-community_3o0l.svg').default,
     description: (
       <>
-        Extend or customize your website layout by reusing React. Docusaurus can
-        be extended while reusing the same header and footer.
+        Community-driven PowerShell module with transparent code and the ability to customize for your unique requirements.
       </>
     ),
   },
