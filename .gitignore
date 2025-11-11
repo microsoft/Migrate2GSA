@@ -50,6 +50,7 @@ config.json
 
 # CSV and JSON files
 *.csv
+!website/**/*.json
 *.json
 
 # Guidance
