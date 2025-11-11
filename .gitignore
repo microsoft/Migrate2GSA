@@ -50,8 +50,8 @@ config.json
 
 # CSV and JSON files
 *.csv
-!website/**/*.json
 *.json
+!website/**/*.json
 
 # Guidance
 *-Migration.md
