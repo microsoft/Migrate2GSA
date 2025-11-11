@@ -310,12 +310,28 @@ For each private app:
 - Policy 2: Groups = ["Finance Admins"], Users = ["jane@fabrikam.com", "john@fabrikam.com"]
 - **Result**: Groups = "Finance Users;Finance Admins", Users = "john@fabrikam.com;jane@fabrikam.com"
 
-### 3.3 Apps with No Policies
-Private apps with empty `policies[]` array or no matching enabled policies:
+### 3.3 Apps with No Valid Policies
+Private apps fall into the following categories:
+
+#### 3.3.1 Apps Not Referenced in Any Valid Policy
+Private apps with empty `policies[]` array, not referenced in any policy, or only referenced in disabled/deny policies:
 - **Include** in output
 - **EntraGroups**: Empty
 - **EntraUsers**: Empty
-- **Provision**: Yes (user can assign access later)
+- **Provision**: No
+- **Notes**: "App excluded from provisioning - no policy references found"
+
+**Rationale**: Apps not referenced in any valid (enabled "allow") policy cannot be accessed by any users in the source system, so they should not be provisioned in the target system. Administrators can review the Notes field, assign appropriate access, and change Provision to "Yes" if needed.
+
+#### 3.3.2 Apps Referenced in Policies with Empty User/Group Assignments
+Private apps referenced in enabled "allow" policies that have empty `userGroups` and `users` arrays:
+- **Include** in output
+- **EntraGroups**: Empty
+- **EntraUsers**: Empty  
+- **Provision**: Yes
+- **Notes**: Empty
+
+**Rationale**: In Netskope, empty user/group arrays in an enabled "allow" policy means **all users** can access the application. These apps should be provisioned. The empty EntraGroups/EntraUsers fields indicate that administrators should manually assign appropriate Entra ID groups/users during or after provisioning, as "all users" access is not directly translatable to Entra Private Access.
 
 ### 3.4 Apps with Empty Protocols Array
 Private apps with `protocols[]` = `[]`:
@@ -381,11 +397,12 @@ CONFLICT: Application 'Finance Portal' segment 'finance.fabrikam.com:443'
 5. `Protocol` - `tcp` or `udp`
 6. `Ports` - Comma-separated port list (e.g., "443" or "80,443")
 7. `ConnectorGroup` - Always `Placeholder_Replace_Me`
-8. `Provision` - Always `Yes`
-9. `EntraGroups` - Semicolon-separated group names (parsed from X500)
-10. `EntraUsers` - Semicolon-separated user emails
-11. `Conflict` - `Yes` or `No`
-12. `ConflictingEnterpriseApp` - SegmentId of conflicting segment (if any)
+8. `Provision` - `Yes` or `No` (No if no valid policies or conflicts detected)
+9. `Notes` - Explanation for Provision=No (empty if Provision=Yes)
+10. `EntraGroups` - Semicolon-separated group names (parsed from X500)
+11. `EntraUsers` - Semicolon-separated user emails
+12. `Conflict` - `Yes` or `No`
+13. `ConflictingEnterpriseApp` - SegmentId of conflicting segment (if any)
 
 ### 5.2 Example Output
 
@@ -419,9 +436,9 @@ CONFLICT: Application 'Finance Portal' segment 'finance.fabrikam.com:443'
 
 **Output CSV**:
 ```csv
-EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
-GSA-HR Portal,HR Portal-Segment-001,hr.fabrikam.com,fqdn,tcp,"80,443",Placeholder_Replace_Me,Yes,HR Users,alice@fabrikam.com,No,
-GSA-HR Portal,HR Portal-Segment-002,hrapp.fabrikam.com,fqdn,tcp,"80,443",Placeholder_Replace_Me,Yes,HR Users,alice@fabrikam.com,No,
+EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,Notes,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
+GSA-HR Portal,HR Portal-Segment-001,hr.fabrikam.com,fqdn,tcp,"80,443",Placeholder_Replace_Me,Yes,,HR Users,alice@fabrikam.com,No,
+GSA-HR Portal,HR Portal-Segment-002,hrapp.fabrikam.com,fqdn,tcp,"80,443",Placeholder_Replace_Me,Yes,,HR Users,alice@fabrikam.com,No,
 ```
 
 #### Example 2: Mixed IP/FQDN with Different Transports
@@ -457,36 +474,28 @@ GSA-HR Portal,HR Portal-Segment-002,hrapp.fabrikam.com,fqdn,tcp,"80,443",Placeho
 
 **Output CSV**:
 ```csv
-EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
-GSA-Database Server,Database Server-Segment-001,10.50.10.100/32,ipRangeCidr,tcp,1433,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
-GSA-Database Server,Database Server-Segment-002,10.50.10.100/32,ipRangeCidr,udp,1434,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
-GSA-Database Server,Database Server-Segment-003,db.fabrikam.com,fqdn,tcp,1433,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
-GSA-Database Server,Database Server-Segment-004,db.fabrikam.com,fqdn,udp,1434,Placeholder_Replace_Me,Yes,"Database Admins;Database Developers",,No,
+EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,Notes,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
+GSA-Database Server,Database Server-Segment-001,10.50.10.100/32,ipRangeCidr,tcp,1433,Placeholder_Replace_Me,Yes,,"Database Admins;Database Developers",,No,
+GSA-Database Server,Database Server-Segment-002,10.50.10.100/32,ipRangeCidr,udp,1434,Placeholder_Replace_Me,Yes,,"Database Admins;Database Developers",,No,
+GSA-Database Server,Database Server-Segment-003,db.fabrikam.com,fqdn,tcp,1433,Placeholder_Replace_Me,Yes,,"Database Admins;Database Developers",,No,
+GSA-Database Server,Database Server-Segment-004,db.fabrikam.com,fqdn,udp,1434,Placeholder_Replace_Me,Yes,,"Database Admins;Database Developers",,No,
 ```
 
-#### Example 3: Wildcard Domains
+#### Example 3: Wildcard Domains (No Policy References)
 **Input** (Private App):
 ```json
 {
-  "app_name": "[Active Directory DNS]",
-  "host": "*._msdcs.fabrikam.com,*._tcp.fabrikam.com,*._udp.fabrikam.com",
-  "protocols": [
-    {"port": "53", "transport": "tcp"},
-    {"port": "53", "transport": "udp"}
-  ],
+  "app_name": "[Unused Legacy DNS]",
+  "host": "*._legacy.fabrikam.com",
+  "protocols": [{"port": "53", "transport": "tcp"}],
   "policies": []
 }
 ```
 
 **Output CSV**:
 ```csv
-EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
-GSA-Active Directory DNS,Active Directory DNS-Segment-001,*._msdcs.fabrikam.com,fqdn,tcp,53,Placeholder_Replace_Me,Yes,,,No,
-GSA-Active Directory DNS,Active Directory DNS-Segment-002,*._msdcs.fabrikam.com,fqdn,udp,53,Placeholder_Replace_Me,Yes,,,No,
-GSA-Active Directory DNS,Active Directory DNS-Segment-003,*._tcp.fabrikam.com,fqdn,tcp,53,Placeholder_Replace_Me,Yes,,,No,
-GSA-Active Directory DNS,Active Directory DNS-Segment-004,*._tcp.fabrikam.com,fqdn,udp,53,Placeholder_Replace_Me,Yes,,,No,
-GSA-Active Directory DNS,Active Directory DNS-Segment-005,*._udp.fabrikam.com,fqdn,tcp,53,Placeholder_Replace_Me,Yes,,,No,
-GSA-Active Directory DNS,Active Directory DNS-Segment-006,*._udp.fabrikam.com,fqdn,udp,53,Placeholder_Replace_Me,Yes,,,No,
+EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,Notes,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
+GSA-Unused Legacy DNS,Unused Legacy DNS-Segment-001,*._legacy.fabrikam.com,fqdn,tcp,53,Placeholder_Replace_Me,No,App excluded from provisioning - no policy references found,,,No,
 ```
 
 #### Example 4: Multiple Policies Aggregation
@@ -528,11 +537,44 @@ GSA-Active Directory DNS,Active Directory DNS-Segment-006,*._udp.fabrikam.com,fq
 
 **Output CSV**:
 ```csv
-EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
-GSA-Engineering Tools,Engineering Tools-Segment-001,eng.fabrikam.com,fqdn,tcp,443,Placeholder_Replace_Me,Yes,"Engineers;Managers","bob@fabrikam.com;carol@fabrikam.com;dave@fabrikam.com",No,
+EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,Notes,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
+GSA-Engineering Tools,Engineering Tools-Segment-001,eng.fabrikam.com,fqdn,tcp,443,Placeholder_Replace_Me,Yes,,"Engineers;Managers","bob@fabrikam.com;carol@fabrikam.com;dave@fabrikam.com",No,
 ```
 
 **Note**: Users deduplicated (carol appears in both policies but only once in output)
+
+#### Example 5: App Referenced in Policy with Empty User/Group Assignments (All Users)
+**Input** (Private App):
+```json
+{
+  "app_name": "[Public Portal]",
+  "host": "portal.fabrikam.com",
+  "protocols": [{"port": "443", "transport": "tcp"}],
+  "policies": ["[NPA] All Users Portal"]
+}
+```
+
+**Input** (Policy):
+```json
+{
+  "rule_name": "[NPA] All Users Portal",
+  "enabled": "1",
+  "rule_data": {
+    "action_name": "allow",
+    "privateApps": ["[Public Portal]"],
+    "userGroups": [],
+    "users": []
+  }
+}
+```
+
+**Output CSV**:
+```csv
+EnterpriseAppName,SegmentId,destinationHost,DestinationType,Protocol,Ports,ConnectorGroup,Provision,Notes,EntraGroups,EntraUsers,Conflict,ConflictingEnterpriseApp
+GSA-Public Portal,Public Portal-Segment-001,portal.fabrikam.com,fqdn,tcp,443,Placeholder_Replace_Me,Yes,,,,No,
+```
+
+**Note**: Empty EntraGroups/EntraUsers means "all users" in Netskope. Administrator should assign appropriate Entra ID groups during provisioning.
 
 ---
 
@@ -859,9 +901,16 @@ Apps processed: 42
 Apps skipped (no protocols): 3
 Total segments generated: 156
 Conflicts detected: 2
-Policies processed: 28
-Unique groups found: 15
-Unique users found: 34
+
+=== POLICY INTEGRATION SUMMARY ===
+Total policies loaded: 30
+Valid policies processed: 28
+Policies skipped (disabled/deny/invalid): 2
+Apps with policy assignments: 38
+Apps without policy references: 4
+Total unique groups: 15
+Total unique users: 34
+
 Output file: 20251030_143022_GSA_EnterpriseApps_NPA.csv
 ```
 
@@ -895,10 +944,13 @@ Total unique users: 34
 
 ### 10.1 Manual Review
 1. **Review CSV file** for accuracy
-2. **Replace placeholders**:
+2. **Review apps with Provision=No**:
+   - Check the `Notes` column for reason
+   - If app should be provisioned, assign appropriate EntraGroups/EntraUsers and set Provision=Yes
+3. **Replace placeholders**:
    - `ConnectorGroup`: Set appropriate connector group names
-3. **Review conflicts**: Resolve any detected conflicts
-4. **Validate access assignments**: Ensure EntraGroups and EntraUsers are correct
+4. **Review conflicts**: Resolve any detected conflicts
+5. **Validate access assignments**: Ensure EntraGroups and EntraUsers are correct
 
 ### 10.2 Entra Group Mapping
 - NPA groups are parsed from X500 paths (AD format)

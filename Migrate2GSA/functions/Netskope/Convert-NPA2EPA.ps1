@@ -415,14 +415,32 @@ function Build-AppToAccessLookup {
     
     try {
         $lookup = @{}
+        $appsInInvalidPolicies = @{}  # Track apps referenced only in disabled/deny policies
         $processedPolicies = 0
         $skippedPolicies = 0
         $totalGroups = 0
         $totalUsers = 0
         
         foreach ($policy in $Policies) {
-            if (-not (Test-ValidNPAPolicy -Policy $policy)) {
+            # Track apps in invalid policies for better reporting
+            $isValidPolicy = Test-ValidNPAPolicy -Policy $policy
+            
+            if (-not $isValidPolicy) {
                 $skippedPolicies++
+                
+                # Track apps referenced in invalid policies
+                if ($policy.rule_data.PSObject.Properties.Name -contains 'privateApps' -and 
+                    $null -ne $policy.rule_data.privateApps) {
+                    $privateApps = @($policy.rule_data.privateApps)
+                    foreach ($appName in $privateApps) {
+                        $cleanAppName = $appName -replace '^\[|\]$', ''
+                        $cleanAppName = $cleanAppName.Trim()
+                        if (-not [string]::IsNullOrWhiteSpace($cleanAppName)) {
+                            $appsInInvalidPolicies[$cleanAppName] = $true
+                        }
+                    }
+                }
+                
                 continue
             }
             
@@ -532,6 +550,7 @@ function Build-AppToAccessLookup {
         
         return @{
             Lookup = $lookup
+            AppsInInvalidPolicies = $appsInInvalidPolicies
             Stats = @{
                 ProcessedPolicies = $processedPolicies
                 SkippedPolicies = $skippedPolicies
@@ -547,6 +566,7 @@ function Build-AppToAccessLookup {
         Write-LogMessage "Error building app-to-access lookup: $_" -Level "ERROR" -Component 'Policies'
         return @{
             Lookup = @{}
+            AppsInInvalidPolicies = @{}
             Stats = @{
                 ProcessedPolicies = 0
                 SkippedPolicies = 0
@@ -630,6 +650,7 @@ try {
     
     # Load policies if provided
     $appToAccessLookup = $null
+    $appsInInvalidPolicies = @{}
     $policyStats = @{
         FilesProvided = $false
         ProcessedPolicies = 0
@@ -659,6 +680,7 @@ try {
                 # Build app-to-access lookup
                 $lookupResult = Build-AppToAccessLookup -Policies $policies
                 $appToAccessLookup = $lookupResult.Lookup
+                $appsInInvalidPolicies = $lookupResult.AppsInInvalidPolicies
                 $policyStats = $lookupResult.Stats
                 $policyStats.FilesProvided = $true
             }
@@ -826,11 +848,16 @@ try {
             # Group protocols by transport
             $protocolsByTransport = $protocolsArray | Group-Object -Property transport
             
-            # Get access assignments
+            # Get access assignments and determine provision status
             $entraGroups = ""
             $entraUsers = ""
+            $provisionStatus = "Yes"
+            $notes = ""
+            $hasValidPolicy = $false
             
             if ($null -ne $appToAccessLookup -and $appToAccessLookup.ContainsKey($appName)) {
+                # App is referenced in at least one valid (enabled "allow") policy
+                $hasValidPolicy = $true
                 $accessInfo = $appToAccessLookup[$appName]
                 
                 if ($accessInfo.Groups.Count -gt 0) {
@@ -840,11 +867,25 @@ try {
                 if ($accessInfo.Users.Count -gt 0) {
                     $entraUsers = ($accessInfo.Users -join ";")
                 }
+                
+                # Empty groups/users in Netskope means "all users" - this is valid
             }
             
-            # If no access info found, use placeholder
-            if ([string]::IsNullOrWhiteSpace($entraGroups) -and [string]::IsNullOrWhiteSpace($entraUsers)) {
-                # No access policy - leave empty to allow manual assignment later
+            # Only exclude apps that are NOT referenced in any valid policy
+            if (-not $hasValidPolicy) {
+                $provisionStatus = "No"
+                
+                # Determine the reason for no valid policies
+                if ($null -eq $appToAccessLookup) {
+                    # No policies file provided
+                    $notes = "App excluded from provisioning - no policy references found"
+                } elseif ($appsInInvalidPolicies.ContainsKey($appName)) {
+                    # App is referenced only in disabled or deny policies
+                    $notes = "App excluded from provisioning - referenced only in disabled or deny policies"
+                } else {
+                    # App not referenced in any policy
+                    $notes = "App excluded from provisioning - no policy references found"
+                }
             }
             
             # Generate segments for each host x protocol combination
@@ -1002,6 +1043,12 @@ try {
                         $conflictCount++
                     }
                     
+                    # Determine final provision status (conflict or policy issues)
+                    $finalProvisionStatus = $provisionStatus
+                    if ($hasConflict) {
+                        $finalProvisionStatus = "No"
+                    }
+                    
                     # Create result object
                     $resultObj = [PSCustomObject]@{
                         EnterpriseAppName = $enterpriseAppName
@@ -1011,7 +1058,8 @@ try {
                         Protocol = $transport
                         Ports = $ports
                         ConnectorGroup = "Placeholder_Replace_Me"
-                        Provision = "Yes"
+                        Provision = $finalProvisionStatus
+                        Notes = $notes
                         EntraGroups = $entraGroups
                         EntraUsers = $entraUsers
                         Conflict = if ($hasConflict) { "Yes" } else { "No" }
@@ -1056,6 +1104,7 @@ try {
             Ports = $consolidatedPorts
             ConnectorGroup = $firstItem.ConnectorGroup
             Provision = $firstItem.Provision
+            Notes = $firstItem.Notes
             EntraGroups = $firstItem.EntraGroups
             EntraUsers = $firstItem.EntraUsers
             Conflict = $firstItem.Conflict
@@ -1104,15 +1153,15 @@ try {
         Write-LogMessage "Policies skipped (disabled/deny/invalid): $($policyStats.SkippedPolicies)" -Level "SUMMARY" -Component 'Summary'
         Write-LogMessage "Apps with policy assignments: $($policyStats.AppsWithAccess)" -Level "SUMMARY" -Component 'Summary'
         
-        # Calculate apps without policies
-        $appsWithoutPolicies = $processedCount - $policyStats.AppsWithAccess
-        Write-LogMessage "Apps without policy assignments: $appsWithoutPolicies" -Level "SUMMARY" -Component 'Summary'
+        # Calculate apps without valid policies
+        $appsWithoutValidPolicies = $processedCount - $policyStats.AppsWithAccess
+        Write-LogMessage "Apps without policy references: $appsWithoutValidPolicies" -Level "SUMMARY" -Component 'Summary'
         Write-LogMessage "Total unique groups: $($policyStats.AppsWithGroups)" -Level "SUMMARY" -Component 'Summary'
         Write-LogMessage "Total unique users: $($policyStats.TotalUniqueUsers)" -Level "SUMMARY" -Component 'Summary'
     } else {
         Write-LogMessage "=== POLICY INTEGRATION SUMMARY ===" -Level "SUMMARY" -Component 'Summary'
         Write-LogMessage "Policies file: Not provided" -Level "SUMMARY" -Component 'Summary'
-        Write-LogMessage "All apps using placeholder/empty access assignments" -Level "SUMMARY" -Component 'Summary'
+        Write-LogMessage "All apps marked as Provision=No (no policy references)" -Level "SUMMARY" -Component 'Summary'
     }
     
     Write-LogMessage "" -Level "INFO"
@@ -1122,9 +1171,10 @@ try {
     Write-LogMessage "=== NEXT STEPS ===" -Level "INFO" -Component 'Summary'
     Write-LogMessage "1. Review the exported CSV file for accuracy" -Level "INFO" -Component 'Summary'
     Write-LogMessage "2. Replace all 'Placeholder_Replace_Me' values with actual connector group names" -Level "INFO" -Component 'Summary'
-    Write-LogMessage "3. Review and assign EntraGroups/EntraUsers for apps without policy assignments" -Level "INFO" -Component 'Summary'
-    Write-LogMessage "4. Review and resolve any conflicts identified in the 'Conflict' column" -Level "INFO" -Component 'Summary'
-    Write-LogMessage "5. Import the completed data using Start-EntraPrivateAccessProvisioning" -Level "INFO" -Component 'Summary'
+    Write-LogMessage "3. Review apps with Provision=No in the 'Notes' column" -Level "INFO" -Component 'Summary'
+    Write-LogMessage "4. Assign EntraGroups/EntraUsers for apps you want to enable and set Provision=Yes" -Level "INFO" -Component 'Summary'
+    Write-LogMessage "5. Review and resolve any conflicts identified in the 'Conflict' column" -Level "INFO" -Component 'Summary'
+    Write-LogMessage "6. Import the completed data using Start-EntraPrivateAccessProvisioning" -Level "INFO" -Component 'Summary'
     Write-LogMessage "" -Level "INFO"
     
     if ($conflictCount -gt 0) {
