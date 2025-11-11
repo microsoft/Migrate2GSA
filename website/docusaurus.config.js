@@ -103,7 +103,7 @@ const config = {
         title: 'Migrate2GSA',
         logo: {
           alt: 'Migrate2GSA Logo',
-          src: 'img/Migrate2GSA.png',
+          src: 'img/10847-icon-service-Website-Power.svg',
         },
         items: [
           {
@@ -114,9 +114,10 @@ const config = {
           },
          // {to: '/blog', label: 'Blog', position: 'left'},
           {
-            href: 'https://github.com/microsoft/migrate2gsa',
-            label: 'Microsoft',
-            position: 'right',
+            "aria-label": "GitHub Repository",
+            className: "navbar--github-link",
+            href: "https://github.com/Microsoft/Migrate2GSA",
+            position: "right",
           },
         ],
       },
