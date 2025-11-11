@@ -78,7 +78,7 @@ const config = {
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
       // Replace with your project's social card
-      image: 'img/docusaurus-social-card.jpg',
+      image: 'img/Migrate2GSA.png',
       colorMode: {
         respectPrefersColorScheme: true,
       },
@@ -86,7 +86,7 @@ const config = {
         title: 'Migrate2GSA',
         logo: {
           alt: 'Migrate2GSA Logo',
-          src: 'img/logo.svg',
+          src: 'img/Migrate2GSA.png',
         },
         items: [
           {
@@ -137,16 +137,16 @@ const config = {
             items: [
               {
                 label: 'GitHub',
-                href: 'https://github.com/microsoft/GlobalSecureAccess',
+                href: 'https://github.com/microsoft/Migrate2GSA',
               },
               {
                 label: 'Email us',
-                href: 'mailto:GSAPOC@microsoft.com',
+                href: 'mailto:migrate2gsateam@microsoft.com',
               }
             ],
           },
         ],
-        copyright: `Built by the Microsoft Identity Customer Acceleration Team.`,
+        copyright: `Built by the Microsoft Entra Customer Acceleration Team.`,
       },
       prism: {
         theme: prismThemes.github,

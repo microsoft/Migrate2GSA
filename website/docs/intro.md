@@ -2,46 +2,22 @@
 sidebar_position: 1
 ---
 
-# Migrate2GSA Intro
+# Introduction
 
-Let's discover **Docusaurus in less than 5 minutes**.
 
-## Getting Started
+## What is Migrate2GSA?
+Migrate2GSA is PowerShell-based migration toolkit designed to help organizations transition from SSE solutions to Global Secure Access (GSA). This toolkit provides automated configuration export, transformation, and a set of common GSA provisioning tools to streamline the transition process.
 
-Get started by **creating a new site**.
+## Does Migrate2GSA only help on migrations from other SSE solutions?
+No! Migrate2GSA can simplify your deployments as well. Simply create a csv file with your configuration and use the Entra Private Access and Entra Internet Access provisioning tools to create the config for you.
 
-Or **try Docusaurus immediately** with **[docusaurus.new](https://docusaurus.new)**.
+## Is this an official Microsoft product?
+No. It is a community project that is maintained by Microsoft employees. The PowerShell toolkit is provided as-is and is not supported through any Microsoft support program or service. Please do not contact Microsoft support with any issues or concern.
 
-### What you'll need
+## How to contact us
+If you have a migration project and need assistance with Migrate2GSA, or you can work with us to build tools for other SSE solutions, contact us at migrate2gsateam@microsoft.com
 
-- [Node.js](https://nodejs.org/en/download/) version 20.0 or above:
-  - When installing Node.js, you are recommended to check all checkboxes related to dependencies.
+## How to contribute
+Please create a GitHub Issue to discuss the changes you are planning to make, then send us a PR.
 
-## Generate a new site
 
-Generate a new Docusaurus site using the **classic template**.
-
-The classic template will automatically be added to your project after you run the command:
-
-```bash
-npm init docusaurus@latest my-website classic
-```
-
-You can type this command into Command Prompt, Powershell, Terminal, or any other integrated terminal of your code editor.
-
-The command also installs all necessary dependencies you need to run Docusaurus.
-
-## Start your site
-
-Run the development server:
-
-```bash
-cd my-website
-npm run start
-```
-
-The `cd` command changes the directory you're working with. In order to work with your newly created Docusaurus site, you'll need to navigate the terminal there.
-
-The `npm run start` command builds your website locally and serves it through a development server, ready for you to view at http://localhost:3000/.
-
-Open `docs/intro.md` (this page) and edit some lines: the site **reloads automatically** and displays your changes.
