@@ -40,6 +40,8 @@ You must authenticate with sufficient permissions before running the function:
 Connect-MgGraph -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrite.All', 'NetworkAccess.ReadWrite.All'
 ```
 
+**Note:** The script validates the required scopes are granted during execution.
+
 ## CSV Configuration Format
 
 The script expects a CSV file with the following required columns:
@@ -161,7 +163,8 @@ Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv" -Log
 | `ProvisioningConfigPath` | ✅ | Path to the CSV configuration file | - |
 | `AppNamePrefix` | ❌ | Filter applications by name prefix | Empty (no filter) |
 | `ConnectorGroupFilter` | ❌ | Filter by connector group name | Empty (no filter) |
-| `LogPath` | ❌ | Path for the log file | `.\Start-EntraPrivateAccessProvisioning.log` |
+| `LogPath` | ❌ | Path for the log file | `$PWD\Start-EntraPrivateAccessConfig.log` |
+| `SkipExistingApps` | ❌ | Skip creating segments on existing applications (workaround for duplicate segment bug) | `$true` |
 | `WhatIf` | ❌ | Enable dry-run mode (preview only) | `$false` |
 | `Force` | ❌ | Skip confirmation prompts | `$false` |
 
@@ -169,23 +172,24 @@ Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv" -Log
 
 ### 1. Pre-Flight Validation
 
-- Validates PowerShell version (7.0+ required)
-- Checks required PowerShell modules
-- Validates Entra authentication and permissions
+- Validates required PowerShell modules are installed
+- Validates Microsoft Graph authentication and required scopes
+- Validates Global Secure Access tenant onboarding status
 - Imports and validates CSV configuration
 
 ### 2. Dependency Resolution
 
 - Resolves connector group names to IDs
-- Resolves Entra group names to IDs
-- Validates all dependencies exist in the tenant
+- Resolves Entra group names to IDs (aggregated across all segments per application)
+- Validates all referenced groups exist (script stops if missing groups detected)
+- Validates application dependencies (connector groups and Entra groups)
 
 ### 3. Application Provisioning
 
 - Groups segments by application name
-- Creates Private Access applications (or uses existing ones)
-- Assigns Entra groups to applications
-- Creates network segments for each application
+- Creates Private Access applications (or skips/reuses existing ones based on SkipExistingApps parameter)
+- Assigns aggregated Entra groups to applications (failures logged but don't fail provisioning)
+- Creates network segments for each application with duplicate detection
 
 ### 4. Results and Logging
 
@@ -213,6 +217,8 @@ Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv" -Log
   - `Provisioned (Warning: Multiple groups failed assignment, check the log)`: Application provisioned but multiple group assignments failed
   - `Provisioned (Warning: All groups failed assignment, check the log)`: Application provisioned but all group assignments failed
   - `AddedToExisting`: Added segments to existing application
+  - `AlreadyExists`: Segment already exists on the application
+  - `Skipped: Application already exists (SkipExistingApps enabled)`: Application exists and SkipExistingApps parameter is true
   - `Filtered: [reason]`: Skipped due to filters or settings
   - `Skipped: [reason]`: Skipped due to dependency issues
   - `Error: [details]`: Failed with specific error
@@ -282,13 +288,13 @@ Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\20250804_143022_
 #### Authentication Issues
 
 ```text
-❌ Entra PowerShell connection required
+❌ Microsoft Graph connection required or insufficient scopes
 ```
 
 **Solution**: Authenticate with required scopes:
 
 ```powershell
-Connect-Entra -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrite.All', 'NetworkAccess.ReadWrite.All'
+Connect-MgGraph -Scopes 'NetworkAccessPolicy.ReadWrite.All', 'Application.ReadWrite.All', 'NetworkAccess.ReadWrite.All'
 ```
 
 ### Retry Failed Operations

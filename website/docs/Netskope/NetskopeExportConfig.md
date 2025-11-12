@@ -9,7 +9,7 @@ title: Export Netskope Config
 
 ## Prerequisites
 
-- PowerShell 7 or higher
+- PowerShell 7.0 or higher
 - Network access to your Netskope tenant
 - Valid Netskope API token with appropriate permissions
 - `Migrate2GSA` PowerShell module installed
@@ -31,7 +31,7 @@ The API token must have read permissions for the following endpoints:
 - Private Access applications (`/api/v2/steering/apps/private`)
 - Publishers (`/api/v2/infrastructure/publishers`)
 - URL Lists (`/api/v2/policy/urllist`)
-- NPA Policies (`/api/v2/policy/npa`)
+- NPA Policies (`/api/v2/policy/npa/rules`)
 - NPA Policy Groups (`/api/v2/policy/npa/policygroups`)
 - Custom Categories (`/api/v2/profiles/customcategories`)
 - Destinations (`/api/v2/profiles/destinations`)
@@ -160,7 +160,7 @@ This example enables debug mode to see raw API responses and detailed logging.
 The function creates a timestamped backup directory with the following structure:
 
 ```
-backup_20251015_143022/
+backup_20251112_143022/
 ├── private_apps.json
 ├── publishers.json
 ├── url_lists.json
@@ -190,7 +190,7 @@ The `netskope_complete_backup.json` file contains all configurations in a single
 
 ```json
 {
-    "timestamp": "20251015_143022",
+    "timestamp": "20251112_143022",
     "tenant_url": "https://contoso.goskope.com",
     "backup_type": "Netskope_Configuration",
     "configurations": {
@@ -214,7 +214,7 @@ The function exports the following configuration objects:
 | Private Applications | `/api/v2/steering/apps/private` | Netskope Private Access applications |
 | Publishers | `/api/v2/infrastructure/publishers` | Netskope Publishers (similar to connectors) |
 | URL Lists | `/api/v2/policy/urllist` | Custom URL lists used in policies |
-| NPA Policies | `/api/v2/policy/npa` | Netskope Private Access policies |
+| NPA Policies | `/api/v2/policy/npa/rules` | Netskope Private Access policies |
 | NPA Policy Groups | `/api/v2/policy/npa/policygroups` | NPA policy groups |
 | Custom Categories | `/api/v2/profiles/customcategories` | Custom URL categories |
 | Destinations | `/api/v2/profiles/destinations` | Network destinations and locations |

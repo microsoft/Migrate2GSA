@@ -22,6 +22,7 @@ The function performs the following key functions:
 
 ### Access Policy Integration
 - **Automatic Group Mapping**: Processes ZPA access policies to automatically populate Entra ID group assignments
+- **User and Group Support**: Processes both SCIM groups and individual SCIM usernames from access policies
 - **APP_GROUP Expansion**: Automatically expands application segment groups to individual applications
 - **SCIM Group Resolution**: Resolves SCIM group IDs to group names from identity provider
 - **Policy Filtering**: Intelligently filters and processes only valid access policies
@@ -71,8 +72,9 @@ The function performs the following key functions:
 ### Input/Output Parameters
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `AppSegmentPath` | String | No | Path to the ZPA Application Segments JSON file (default: `application_segments.json` in current directory) |
+| `AppSegmentPath` | String | No | Path to the ZPA Application Segments JSON file (default: `App_Segments.json` in current directory) |
 | `OutputBasePath` | String | No | Base directory for output files (default: current directory) |
+| `PassThru` | Switch | No | Return results to pipeline instead of just saving to file |
 
 ### Access Policy Parameters (Optional)
 | Parameter | Type | Required | Description |
@@ -217,18 +219,24 @@ The script expects a JSON file containing an array of ZPA application segments. 
 | `SegmentGroup` | Original ZPA segment group |
 | `ServerGroups` | Associated server groups |
 | `EntraGroups` | **Auto-populated from access policies** or placeholder (see EntraGroups Values below) |
+| `EntraUsers` | **Auto-populated from access policies** or placeholder for individual user assignments |
 | `ConnectorGroup` | Placeholder for connector group (replace with actual values) |
 | `Conflict` | "Yes" if conflicts detected, "No" otherwise |
 | `ConflictingEnterpriseApp` | Names of conflicting applications |
 | `Provision` | "Yes" if ready to provision, "No" if conflicts need resolution |
 
-#### EntraGroups Values
+#### EntraGroups and EntraUsers Values
 
-The `EntraGroups` column is automatically populated based on access policy configuration:
+The `EntraGroups` and `EntraUsers` columns are automatically populated based on access policy configuration:
 
+**EntraGroups Column:**
 - **`Group1; Group2; Group3`**: Semicolon-separated SCIM group names when access policies are found
 - **`No_Access_Policy_Found_Replace_Me`**: Access policy files provided but no policy found for this application
 - **`Placeholder_Replace_Me`**: Access policy files not provided (backward compatible mode)
+
+**EntraUsers Column:**
+- **`user1@domain.com; user2@domain.com`**: Semicolon-separated usernames when individual user access policies are found
+- **Empty or placeholder**: No individual user access policies found for this application
 
 ## Access Policy Integration
 
@@ -241,9 +249,9 @@ The function can automatically process ZPA access policies to populate Entra ID 
 3. **Filter Policies**: Processes only valid ALLOW policies with simple AND logic
 4. **Extract Targets**: Identifies which applications and application groups are targeted
 5. **Expand APP_GROUPs**: Uses segment group membership to expand groups to individual apps
-6. **Resolve Groups**: Converts SCIM group IDs to group names
-7. **Build Lookup**: Creates mapping of Application ID → SCIM group names
-8. **Populate CSV**: Automatically fills EntraGroups column with semicolon-separated group names
+6. **Resolve Groups**: Converts SCIM group IDs to group names and extracts SCIM usernames
+7. **Build Lookup**: Creates mapping of Application ID → SCIM group names and usernames
+8. **Populate CSV**: Automatically fills EntraGroups and EntraUsers columns with semicolon-separated values
 
 ### Policy Filtering Criteria
 
@@ -253,7 +261,7 @@ The script processes policies that meet **all** of these criteria:
 - ✅ Action = "ALLOW"
 - ✅ Root Operator = "AND"
 - ✅ Contains APP or APP_GROUP targets
-- ✅ Contains SCIM_GROUP conditions
+- ✅ Contains SCIM_GROUP or SCIM username conditions
 - ✅ No negated conditions
 
 Policies that don't meet these criteria are skipped with logged reasons.
@@ -301,6 +309,9 @@ The CSV may contain values that need review or replacement:
   - **Auto-populated**: If access policies were provided, review the automatically assigned groups for accuracy
   - **`No_Access_Policy_Found_Replace_Me`**: Replace with appropriate Entra ID group names for applications without policies
   - **`Placeholder_Replace_Me`**: Replace with appropriate Entra ID group names if access policies weren't provided
+- **EntraUsers**:
+  - **Auto-populated**: If access policies with individual users were found, review the automatically assigned usernames for accuracy
+  - **Empty or placeholder**: Add individual user assignments if needed
 - **ConnectorGroup**: Replace `Placeholder_Replace_Me` with appropriate connector group names
 
 ### 3. Resolve Conflicts

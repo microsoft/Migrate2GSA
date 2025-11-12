@@ -61,7 +61,7 @@ function Export-NetskopeConfig {
         - Secure backup directory with appropriate ACLs
         
         Dependencies:
-        - PowerShell 5.1 or higher
+        - PowerShell 7.0 or higher
         - Network access to Netskope tenant
         - Valid Netskope API token with appropriate permissions
     #>

@@ -68,12 +68,47 @@ $secureSecret = Read-Host "Enter Client Secret" -AsSecureString
 Export-ZPAConfig -CustomerId "12345" -ClientId "api-client" -ClientSecret $secureSecret -BaseUrl "https://config.zpabeta.net" -OutputDirectory "C:\ZPA-Backups"
 ```
 
+#### Customizing Pagination Settings
+
+```powershell
+# Adjust pagination for large environments or API rate limits
+$secureSecret = Read-Host "Enter Client Secret" -AsSecureString
+Export-ZPAConfig -CustomerId "12345" -ClientId "api-client" -ClientSecret $secureSecret -PageSize 50 -PageDelay 2
+```
+
+**Pagination Parameters:**
+- `PageSize` - Number of items to retrieve per page (default: 20)
+- `PageDelay` - Delay in seconds between page requests (default: 1)
+
 ### Output
 
 The function creates a timestamped directory containing:
 
-- Individual JSON files for each configuration type.
-- A complete consolidated backup file (`zpa_complete_backup.json`)
-- Detailed console output showing backup progress, statistics, and results
+- Individual JSON files for each configuration type (e.g., `application_segments.json`, `access_policies.json`)
+- A complete consolidated backup file (`zpa_complete_backup.json`) containing all configurations
+- Detailed console output showing:
+  - Authentication status
+  - Pagination progress for large datasets
+  - Item counts and page numbers
+  - File sizes and save confirmations
+  - Summary statistics (successful/failed backups)
 
 The backup is stored in a timestamped folder format: `backup_YYYYMMDD_HHMMSS/` within your specified output directory.
+
+**Example Output Structure:**
+```
+C:\ZPA-Backups\backup_20251112_143022\
+├── application_segments.json
+├── segment_groups.json
+├── server_groups.json
+├── app_connectors.json
+├── connector_groups.json
+├── access_policies.json
+├── client_forwarding_policy.json
+├── service_edges.json
+├── service_edge_groups.json
+├── idp_controllers.json
+├── scim_groups.json
+├── machine_groups.json
+└── zpa_complete_backup.json
+```

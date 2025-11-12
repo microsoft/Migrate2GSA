@@ -28,7 +28,7 @@ All created objects are automatically suffixed with `[Migrate2GSA]` for easy ide
 - **Reuse existing objects**: Detects and reuses existing policies, security profiles
 - **Add missing rules only**: When policy exists, adds only new rules
 - **Name conflict detection**: Prevents duplicate objects
-- **Priority conflict detection**: Validates security profile and policy link priorities
+- **Priority conflict detection**: Validates security profile priorities
 - **WhatIf mode**: Preview all operations before execution
 - **Always disabled CA policies**: CA policies created in disabled state for admin validation
 
@@ -37,7 +37,6 @@ All created objects are automatically suffixed with `[Migrate2GSA]` for easy ide
 - Policy metadata consistency validation
 - User and group existence validation (stops if missing)
 - Security profile priority conflict detection (CSV-to-CSV, CSV-to-Tenant)
-- Policy link priority conflict detection (within profiles)
 - Dependencies validation (policy references, user/group assignments)
 
 ### ✅ Flexible Filtering
@@ -74,7 +73,7 @@ Install-Module -Name Microsoft.Graph.Authentication -MinimumVersion 2.0.0 -Scope
 
 ### Tenant Prerequisites
 - **Global Secure Access Onboarded**: Tenant must have completed GSA onboarding
-- **Authentication**: User must connect via `Connect-MgGraph` or `Connect-Entra` before running script
+- **Authentication**: User must connect via `Connect-MgGraph` before running script
 
 Example authentication:
 ```powershell
@@ -210,7 +209,7 @@ Start-EntraInternetAccessProvisioning `
 | `SkipCAPoliciesProvisioning` | Switch | No | Skip creation of ALL CA policies (security profiles still created) |
 | `LogPath` | String | No | Custom log file path (default: timestamped in current directory) |
 | `Force` | Switch | No | Skip confirmation prompts for automated execution |
-| `WhatIf` | Switch | No | Preview operations without making changes |
+| `WhatIf` | Switch | No | Preview operations without making changes (uses SupportsShouldProcess) |
 
 ## Provisioning Order
 
@@ -299,7 +298,7 @@ Output CSVs can be used as input for re-runs to retry only failed items.
 **Solution:** Verify user/group names in target tenant or remove from CSV
 
 ### "Priority conflict detected" Error
-**Cause:** Security Profile priority conflicts with existing profile or duplicate policy link priorities  
+**Cause:** Security Profile priority conflicts with existing profile in tenant  
 **Solution:** Update priorities in CSV to resolve conflicts
 
 ### "Cannot modify profile linked to CA policy" Warning

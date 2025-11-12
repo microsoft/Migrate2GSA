@@ -1,10 +1,7 @@
-# ZIA Configuration Export Tool
-
-## Overview
-
-This PowerShell function, part of the [Migrate2GSA Toolkit](https://github.com/microsoft/Migrate2GSA), provides a comprehensive backup solution for Zscaler Internet Access (ZIA) configurations. It connects to the ZIA API to export various policy configurations to JSON files for backup, migration, or analysis purposes.
-
-## Purpose
+---
+sidebar_position: 3
+title: Export ZIA Config
+---
 
 The `Export-ZIAConfig` function is designed to:
 
@@ -52,7 +49,12 @@ The function exports the following ZIA configuration types:
 ### Optional Parameters
 
 - **`BaseUrl`** (string): ZIA API base URL (defaults to `https://zsapi.zscaler.net/api/v1`)
-- **`OutputDirectory`** (string): Output directory for backup files (defaults to current directory)
+- **`OutputDirectory`** (string): Base output directory for backup files (defaults to current directory)
+  - A timestamped subdirectory (format: `yyyyMMdd_HHmmss`) will be created under this path
+
+## Return Value
+
+Returns `$true` if the backup process completed successfully, `$false` otherwise.
 
 ## Usage Examples
 
@@ -73,13 +75,22 @@ Export-ZIAConfig -Username "admin@company.com" -Password $securePassword -ApiKey
 $securePassword = ConvertTo-SecureString "your-password" -AsPlainText -Force
 
 # Run backup with custom API URL and output directory
-Export-ZIAConfig `
+$result = Export-ZIAConfig `
     -Username "admin@company.com" `
     -Password $securePassword `
     -ApiKey "your-api-key" `
     -BaseUrl "https://admin.zscaler.net/api/v1" `
     -OutputDirectory "C:\ZIA-Backups"
+
+# Check if backup was successful
+if ($result) {
+    Write-Host "Backup completed successfully"
+}
 ```
+
+**Note**: The function creates a timestamped subdirectory (e.g., `C:\ZIA-Backups_20250112_143022`) containing:
+- Individual configuration files (e.g., `url_filtering_policy.json`)
+- Complete backup file (`zia_complete_backup.json`)
 
 ## Migration to Entra Internet Access
 
@@ -116,4 +127,3 @@ Use PowerShell's `-Verbose` parameter for detailed execution information:
 ```powershell
 Export-ZIAConfig -Username "admin@company.com" -Password $securePassword -ApiKey "your-api-key" -Verbose
 ```
-

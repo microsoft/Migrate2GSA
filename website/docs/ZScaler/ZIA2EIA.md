@@ -1,4 +1,7 @@
-# Convert-ZIA2EIA
+---
+sidebar_position: 4
+title: ZIA to Entra Internet Access (EIA) Configuration Transformer
+---
 
 ## Overview
 
@@ -129,13 +132,14 @@ Contains web content filtering policies for custom URL categories and predefined
 **Fields**:
 - `PolicyName`: Unique policy identifier
 - `PolicyType`: Always "WebContentFiltering"
-- `PolicyAction`: "Block" or "Allow"
+- `PolicyAction`: "Block", "Allow", or "Caution"
 - `Description`: Policy description
 - `RuleType`: "FQDN", "URL", "webCategory", or "ipAddress"
 - `RuleDestinations`: Semicolon-separated list of destinations
 - `RuleName`: Sub-rule identifier for grouping/splitting
 - `ReviewNeeded`: "Yes" or "No" flag for manual review
 - `ReviewDetails`: Semicolon-separated list of review reasons
+- `Provision`: "Yes" or "No" flag indicating if the entry should be provisioned
 
 ### 2. EIA Security Profiles CSV
 **Filename**: `[timestamp]_EIA_SecurityProfiles.csv`
@@ -144,11 +148,13 @@ Contains security profile definitions that reference web content filtering polic
 
 **Fields**:
 - `SecurityProfileName`: Security profile name (from rule name)
-- `SecurityProfilePriority`: Rule priority (order × 10)
-- `EntraGroups`: Semicolon-separated group names
+- `Priority`: Rule priority (order × 10)
+- `SecurityProfileLinks`: Semicolon-separated policy names with priority suffixes (e.g., `PolicyName:100;PolicyName2:200`)
+- `CADisplayName`: Conditional Access policy display name (format: `InternetAccess-[RuleName]`)
 - `EntraUsers`: Semicolon-separated user emails
-- `PolicyLinks`: Semicolon-separated policy names
+- `EntraGroups`: Semicolon-separated group names
 - `Description`: Profile description
+- `Provision`: "Yes" or "No" flag indicating if the profile should be provisioned
 
 ### 3. Log File
 **Filename**: `[timestamp]_Convert-ZIA2EIA.log`
@@ -182,22 +188,33 @@ Comprehensive log file with all processing details, warnings, and statistics.
 
 ### Phase 4: Export and Summary
 1. Cleanup unreferenced policies
-2. Export Policies CSV
+2. Export Policies CSV (with priority suffixes added to SecurityProfileLinks)
 3. Export Security Profiles CSV
 4. Display summary statistics
+
+### Phase 5: Global Secure Access Limits Validation
+1. Calculate unique policy count
+2. Calculate total FQDNs and URLs
+3. Validate against GSA limits:
+   - Max Web Content Filtering Policies: 100
+   - Max Rules across all policies: 1000
+   - Max FQDNs and URLs combined: 8000
+   - Max Security Profiles: 256
+4. Display warnings for any limit violations
 
 ## URL Processing Rules
 
 ### Cleaning Operations
 The function automatically cleans destination entries:
 
+- **ZScaler Wildcards**: `.domain.com` → `*.domain.com` (converts ZScaler leading dot format to EIA wildcard format)
 - **Schemas**: `https://example.com` → `example.com`
-- **Ports**: `example.com:8080` → `example.com`
+- **Ports**: `example.com:8080` → `example.com` (for non-IP entries)
 - **Query strings**: `example.com?param=value` → `example.com`
 - **Fragments**: `example.com#section` → `example.com`
 - **IPv4 with port/path**: `192.168.1.100:8080` → **skipped**
 
-All cleaning operations are logged at WARN level.
+All cleaning operations are logged at DEBUG level.
 
 ### Classification Rules
 
@@ -233,12 +250,14 @@ Categories with no mapping are flagged:
 ## Policy Naming Conventions
 
 ### Custom Category Policies
-- **Block policies**: `[CategoryName]-Block`
-- **Allow policies**: `[CategoryName]-Allow` (created on demand)
+- **Block policies**: `[CategoryName]-Block` (created during Phase 2)
+- **Allow policies**: `[CategoryName]-Allow` (created on demand in Phase 3)
+- **Caution policies**: `[CategoryName]-Caution` (created on demand in Phase 3)
 
 ### Predefined Category Policies
 - Format: `[RuleName]-WebCategories-[Action]`
-- Example: `urlRule1-WebCategories-Block`
+- Actions: `Block`, `Allow`, or `Caution`
+- Examples: `urlRule1-WebCategories-Block`, `urlRule2-WebCategories-Caution`
 
 ### Rule Names
 - **FQDN/URL rules**: Base domain (e.g., `example.com`, `example.com-2`)
@@ -248,24 +267,29 @@ Categories with no mapping are flagged:
 ## Action Handling
 
 ### BLOCK Action
-Uses or creates Block policy for custom categories.
+- **Custom categories**: Uses Block policy created in Phase 2
+- **Predefined categories**: Creates policy with `PolicyAction = "Block"`
 
 ### ALLOW Action
-Creates Allow policy by duplicating Block policy entries with PolicyAction changed to "Allow".
+- **Custom categories**: Creates Allow policy by duplicating Block policy entries with `PolicyAction = "Allow"`
+- **Predefined categories**: Creates policy with `PolicyAction = "Allow"`
 
 ### CAUTION Action
-Converted to BLOCK action:
+- **Custom categories**: Creates Caution policy by duplicating Block policy entries with `PolicyAction = "Caution"`
+- **Predefined categories**: Creates policy with `PolicyAction = "Caution"`
 - Logged as WARNING
 - `ReviewNeeded` set to "Yes"
-- `ReviewDetails` includes "Rule action CAUTION converted to Block"
+- `ReviewDetails` includes "Rule action CAUTION requires review"
+- `Provision` set to "No"
 
 ## Priority Conflicts
 
 When multiple rules have the same `order` value:
-1. Calculate initial priority: `SecurityProfilePriority = order × 10`
-2. Check for conflicts
-3. Increment priority until unique: `SecurityProfilePriority + 1`
+1. Calculate initial priority: `Priority = order × 10`
+2. Check for conflicts with existing priorities
+3. Increment priority until unique: `Priority + 1`
 4. Log conflict resolution at INFO level
+5. Each conflict resolution increments the `PriorityConflictsResolved` statistic
 
 ## Statistics
 
@@ -281,11 +305,13 @@ The function tracks and logs:
 
 ## Known Limitations
 
-1. **Character Limits**: 300-character limit is hard-coded (except for webCategory)
-2. **Base Domain**: Simple last-2-segments approach (may not handle all TLDs correctly)
-3. **IPv6**: Not supported (skipped with warning)
+1. **IP Addresses**: Not supported by Entra Internet Access web content filtering
+   - IPv4 addresses are exported with `Provision = "No"` and `ReviewNeeded = "Yes"` for reference only
+   - IPv6 addresses are not supported and are skipped entirely with a warning
+2. **Character Limits**: 300-character limit per Destinations field (except webCategory type which has no limit)
+3. **Base Domain**: Simple last-2-segments approach (may not handle all TLDs correctly)
 4. **CIDR Ranges**: Not supported for IP addresses
-5. **Port Numbers**: Not supported (skipped with warning)
+5. **Port Numbers**: Not supported for IP addresses (IPv4 with port/path is skipped with warning)
 6. **Memory**: All data held in memory (acceptable for expected data sizes)
 
 ## Troubleshooting
@@ -324,11 +350,6 @@ Multiple rules with same priority are automatically resolved by incrementing. Re
 - `Convert-ZPA2EPA`: Converts ZPA to EPA configuration
 - `Start-EntraPrivateAccessProvisioning`: Provisions EPA configuration
 
-## See Also
-
-- [ZScaler Internet Access API Documentation](https://help.zscaler.com/zia/)
-- [Microsoft Entra Internet Access Documentation](https://learn.microsoft.com/entra/)
-- [Migrate2GSA Module Documentation](../README.md)
 
 ## Support
 
