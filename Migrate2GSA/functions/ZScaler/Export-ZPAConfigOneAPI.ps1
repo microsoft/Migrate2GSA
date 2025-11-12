@@ -128,6 +128,37 @@ function Connect-ZPAOneApi {
                 "Authorization" = "Bearer $script:ZPAAccessToken"
                 "Content-Type" = "application/json"
             }
+            # Decode token payload safely (do not print token). This helps diagnose missing scopes.
+            try {
+                $tokenParts = $script:ZPAAccessToken -split '\.'
+                if ($tokenParts.Length -ge 2) {
+                    $payload = $tokenParts[1]
+                    $padLen = (4 - ($payload.Length % 4)) % 4
+                    $payload += '=' * $padLen
+                    $decodedJson = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($payload))
+                    # Parse JSON and check for common scope claims
+                    try {
+                        $claims = $decodedJson | ConvertFrom-Json -ErrorAction Stop
+                        $script:ZPATokenClaims = $claims
+                        if ($claims.scope) { $scopes = $claims.scope } elseif ($claims.scp) { $scopes = $claims.scp }
+                        else { $scopes = $null }
+
+                        # Non-fatal check: warn if expected ZPA scope not present
+                        $expectedScopeSubstring = 'zs:config:zpa'
+                        if ($scopes -and ($scopes -match $expectedScopeSubstring)) {
+                            Write-Host "Token scopes include ZPA config resource (masked)" -ForegroundColor Gray
+                        } else {
+                            Write-Warning "Token does not appear to include ZPA config scopes. Calls may return 403. (scope claim hidden)"
+                        }
+                    }
+                    catch {
+                        Write-Host "Unable to parse token claims for diagnostics" -ForegroundColor Yellow
+                    }
+                }
+            }
+            catch {
+                Write-Host "Failed to decode token for diagnostics (non-fatal)" -ForegroundColor Yellow
+            }
             
             return $true
         }
@@ -321,12 +352,38 @@ function Invoke-ZPAOneApi {
         Write-Warning "Failed to retrieve data from $Endpoint : $($_.Exception.Message)"
         Write-Host "API call error details for $Endpoint" -ForegroundColor Red
         Write-Host "Error type: $($_.Exception.GetType().Name)" -ForegroundColor Red
-        
+
         if ($_.Exception.Response) {
-            Write-Host "HTTP Status Code: $($_.Exception.Response.StatusCode)" -ForegroundColor Red
-            Write-Host "HTTP Status Description: $($_.Exception.Response.StatusDescription)" -ForegroundColor Red
+            try {
+                $statusCode = $_.Exception.Response.StatusCode
+                $statusDesc = $_.Exception.Response.StatusDescription
+                Write-Host "HTTP Status Code: $statusCode" -ForegroundColor Red
+                Write-Host "HTTP Status Description: $statusDesc" -ForegroundColor Red
+
+                # Attempt to read response body for more details
+                $respStream = $_.Exception.Response.GetResponseStream()
+                if ($respStream) {
+                    $reader = New-Object System.IO.StreamReader($respStream)
+                    $body = $reader.ReadToEnd()
+                    if ($body) {
+                        # Try to pretty-print JSON if possible, otherwise print raw (but avoid leaking token)
+                        try {
+                            $parsed = $body | ConvertFrom-Json -ErrorAction Stop
+                            $pretty = $parsed | ConvertTo-Json -Depth 10
+                            Write-Host "Response body (JSON):`n$pretty" -ForegroundColor Red
+                        }
+                        catch {
+                            # Raw text
+                            Write-Host "Response body:`n$body" -ForegroundColor Red
+                        }
+                    }
+                }
+            }
+            catch {
+                Write-Host "Unable to read HTTP response body for diagnostic (non-fatal)" -ForegroundColor Yellow
+            }
         }
-        
+
         return $null
     }
 }
