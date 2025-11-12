@@ -11,7 +11,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Migrate2GSA',
-  tagline: 'Accelate your migration to Global Secure Access',
+  tagline: 'Accelerate your migration to Global Secure Access',
   favicon: 'img/favicon.ico',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
