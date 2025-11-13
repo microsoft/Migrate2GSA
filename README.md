@@ -1,78 +1,21 @@
 # Migrate2GSA
 
-> **⚠️ Important Notice**: This is experimental code. Use it at your own risk and thoroughly test in a non-production environment before deploying to production systems.
+Migrate2GSA documentation ---> https://aka.ms/Migrate2GSA
 
-## Overview
-
+## What is Migrate2GSA?
 Migrate2GSA is PowerShell-based migration toolkit designed to help organizations transition from SSE solutions to Global Secure Access (GSA). This toolkit provides automated configuration export, transformation, and a set of common GSA provisioning tools to streamline the transition process.
 
+## Does Migrate2GSA only help on migrations from other SSE solutions?
+No! Migrate2GSA can simplify your deployments as well. Simply create a csv file with your configuration and use the Entra Private Access and Entra Internet Access provisioning tools to create the config for you.
+
+## Is this an official Microsoft product?
+No. It is a community project that is maintained by Microsoft employees. The PowerShell toolkit is provided as-is and is not supported through any Microsoft support program or service. Please do not contact Microsoft support with any issues or concern.
+
 ## How to contact us
-If you have a migration project and need assistance with the migration tools, or you can work with us to build tools for other third party SSE solutions, contact us at migrate2gsateam@microsoft.com
+If you have a migration project and need assistance with Migrate2GSA, or you can work with us to build tools for other SSE solutions, contact us at migrate2gsateam@microsoft.com
 
-
-
-## Installation and Setup
-
-### Download the Module
-
-1. **Clone the repository:**
-   ```powershell
-   git clone https://github.com/microsoft/Migrate2GSA.git
-   cd Migrate2GSA
-   ```
-
-2. **Or download as ZIP:**
-   - Download the repository as a ZIP file from GitHub
-   - Extract to your desired location
-
-### Prerequisites
-
-This module requires **PowerShell 7 or later**. If you don't have PowerShell 7 installed, please visit the [PowerShell installation guide](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell?view=powershell-7.5) for instructions.
-
-To check your PowerShell version:
-```powershell
-$PSVersionTable.PSVersion
-```
-
-### Import the Module
-
-Once you have the module files locally, you can import the module using one of these methods:
-
-**Method 1: Import from local path**
-```powershell
-Import-Module "C:\Path\To\Migrate2GSA\Migrate2GSA\Migrate2GSA.psd1"
-```
-
-**Method 2: Install to PowerShell modules directory**
-```powershell
-# Copy the Migrate2GSA folder to your PowerShell modules directory
-$ModulesPath = $env:PSModulePath -split ';' | Select-Object -First 1
-Copy-Item -Path "C:\Path\To\Migrate2GSA\Migrate2GSA" -Destination "$ModulesPath\Migrate2GSA" -Recurse -Force
-
-# Import the module
-Import-Module Migrate2GSA
-```
-
-### Verify Installation
-
-After importing, verify the module is loaded and check available functions:
-
-```powershell
-# Check if module is loaded
-Get-Module Migrate2GSA
-
-# List available functions
-Get-Command -Module Migrate2GSA
-```
-
-The module provides the following functions:
-- `Export-ZPAConfig` - Export ZScaler Private Access configuration
-- `Convert-ZPA2EPA` - Convert ZPA configuration to Entra Private Access format
-- `Export-ZIAConfig` - Export ZScaler Internet Access configuration
-- `Convert-ZIA2EIA` - Convert ZIA configuration to Entra Internet Access format
-- `Export-NetskopeConfig` - Export Netskope configuration
-- `Start-EntraPrivateAccessProvisioning` - Provision Entra Private Access applications
-- `Start-EntraInternetAccessProvisioning` - Provision Entra Internet Access policies and security profiles
+## How to contribute
+Please create a GitHub Issue to discuss the changes you are planning to make, then send us a PR.
 
 ## Contributing
 
