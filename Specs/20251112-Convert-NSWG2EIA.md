@@ -43,8 +43,8 @@ This section describes the structure and naming conventions used when converting
 
 **Netskope Custom Categories:**
 - Custom categories group destinations (URL lists and/or predefined categories)
-- Can have `inclusion` arrays (allowed/processed destinations)
-- Can have `exclusion` arrays (blocked/excluded destinations)
+- Can have `inclusion` arrays (processed destinations)
+- Can have `exclusion` arrays (excluded destinations)
 - Can reference predefined Netskope categories via `categories` array
 
 **Netskope URL Lists:**
@@ -59,33 +59,80 @@ This section describes the structure and naming conventions used when converting
 ### EIA Structure
 
 **EIA Web Content Filtering Policies:**
-- Netskope custom categories convert to EIA web content filtering policies
-- Each policy has ONE action (Allow or Block) at the policy level
-- Policies contain multiple rules grouped by destination type
+- A web content filtering policy is the primary building block for traffic filtering in EIA
+- Each policy has ONE action (Allow or Block) defined at the policy level
+- Policies contain one or more rules that define destinations to match
+- Rules are grouped by destination type (FQDN, URL, ipAddress, webCategory)
+
+**EIA Rule Types:**
+- `FQDN` - Fully qualified domain names (e.g., `*.example.com`, `site.com`)
+- `URL` - URLs with paths or specific patterns (e.g., `*.domain.com/path`)
+- `ipAddress` - IP addresses (IPv4 only, no CIDR ranges, no ports)
+- `webCategory` - GSA predefined web categories (e.g., `SocialNetworking`, `Gambling`)
+
+**EIA Security Profiles:**
+- Security profiles aggregate multiple web content filtering policies
+- Assigned to users and/or groups via Conditional Access policies
+- Each profile has a priority (lower number = higher priority)
+- Security profiles link to web content filtering policies via PolicyLinks field
+
+**EIA Conditional Access Policies:**
+- Conditional Access (CA) policies assign security profiles to users/groups
+- Define assignment scope (users, groups, "All users")
+- Link to security profile for enforcement
+- This function generates CSV files that reference CA assignment via EntraUsers/EntraGroups fields
+
+### Conversion Logic
+
+**URL List Conversion:**
+- Each URL list creates TWO policies:
+  - `"[URLListName]-Allow"` - For Allow actions
+  - `"[URLListName]-Block"` - For Block actions
+- URL lists referenced in custom categories are tracked for later linking
+- Destinations are classified and grouped by type (FQDN, URL, ipAddress)
+- Regex URL lists create policies flagged with ReviewNeeded=Yes, Provision=No, PolicyAction=Block
+- Unreferenced URL list policies are cleaned up after aggregation
 
 **Custom Category Conversion:**
-- Custom category with `inclusion` → "CategoryName-Allow" policy
-- Custom category with `exclusion` → "CategoryName-Block" policy (additional)
-- Destinations from URL lists are classified and grouped by type
-- Predefined categories become webCategory rules
+- Custom categories create policies for predefined categories only:
+  - `"[CategoryName]-WebCategories-Allow"` - For RT policies with Allow action
+  - `"[CategoryName]-WebCategories-Block"` - For RT policies with Block action
+- Each policy contains a single webCategory rule with all mapped GSA categories
+- Predefined categories are always treated as inclusions
+- Custom categories without predefined categories (only URL lists) create no custom category policies
+
+**Linking Logic:**
+- RT policies link to URL list policies based on:
+  - Inclusion + Allow action → URLList-Allow
+  - Inclusion + Block action → URLList-Block
+  - Exclusion + Allow action → URLList-Block (INVERSE)
+  - Exclusion + Block action → URLList-Allow (INVERSE)
+- RT policies link to custom category webCategory policies based on RT action:
+  - Allow action → CategoryName-WebCategories-Allow
+  - Block action → CategoryName-WebCategories-Block
 
 **Real-time Protection Policy Conversion:**
-- Policies referencing predefined categories → "RuleName-WebCategories-[Action]" policy
+- Policies referencing custom categories → link to appropriate custom category policies based on action
+- Policies referencing predefined categories → create "RuleName-WebCategories-[Action]" policy
 - Policies referencing applications → flagged for review (no direct mapping)
 - Multiple policies assigned to same users/groups → aggregated into single security profile
 
-**Policy Naming:**
-- Custom category policies: `[CategoryName]-Allow` or `[CategoryName]-Block`
-- Predefined category policies: `[RuleName]-WebCategories-[Action]`
+**Policy Naming Conventions:**
+- URL list policies: `[URLListName]-Allow` or `[URLListName]-Block`
+  - Example: `SSL Bypass URLs-Allow`, `Whitelist URLs-Block`
+- Custom category predefined category policies: `[CategoryName]-WebCategories-Allow` or `[CategoryName]-WebCategories-Block`
+  - Example: `Potentially malicious sites-WebCategories-Block`
+- RT policy predefined category policies: `[RuleName]-WebCategories-[Action]`
+  - Example: `Block Advertisements-WebCategories-Block`
 - Application policies: `[RuleName]-Application-[Action]` (with ReviewNeeded=Yes)
 
-**Rule Naming:**
+**Rule Naming Conventions:**
 - FQDN rules: Base domain name (e.g., `example.com`, `example.com-2`)
 - URL rules: Base domain name (e.g., `contoso.com`, `contoso.com-2`)
 - IP address rules: `IPs`, `IPs-2`, `IPs-3`
 - Web category rules: `WebCategories` (no splitting)
 
-**Security Profile Naming:**
+**Security Profile Naming Conventions:**
 - All users: `SecurityProfile-All-Users`
 - Specific user/group sets: `SecurityProfile-001`, `SecurityProfile-002`, etc.
 
@@ -93,14 +140,13 @@ This section describes the structure and naming conventions used when converting
 
 | Netskope Element | Converts To | EIA Element | Notes |
 |------------------|-------------|-------------|-------|
-| Custom Category (inclusion) | → | Web Content Filtering Policy | PolicyName: "CategoryName-Allow" |
-| Custom Category (exclusion) | → | Web Content Filtering Policy | PolicyName: "CategoryName-Block" |
-| URL List (type: exact) | → | Policy Rules (FQDN/URL/ipAddress) | Grouped by type and base domain |
-| URL List (type: regex) | → | Flagged for Review | Log pattern, skip processing |
-| Predefined Category in Custom Category | → | Policy Rule (webCategory type) | Mapped via NSWG2EIA-CategoryMappings.json |
-| Predefined Category in Policy | → | Web Content Filtering Policy | PolicyName: "RuleName-WebCategories-[Action]" |
+| URL List (type: exact) | → | 2 Web Content Filtering Policies | PolicyName: "URLListName-Allow" and "URLListName-Block" |
+| URL List (type: regex) | → | 2 Web Content Filtering Policies (flagged) | ReviewNeeded=Yes, Provision=No, PolicyAction=Block |
+| Custom Category (predefined categories only) | → | 2 Web Content Filtering Policies | PolicyName: "CategoryName-WebCategories-Allow" and "CategoryName-WebCategories-Block" |
+| Custom Category (URL list references) | → | Tracked for linking | RT policy links to referenced URL list policies |
+| Predefined Category in RT Policy | → | Web Content Filtering Policy | PolicyName: "RuleName-WebCategories-[Action]" |
 | Application Object | → | Web Content Filtering Policy | Flagged for review (ReviewNeeded=Yes) |
-| Real-time Protection Policies (same users) | → | Single Security Profile | Aggregated with all policy links |
+| Real-time Protection Policies (same users) | → | Single Security Profile | Aggregated with deduplicated policy links (Allow policies first, then Block) |
 
 ---
 
@@ -124,6 +170,7 @@ Contains all Real-time Protection policies configured in Netskope, including pol
 | `action` | string | Action to take | "Block*", "Allow", "Alert", "User Alert*" |
 | `status` | string | Policy state | Only process "Enabled " (note trailing space) |
 | `accessMethod` | string | Access method | Skip if "Client" (NPA policies) |
+| `app_tags` | string | Application tags filter | Skip if not "Any" (app tag filtering not supported in EIA) |
 | `groupOrder` | string | Policy priority | Convert to number, multiply by 10 for SecurityProfilePriority |
 | `groupName` | string | Policy group | Log for reference |
 | `description` | string | Policy description | Maps to Security Profile Description |
@@ -138,21 +185,24 @@ Contains all Real-time Protection policies configured in Netskope, including pol
    - These are Netskope Private Access policies, not web policies
    - Log count at INFO level
 
-3. **User Field Parsing:**
+3. **App Tag Filtering:** Skip policies where `app_tags` is not "Any"
+   - Log names of skipped policies at INFO level
+
+4. **User Field Parsing:**
    - Split by comma and trim whitespace
    - Identify emails (contains @ but not /)
    - Identify X500 group paths (contains /)
    - Extract group name from X500 path (last segment after /)
    - Handle "All" → use placeholder "Replace_with_All_IA_Users_Group"
 
-4. **Application Field Parsing:**
+5. **Application Field Parsing:**
    - Split by comma and trim whitespace
    - For each entry, perform lookup:
      1. Check if it's a custom category name
      2. Check if it's a predefined category (in mapping file)
      3. Otherwise, treat as application object
 
-5. **Action Mapping:**
+6. **Action Mapping:**
    - "Allow" → PolicyAction "Allow"
    - "Block*" (any block variant) → PolicyAction "Block"
    - "Alert" → PolicyAction "Block" + ReviewNeeded = Yes
@@ -239,17 +289,23 @@ Contains all custom web categories including inclusions, exclusions, and predefi
 1. **Inclusion Processing:**
    - Resolve each URL list reference by ID
    - Combine all destinations from all referenced URL lists
+   - Process predefined categories from `categories` array
    - If any URL list has type "regex", flag entire custom category for review
-   - Create "-Allow" policy with these destinations
+   - Create TWO policies:
+     - `"CategoryName-Inclusions-Allow"` - For RT Allow actions
+     - `"CategoryName-Inclusions-Block"` - For RT Block actions
 
 2. **Exclusion Processing:**
    - Resolve each URL list reference by ID
    - Combine all exclusion destinations
-   - Create "-Block" policy with these destinations (only if exclusions exist)
+   - Create TWO policies (only if exclusions exist):
+     - `"CategoryName-Exclusions-Allow"` - For RT Block actions (INVERSE)
+     - `"CategoryName-Exclusions-Block"` - For RT Allow actions (INVERSE)
+   - Exclusions receive opposite action from RT policy
 
 3. **Predefined Categories:**
    - Map each category using mapping file
-   - Add as webCategory rules to the appropriate policy (inclusion → Allow, exclusion → Block)
+   - Add as webCategory rules to inclusion policies (both Allow and Block variants)
 
 ### 4. NSWG2EIA-CategoryMappings.json
 **Source:** Manual configuration file (maintained by user)  
@@ -332,8 +388,9 @@ Contains all web content filtering policies including those from custom categori
 #### PolicyName Format
 
 **Custom Categories:**
-- Inclusion policy: `[CategoryName]-Allow`
-- Exclusion policy: `[CategoryName]-Block` (only if exclusions exist)
+- Inclusion policies: `[CategoryName]-Inclusions-Allow` and `[CategoryName]-Inclusions-Block`
+- Exclusion policies: `[CategoryName]-Exclusions-Allow` and `[CategoryName]-Exclusions-Block` (only if exclusions exist)
+- Note: RT policy action determines which policies are linked (exclusions receive inverse action)
 
 **Real-time Protection Policies:**
 - Predefined categories: `[RuleName]-WebCategories-[Action]`
@@ -479,144 +536,197 @@ $policies = [System.Collections.ArrayList]::new()
 $securityProfiles = [System.Collections.ArrayList]::new()
 ```
 
-### Phase 2: Custom Category Processing
+### Phase 2: URL List and Custom Category Processing
 
-#### 2.1 Filter and Process Custom Categories
+#### 2.1 Process URL Lists
 
 ```powershell
-foreach ($category in $customCategories) {
-    Write-LogMessage "Processing custom category: $($category.name)" -Level "DEBUG"
+foreach ($urlList in $urlLists) {
+    Write-LogMessage "Processing URL list: $($urlList.name)" -Level "DEBUG"
     
-    # Initialize tracking
-    $allInclusionDestinations = @()
-    $allExclusionDestinations = @()
-    $inclusionCategories = @()
-    $exclusionCategories = @()
-    $hasRegexUrlList = $false
-    $regexUrlListNames = @()
-    
-    # Process inclusion URL lists
-    if ($category.data.inclusion) {
-        foreach ($urlListRef in $category.data.inclusion) {
-            $urlList = $urlListsHashtable[$urlListRef.id]
-            if ($null -eq $urlList) {
-                Write-LogMessage "URL List ID $($urlListRef.id) not found for category $($category.name)" -Level "WARN"
-                continue
-            }
-            
-            # Check for regex type
-            if ($urlList.data.type -eq "regex") {
-                $hasRegexUrlList = $true
-                $regexUrlListNames += $urlList.name
-                Write-LogMessage "URL List '$($urlList.name)' is regex type - will flag for review" -Level "WARN"
-                continue  # Skip processing regex lists
-            }
-            
-            # Collect destinations
-            $allInclusionDestinations += $urlList.data.urls
-        }
+    # Check for regex type
+    $hasRegex = $false
+    $reviewDetails = ""
+    if ($urlList.data.type -eq "regex") {
+        $hasRegex = $true
+        $reviewDetails = "URL List contains regex patterns"
+        Write-LogMessage "URL List '$($urlList.name)' is regex type - will flag for review" -Level "WARN"
     }
     
-    # Process exclusion URL lists
-    if ($category.data.exclusion) {
-        foreach ($urlListRef in $category.data.exclusion) {
-            $urlList = $urlListsHashtable[$urlListRef.id]
-            if ($null -eq $urlList) {
-                Write-LogMessage "URL List ID $($urlListRef.id) not found for category $($category.name)" -Level "WARN"
-                continue
-            }
-            
-            # Check for regex type
-            if ($urlList.data.type -eq "regex") {
-                $hasRegexUrlList = $true
-                $regexUrlListNames += $urlList.name
-                Write-LogMessage "URL List '$($urlList.name)' is regex type - will flag for review" -Level "WARN"
-                continue
-            }
-            
-            # Collect destinations
-            $allExclusionDestinations += $urlList.data.urls
-        }
-    }
+    # Collect and deduplicate destinations
+    $uniqueDestinations = @($urlList.data.urls | Group-Object -Property { $_.ToLower() } | ForEach-Object { $_.Group[0] })
     
-    # Process predefined categories (inclusion)
-    if ($category.data.categories) {
-        foreach ($catRef in $category.data.categories) {
-            $mapping = $categoryMappingsHashtable[$catRef.name]
-            if ($null -ne $mapping -and -not [string]::IsNullOrWhiteSpace($mapping.GSACategory)) {
-                $inclusionCategories += $mapping.GSACategory
-            } else {
-                $inclusionCategories += "UNMAPPED:$($catRef.name)"
-                $hasRegexUrlList = $true  # Flag for review
-            }
-        }
-    }
-    
-    # Deduplicate and clean inclusion destinations
-    $uniqueInclusionDestinations = @($allInclusionDestinations | Group-Object -Property { $_.ToLower() } | ForEach-Object { $_.Group[0] })
-    $cleanedInclusionDestinations = @()
-    foreach ($dest in $uniqueInclusionDestinations) {
+    # Clean destinations
+    $cleanedDestinations = @()
+    foreach ($dest in $uniqueDestinations) {
         $cleaned = ConvertTo-CleanDestination -Destination $dest
         if ($null -ne $cleaned) {
-            $cleanedInclusionDestinations += $cleaned
+            $cleanedDestinations += $cleaned
         }
     }
     
-    # Classify inclusion destinations
-    $inclusionClassified = @{
+    # Classify destinations
+    $classified = @{
         'FQDN' = @()
         'URL' = @()
         'ipAddress' = @()
     }
     
-    foreach ($dest in $cleanedInclusionDestinations) {
+    foreach ($dest in $cleanedDestinations) {
         $destType = Get-DestinationType -Destination $dest
         if ($destType -eq 'ipv4') {
-            $inclusionClassified['ipAddress'] += $dest
+            $classified['ipAddress'] += $dest
         } elseif ($destType -eq 'ipv6') {
             Write-LogMessage "IPv6 address not supported: $dest" -Level "WARN"
         } elseif ($destType -eq 'URL') {
-            $inclusionClassified['URL'] += $dest
+            $classified['URL'] += $dest
         } else {
-            $inclusionClassified['FQDN'] += $dest
+            $classified['FQDN'] += $dest
         }
     }
     
-    # Create -Allow policy for inclusions
-    if ($cleanedInclusionDestinations.Count -gt 0 -or $inclusionCategories.Count -gt 0) {
-        $allowPolicyName = "$($category.name)-Allow"
+    # Create BOTH Allow and Block policies for this URL list
+    foreach ($action in @('Allow', 'Block')) {
+        $policyName = "$($urlList.name)-$action"
         
-        # Create rules for FQDNs, URLs, IPs (same logic as ZIA)
-        # ... (group by base domain, split by character limit, create policy entries)
+        # For regex lists, use Block action and flag for review
+        $actualAction = if ($hasRegex) { 'Block' } else { $action }
         
-        # Create rule for web categories
-        if ($inclusionCategories.Count -gt 0) {
+        # Process each destination type
+        foreach ($destType in @('FQDN', 'URL', 'ipAddress')) {
+            if ($classified[$destType].Count -eq 0) { continue }
+            
+            # Group by base domain (for FQDN and URL)
+            if ($destType -in @('FQDN', 'URL')) {
+                $grouped = $classified[$destType] | Group-Object -Property { Get-BaseDomain -Destination $_ }
+                
+                foreach ($group in $grouped) {
+                    $baseDomain = $group.Name
+                    $destinations = $group.Group
+                    
+                    # Split by character limit
+                    $splits = Split-ByCharacterLimit -Destinations $destinations -Limit 300
+                    
+                    for ($i = 0; $i -lt $splits.Count; $i++) {
+                        $ruleName = if ($i -eq 0) { $baseDomain } else { "$baseDomain-$($i + 1)" }
+                        
+                        $policyEntry = [PSCustomObject]@{
+                            PolicyName = $policyName
+                            PolicyType = "WebContentFiltering"
+                            PolicyAction = $actualAction
+                            Description = "URL List: $($urlList.name)"
+                            RuleType = $destType
+                            RuleDestinations = ($splits[$i] -join ';')
+                            RuleName = $ruleName
+                            ReviewNeeded = if ($hasRegex) { "Yes" } else { "No" }
+                            ReviewDetails = $reviewDetails
+                            Provision = if ($hasRegex) { "No" } else { "Yes" }
+                        }
+                        [void]$policies.Add($policyEntry)
+                    }
+                }
+            } else {
+                # IP addresses - split by character limit
+                $splits = Split-ByCharacterLimit -Destinations $classified[$destType] -Limit 300
+                
+                for ($i = 0; $i -lt $splits.Count; $i++) {
+                    $ruleName = if ($i -eq 0) { "IPs" } else { "IPs-$($i + 1)" }
+                    
+                    $policyEntry = [PSCustomObject]@{
+                        PolicyName = $policyName
+                        PolicyType = "WebContentFiltering"
+                        PolicyAction = $actualAction
+                        Description = "URL List: $($urlList.name)"
+                        RuleType = $destType
+                        RuleDestinations = ($splits[$i] -join ';')
+                        RuleName = $ruleName
+                        ReviewNeeded = if ($hasRegex) { "Yes" } else { "No" }
+                        ReviewDetails = $reviewDetails
+                        Provision = if ($hasRegex) { "No" } else { "Yes" }
+                    }
+                    [void]$policies.Add($policyEntry)
+                }
+            }
+        }
+    }
+}
+```
+
+#### 2.2 Process Custom Categories
+
+```powershell
+foreach ($category in $customCategories) {
+    Write-LogMessage "Processing custom category: $($category.name)" -Level "DEBUG"
+    
+    # Track URL list references for later linking
+    $inclusionUrlListIds = @()
+    $exclusionUrlListIds = @()
+    $predefinedCategories = @()
+    $hasUnmappedCategories = $false
+    $unmappedCategoryNames = @()
+    
+    # Collect inclusion URL list IDs
+    if ($category.data.inclusion) {
+        foreach ($urlListRef in $category.data.inclusion) {
+            $inclusionUrlListIds += $urlListRef.id
+        }
+    }
+    
+    # Collect exclusion URL list IDs
+    if ($category.data.exclusion) {
+        foreach ($urlListRef in $category.data.exclusion) {
+            $exclusionUrlListIds += $urlListRef.id
+        }
+    }
+    
+    # Check for URL lists in both inclusion AND exclusion (warn if found)
+    $duplicateUrlLists = $inclusionUrlListIds | Where-Object { $exclusionUrlListIds -contains $_ }
+    if ($duplicateUrlLists.Count -gt 0) {
+        Write-LogMessage "Custom category '$($category.name)' has URL lists in both inclusion and exclusion arrays: $(($duplicateUrlLists | ForEach-Object { $urlListsHashtable[$_].name }) -join ', ')" -Level "WARN"
+    }
+    
+    # Process predefined categories
+    if ($category.data.categories) {
+        foreach ($catRef in $category.data.categories) {
+            $mapping = $categoryMappingsHashtable[$catRef.name]
+            if ($null -ne $mapping -and -not [string]::IsNullOrWhiteSpace($mapping.GSACategory) -and $mapping.GSACategory -ne "Unmapped") {
+                $predefinedCategories += $mapping.GSACategory
+            } else {
+                $predefinedCategories += "UNMAPPED:$($catRef.name)"
+                $hasUnmappedCategories = $true
+                $unmappedCategoryNames += $catRef.name
+            }
+        }
+    }
+    
+    # Create policies for predefined categories (if any)
+    if ($predefinedCategories.Count -gt 0) {
+        foreach ($action in @('Allow', 'Block')) {
+            $policyName = "$($category.name)-WebCategories-$action"
+            
             $policyEntry = [PSCustomObject]@{
-                PolicyName = $allowPolicyName
+                PolicyName = $policyName
                 PolicyType = "WebContentFiltering"
-                PolicyAction = "Allow"
-                Description = $category.name
+                PolicyAction = $action
+                Description = "$($category.name) - Predefined categories"
                 RuleType = "webCategory"
-                RuleDestinations = ($inclusionCategories -join ';')
+                RuleDestinations = ($predefinedCategories -join ';')
                 RuleName = "WebCategories"
-                ReviewNeeded = if ($hasRegexUrlList) { "Yes" } else { "No" }
-                ReviewDetails = if ($hasRegexUrlList) { "Regex URL lists: $($regexUrlListNames -join ', ')" } else { "" }
-                Provision = if ($hasRegexUrlList) { "No" } else { "Yes" }
+                ReviewNeeded = if ($hasUnmappedCategories) { "Yes" } else { "No" }
+                ReviewDetails = if ($hasUnmappedCategories) { "Unmapped categories: $(($unmappedCategoryNames -join ', '))" } else { "" }
+                Provision = if ($hasUnmappedCategories) { "No" } else { "Yes" }
             }
             [void]$policies.Add($policyEntry)
         }
     }
     
-    # Process exclusions (create -Block policy) - similar logic
-    if ($allExclusionDestinations.Count -gt 0) {
-        # ... similar processing for exclusions with -Block suffix
-    }
-    
-    # Track policies for Phase 3 lookup
+    # Store custom category info for Phase 3 lookup
     $customCategoryPoliciesHashtable[$category.name] = @{
-        AllowPolicyName = "$($category.name)-Allow"
-        BlockPolicyName = if ($allExclusionDestinations.Count -gt 0) { "$($category.name)-Block" } else { $null }
-        HasRegex = $hasRegexUrlList
+        InclusionUrlListIds = $inclusionUrlListIds
+        ExclusionUrlListIds = $exclusionUrlListIds
+        HasPredefinedCategories = ($predefinedCategories.Count -gt 0)
+        HasDuplicateUrlLists = ($duplicateUrlLists.Count -gt 0)
+        DuplicateUrlListIds = $duplicateUrlLists
     }
 }
 ```
@@ -626,12 +736,28 @@ foreach ($category in $customCategories) {
 #### 3.1 Filter Policies
 
 ```powershell
-# Filter out disabled and NPA policies
+# Filter out disabled, NPA policies, and app-tag filtered policies
 $webPolicies = $realTimePolicies | Where-Object {
-    $_.status -eq "Enabled " -and $_.accessMethod -ne "Client"
+    $_.status -eq "Enabled " -and 
+    $_.accessMethod -ne "Client" -and
+    ($_.app_tags -eq "Any" -or [string]::IsNullOrWhiteSpace($_.app_tags))
+}
+
+$skippedAppTagPolicies = $realTimePolicies | Where-Object {
+    $_.status -eq "Enabled " -and 
+    $_.accessMethod -ne "Client" -and
+    -not ([string]::IsNullOrWhiteSpace($_.app_tags)) -and
+    $_.app_tags -ne "Any"
 }
 
 Write-LogMessage "Filtered $($webPolicies.Count) enabled web policies from $($realTimePolicies.Count) total policies" -Level "INFO"
+
+if ($skippedAppTagPolicies.Count -gt 0) {
+    Write-LogMessage "Skipped $($skippedAppTagPolicies.Count) policies with app_tags filtering (not supported in EIA)" -Level "WARN"
+    foreach ($policy in $skippedAppTagPolicies) {
+        Write-LogMessage "Skipped policy '$($policy.ruleName)' with app_tags='$($policy.app_tags)'" -Level "DEBUG"
+    }
+}
 ```
 
 #### 3.2 Parse and Process Each Policy
@@ -670,23 +796,75 @@ foreach ($policy in $webPolicies) {
         if ($customCategoriesByName.ContainsKey($appEntry)) {
             $categoryInfo = $customCategoryPoliciesHashtable[$appEntry]
             
-            # Select policy based on action
-            if ($policy.action -like "Block*") {
-                # Use Block policy if it exists, otherwise use Allow policy
-                $policyName = if ($categoryInfo.BlockPolicyName) { $categoryInfo.BlockPolicyName } else { $categoryInfo.AllowPolicyName }
-            } elseif ($policy.action -eq "Allow") {
-                $policyName = $categoryInfo.AllowPolicyName
-            } elseif ($policy.action -like "Alert*" -or $policy.action -like "User Alert*") {
-                $policyName = if ($categoryInfo.BlockPolicyName) { $categoryInfo.BlockPolicyName } else { $categoryInfo.AllowPolicyName }
+            # Check for duplicate URL lists (in both inclusion and exclusion)
+            if ($categoryInfo.HasDuplicateUrlLists) {
                 $needsReview = $true
-                $reviewReasons += "Action '$($policy.action)' requires review"
+                $duplicateNames = $categoryInfo.DuplicateUrlListIds | ForEach-Object { $urlListsHashtable[$_].name }
+                $reviewReasons += "Custom category '$appEntry' has URL lists in both inclusion and exclusion: $(($duplicateNames -join ', '))"
             }
             
-            $policyLinks += $policyName
+            # Link to URL list policies based on RT action
+            # Inclusions: normal action
+            foreach ($urlListId in $categoryInfo.InclusionUrlListIds) {
+                $urlList = $urlListsHashtable[$urlListId]
+                if ($null -eq $urlList) {
+                    Write-LogMessage "URL List ID $urlListId not found" -Level "WARN"
+                    continue
+                }
+                
+                $urlListPolicyName = if ($policy.action -like "Block*") {
+                    "$($urlList.name)-Block"
+                } elseif ($policy.action -eq "Allow") {
+                    "$($urlList.name)-Allow"
+                } elseif ($policy.action -like "Alert*" -or $policy.action -like "User Alert*") {
+                    $needsReview = $true
+                    $reviewReasons += "Action '$($policy.action)' requires review"
+                    "$($urlList.name)-Block"
+                } else {
+                    "$($urlList.name)-Allow"
+                }
+                
+                $policyLinks += $urlListPolicyName
+            }
             
-            if ($categoryInfo.HasRegex) {
-                $needsReview = $true
-                $reviewReasons += "Custom category '$appEntry' contains regex URL lists"
+            # Exclusions: INVERSE action
+            foreach ($urlListId in $categoryInfo.ExclusionUrlListIds) {
+                $urlList = $urlListsHashtable[$urlListId]
+                if ($null -eq $urlList) {
+                    Write-LogMessage "URL List ID $urlListId not found" -Level "WARN"
+                    continue
+                }
+                
+                $urlListPolicyName = if ($policy.action -like "Block*") {
+                    "$($urlList.name)-Allow"  # INVERSE
+                } elseif ($policy.action -eq "Allow") {
+                    "$($urlList.name)-Block"  # INVERSE
+                } elseif ($policy.action -like "Alert*" -or $policy.action -like "User Alert*") {
+                    $needsReview = $true
+                    $reviewReasons += "Action '$($policy.action)' requires review"
+                    "$($urlList.name)-Allow"  # INVERSE (treat Alert as Block)
+                } else {
+                    "$($urlList.name)-Block"  # INVERSE default
+                }
+                
+                $policyLinks += $urlListPolicyName
+            }
+            
+            # Link to predefined category policy if it exists
+            if ($categoryInfo.HasPredefinedCategories) {
+                $webCategoryPolicyName = if ($policy.action -like "Block*") {
+                    "$appEntry-WebCategories-Block"
+                } elseif ($policy.action -eq "Allow") {
+                    "$appEntry-WebCategories-Allow"
+                } elseif ($policy.action -like "Alert*" -or $policy.action -like "User Alert*") {
+                    $needsReview = $true
+                    $reviewReasons += "Action '$($policy.action)' requires review"
+                    "$appEntry-WebCategories-Block"
+                } else {
+                    "$appEntry-WebCategories-Allow"
+                }
+                
+                $policyLinks += $webCategoryPolicyName
             }
             
             continue
@@ -829,12 +1007,20 @@ if ($allUsersPolicies.Count -gt 0) {
         }
     }
     
+    # Deduplicate policy links
+    $uniquePolicyLinks = $allPolicyLinks | Select-Object -Unique
+    
+    # Order policy links: Allow policies first (alphabetically), then Block policies (alphabetically)
+    $allowPolicies = @($uniquePolicyLinks | Where-Object { $_ -like "*-Allow" } | Sort-Object)
+    $blockPolicies = @($uniquePolicyLinks | Where-Object { $_ -like "*-Block" } | Sort-Object)
+    $orderedPolicyLinks = $allowPolicies + $blockPolicies
+    
     $securityProfile = [PSCustomObject]@{
         SecurityProfileName = "SecurityProfile-All-Users"
         SecurityProfilePriority = $lowestPriority
         EntraGroups = "Replace_with_All_IA_Users_Group"
         EntraUsers = ""
-        PolicyLinks = (($allPolicyLinks | Select-Object -Unique) -join ';')
+        PolicyLinks = ($orderedPolicyLinks -join ';')
         Description = "Aggregated from $($allUsersPolicies.Count) real-time protection policies"
         Provision = "Yes"
         Notes = ($allRuleNames -join ', ')
@@ -869,12 +1055,20 @@ foreach ($key in $userGroupPolicies.Keys) {
         }
     }
     
+    # Deduplicate policy links
+    $uniquePolicyLinks = $policyLinks | Select-Object -Unique
+    
+    # Order policy links: Allow policies first (alphabetically), then Block policies (alphabetically)
+    $allowPolicies = @($uniquePolicyLinks | Where-Object { $_ -like "*-Allow" } | Sort-Object)
+    $blockPolicies = @($uniquePolicyLinks | Where-Object { $_ -like "*-Block" } | Sort-Object)
+    $orderedPolicyLinks = $allowPolicies + $blockPolicies
+    
     $securityProfile = [PSCustomObject]@{
         SecurityProfileName = "SecurityProfile-{0:D3}" -f $profileIndex
         SecurityProfilePriority = $lowestPriority
         EntraGroups = ($groups -join ';')
         EntraUsers = ($emails -join ';')
-        PolicyLinks = (($policyLinks | Select-Object -Unique) -join ';')
+        PolicyLinks = ($orderedPolicyLinks -join ';')
         Description = "Aggregated from $($policies.Count) real-time protection policies"
         Provision = "Yes"
         Notes = ($ruleNames -join ', ')
@@ -916,15 +1110,34 @@ foreach ($secProfile in $securityProfiles) {
     }
 }
 
-# Remove unreferenced custom category policies
+# Remove unreferenced policies (URL list policies, custom category policies, etc.)
 $originalPolicyCount = $policies.Count
+
+# Group policies by PolicyName to get unique policy names
+$policyGroups = $policies | Group-Object -Property PolicyName
+
+# Filter to keep only policies that are referenced
+$referencedPolicyNames = @{}
+foreach ($policyGroup in $policyGroups) {
+    if ($referencedPolicies.ContainsKey($policyGroup.Name)) {
+        $referencedPolicyNames[$policyGroup.Name] = $true
+    }
+}
+
+# Keep only policies that are referenced
 $policies = [System.Collections.ArrayList]@($policies | Where-Object {
-    $referencedPolicies.ContainsKey($_.PolicyName)
+    $referencedPolicyNames.ContainsKey($_.PolicyName)
 })
 
 $removedPolicies = $originalPolicyCount - $policies.Count
 if ($removedPolicies -gt 0) {
-    Write-LogMessage "Removed $removedPolicies unreferenced policies" -Level "INFO"
+    Write-LogMessage "Removed $removedPolicies unreferenced policy rules (from $(($policyGroups.Count - $referencedPolicyNames.Count)) policies)" -Level "INFO"
+    
+    # Log which policies were removed
+    $removedPolicyNames = $policyGroups | Where-Object { -not $referencedPolicyNames.ContainsKey($_.Name) } | Select-Object -ExpandProperty Name
+    foreach ($removedPolicyName in $removedPolicyNames) {
+        Write-LogMessage "Removed unreferenced policy: $removedPolicyName" -Level "DEBUG"
+    }
 }
 ```
 
@@ -933,13 +1146,14 @@ if ($removedPolicies -gt 0) {
 #### 4.1 Export Policies CSV
 ```powershell
 $policiesCsvPath = Join-Path $OutputBasePath "${timestamp}_EIA_Policies.csv"
-$policies | Export-Csv -Path $policiesCsvPath -NoTypeInformation -Encoding utf8BOM
-Write-LogMessage "Exported $($policies.Count) policies to: $policiesCsvPath" -Level "INFO"
-```
+=== CONVERSION SUMMARY ===
+Total real-time protection policies loaded: X
+Web policies processed (enabled, non-NPA, no app tags): Y
+Policies skipped (disabled): Z
+Policies skipped (NPA): A
+Policies skipped (app_tags filtering): A2
 
-#### 4.2 Export Security Profiles CSV
-```powershell
-$spCsvPath = Join-Path $OutputBasePath "${timestamp}_EIA_SecurityProfiles.csv"
+Custom categories processed: BBasePath "${timestamp}_EIA_SecurityProfiles.csv"
 $securityProfiles | Export-Csv -Path $spCsvPath -NoTypeInformation -Encoding utf8BOM
 Write-LogMessage "Exported $($securityProfiles.Count) security profiles to: $spCsvPath" -Level "INFO"
 ```
@@ -1108,12 +1322,13 @@ ConvertTo-UserGroupKey -Emails @("user1@domain.com", "user2@domain.com") -Groups
   - `Type`: "CustomCategory", "PredefinedCategory", or "Application"
   - `IsCustomCategory`: Boolean
   - `IsPredefinedCategory`: Boolean
-  - `IsApplication`: Boolean
-  - `MappingInfo`: Hashtable with relevant mapping data
-
-**Example:**
-```powershell
-$result = Resolve-NSWGApplication -ApplicationName "Whitelist URLs" -CustomCategoriesHashtable $customCats -CategoryMappingsHashtable $catMappings
+$stats = @{
+    TotalRTPoliciesLoaded = 0
+    WebPoliciesProcessed = 0
+    PoliciesSkippedDisabled = 0
+    PoliciesSkippedNPA = 0
+    PoliciesSkippedAppTags = 0
+    CustomCategoriesProcessed = 0 -ApplicationName "Whitelist URLs" -CustomCategoriesHashtable $customCats -CategoryMappingsHashtable $catMappings
 # Returns: Type = "CustomCategory", IsCustomCategory = $true
 ```
 
@@ -1183,15 +1398,16 @@ Update statistics throughout processing and display in Phase 4 summary.
 
 ## Known Limitations
 
-1. **Regex URL Lists:** Not supported in EIA - flagged for manual review
+1. **Regex URL Lists:** Not supported in EIA - policies created but flagged for manual review with PolicyAction=Block
 2. **IPv6 Addresses:** Not supported - logged and skipped
-3. **CIDR Ranges:** Not supported for IP addresses
-4. **Port Numbers:** Not supported in destinations
-5. **Application Objects:** No automatic mapping to web categories - requires manual review
-6. **DLP Profiles:** Not converted (profile field ignored)
-7. **Activity Constraints:** Not converted (activity field logged but not processed)
-8. **Source Criteria:** Not converted (sourceIP, srcCountry, etc. ignored)
-9. **300-Character Limit:** Applies to FQDN, URL, and ipAddress rule destinations (not webCategory)
+3. **Application Objects:** No automatic mapping to web categories - requires manual review
+4. **Application Tag Filtering:** Not supported - policies with app_tags other than "Any" are skipped
+5. **DLP Profiles:** Not converted (profile field ignored)
+6. **Activity Constraints:** Not converted (activity field logged but not processed)
+7. **Source Criteria:** Not converted (sourceIP, srcCountry, etc. ignored)
+8. **300-Character Limit:** Applies to FQDN, URL, and ipAddress rule destinations (not webCategory)
+9. **Duplicate URL Lists:** URL lists appearing in both inclusion and exclusion arrays of same custom category require manual review
+10. **Unreferenced Policies:** URL list and custom category policies not linked by any RT policy are automatically removed
 
 ---
 
@@ -1226,52 +1442,79 @@ Converts with detailed debug logging enabled.
 
 ## Testing Scenarios
 
-### Scenario 1: Custom Category with Inclusions Only
+### Scenario 1: URL List with FQDNs and URLs
 **Input:**
-- Custom category "Whitelist URLs" with inclusion referencing URL list ID 2
-- URL list 2 has type "exact" with FQDNs and URLs
+- URL list "Whitelist URLs" (ID: 2) with type "exact"
+- Contains FQDNs: *.zoom.us, *.zoom.com, play.google.com
+- Contains URLs: *.htmlmail.contoso.com.au/harbourside
 
 **Expected Output:**
-- Policy: "Whitelist URLs-Allow"
-- Multiple rules: FQDN, URL types
-- No -Block policy created
+- Policy 1: "Whitelist URLs-Allow" with multiple rules:
+  - FQDN rule for zoom.us destinations
+  - FQDN rule for google.com destinations
+  - URL rule for htmlmail.contoso.com.au
+- Policy 2: "Whitelist URLs-Block" (same rules structure)
+- Unreferenced policy (Allow or Block) cleaned up if not linked by any RT policy
 
-### Scenario 2: Custom Category with Inclusions and Exclusions
+### Scenario 2: Custom Category with Predefined Categories and URL List Exclusion
 **Input:**
-- Custom category with inclusion (URL list 2) and exclusion (URL list 5)
+- Custom category "Potentially malicious sites" with:
+  - `categories` array: 4 predefined categories (Miscellaneous, Newly Observed Domain, Newly Registered Domain, Parked Domains)
+  - `exclusion` array: URL list "Whitelist URLs" (ID: 2)
+  - No `inclusion` array
 
 **Expected Output:**
-- Policy 1: "CategoryName-Allow" (inclusions)
-- Policy 2: "CategoryName-Block" (exclusions)
+- Predefined category policies created:
+  - Policy 1: "Potentially malicious sites-WebCategories-Allow" (single webCategory rule with 4 mapped GSA categories)
+  - Policy 2: "Potentially malicious sites-WebCategories-Block" (single webCategory rule with 4 mapped GSA categories)
+- URL list policies created separately (from Phase 2.1):
+  - "Whitelist URLs-Allow"
+  - "Whitelist URLs-Block"
+- RT policy with "Block" action links to:
+  - "Potentially malicious sites-WebCategories-Block" (blocks the predefined categories)
+  - "Whitelist URLs-Allow" (allows the exclusion - INVERSE action)
+- RT policy with "Allow" action links to:
+  - "Potentially malicious sites-WebCategories-Allow" (allows the predefined categories)
+  - "Whitelist URLs-Block" (blocks the exclusion - INVERSE action)
 
-### Scenario 3: Custom Category with Regex URL List
+### Scenario 3: URL List with Regex Type
 **Input:**
-- Custom category referencing URL list with type "regex"
+- URL list "Regex Patterns" with type "regex"
 
 **Expected Output:**
-- Policy created but flagged: ReviewNeeded=Yes, Provision=No
-- ReviewDetails contains regex URL list name
-- Destinations not processed
+- Policy 1: "Regex Patterns-Allow" created but flagged: ReviewNeeded=Yes, Provision=No, PolicyAction=Block
+- Policy 2: "Regex Patterns-Block" created but flagged: ReviewNeeded=Yes, Provision=No, PolicyAction=Block
+- ReviewDetails: "URL List contains regex patterns"
+- Destinations not processed (rules may be empty or contain placeholder)
+- Both policies likely cleaned up unless explicitly linked by RT policy
 
-### Scenario 4: Real-time Policy Referencing Custom Category
+### Scenario 4: RT Policy Referencing Custom Category with URL Lists
 **Input:**
-- Policy with action "Block" referencing custom category "Whitelist URLs"
+- RT policy with action "Block" referencing custom category "Potentially malicious sites"
+- Custom category has:
+  - Predefined categories (4 categories)
+  - Exclusion: URL list "Whitelist URLs" (ID: 2)
 
 **Expected Output:**
-- Security profile links to "Whitelist URLs-Block" (or -Allow if -Block doesn't exist)
+- Security profile links to:
+  - "Potentially malicious sites-WebCategories-Block" (blocks the predefined categories)
+  - "Whitelist URLs-Allow" (allows the exclusion URLs - INVERSE action)
 
-### Scenario 5: Real-time Policy with Multiple Applications
+### Scenario 5: RT Policy with Multiple Applications
 **Input:**
-- Policy with application field: "Whitelist URLs, Online Ads, GitHub Copilot"
-- "Whitelist URLs" = custom category
-- "Online Ads" = predefined category (mapped)
+- RT policy with action "Block" and application field: "Potentially malicious sites, Online Ads, GitHub Copilot"
+- "Potentially malicious sites" = custom category with:
+  - Predefined categories (4 categories)
+  - Exclusion: URL list "Whitelist URLs"
+- "Online Ads" = predefined category (mapped to GSA "Advertising")
 - "GitHub Copilot" = application object
 
 **Expected Output:**
-- Security profile with 3 policy links:
-  1. "Whitelist URLs-Allow" (custom category)
-  2. "RuleName-WebCategories-Block" (predefined)
-  3. "RuleName-Application-Block" (flagged for review)
+- Security profile with policy links (ordered: Allow first, then Block):
+  1. "Whitelist URLs-Allow" (from custom category exclusion - INVERSE)
+  2. "Block Multiple Applications-WebCategories-Block" (for Online Ads predefined category)
+  3. "GitHub Copilot-Application-Block" (flagged for review)
+  4. "Potentially malicious sites-WebCategories-Block" (custom category predefined categories)
 
 ### Scenario 6: Policy Aggregation - All Users
 **Input:**
@@ -1281,17 +1524,18 @@ Converts with detailed debug logging enabled.
 - 1 security profile: "SecurityProfile-All-Users"
 - EntraGroups: "Replace_with_All_IA_Users_Group"
 - Notes: Lists all 5 rule names
-- PolicyLinks: All unique policy references
+- PolicyLinks: All unique policy references, deduplicated and ordered (Allow policies first alphabetically, then Block policies alphabetically)
 
-### Scenario 7: Policy Aggregation - Same User Set
+### Scenario 7: Policy Aggregation - Same User Set with Duplicate References
 **Input:**
 - 3 policies assigned to "user1@domain.com, user2@domain.com"
-- 2 policies assigned to different users
+- 2 of these policies both reference "Online Ads" predefined category with Block action
 
 **Expected Output:**
 - SecurityProfile-001: Aggregates 3 policies for user1+user2
-- SecurityProfile-002: For other user set
-- Notes field lists aggregated rule names
+- PolicyLinks: Deduplicated list ("Online Ads-WebCategories-Block" appears only once)
+- PolicyLinks ordered: Allow policies first (alphabetically), then Block policies (alphabetically)
+- Notes field lists all 3 aggregated rule names
 
 ### Scenario 8: X500 Group Path Parsing
 **Input:**
@@ -1308,7 +1552,35 @@ Converts with detailed debug logging enabled.
 - EntraUsers: "user1@domain.com;user2@domain.com"
 - EntraGroups: "APP IT Users"
 
-### Scenario 10: Priority Conflict Resolution
+### Scenario 11: Custom Category with Duplicate URL List References
+**Input:**
+- Custom category "Test Category" with:
+  - `inclusion` array: URL list "Shared URLs" (ID: 10)
+  - `exclusion` array: URL list "Shared URLs" (ID: 10)
+- RT policy with action "Block" references this custom category
+
+**Expected Output:**
+- WARNING logged: "Custom category 'Test Category' has URL lists in both inclusion and exclusion arrays: Shared URLs"
+- Security profile created with:
+  - "Shared URLs-Block" linked (from inclusion with Block action)
+  - "Shared URLs-Allow" linked (from exclusion with Block action - INVERSE)
+- Security profile flagged: ReviewNeeded with note about duplicate URL list
+- User must manually review and resolve the conflict
+
+### Scenario 12: Unreferenced Policy Cleanup
+**Input:**
+- URL list "Unused List" creates two policies: "Unused List-Allow" and "Unused List-Block"
+- Custom category "Test Category" references URL list "Active List"
+- RT policy with Block action references "Test Category" (links to "Active List-Block")
+- No RT policy references "Unused List"
+
+**Expected Output:**
+- Phase 2 creates policies for both "Unused List" and "Active List"
+- Phase 3.5 cleanup removes:
+  - "Unused List-Allow" (not referenced)
+  - "Unused List-Block" (not referenced)
+  - "Active List-Allow" (not referenced, only Block variant used)
+- Final output only contains "Active List-Block"
 **Input:**
 - 3 policies with groupOrder = 2 (all become priority 20)
 
@@ -1406,9 +1678,10 @@ Converts with detailed debug logging enabled.
 
 ```csv
 PolicyName,PolicyType,PolicyAction,Description,RuleType,RuleDestinations,RuleName,ReviewNeeded,ReviewDetails,Provision
-Whitelist URLs-Allow,WebContentFiltering,Allow,Whitelist URLs,FQDN,*.zoom.us;*.zoom.com;*.chime.aws,zoom.us,No,,Yes
-Whitelist URLs-Allow,WebContentFiltering,Allow,Whitelist URLs,FQDN,play.google.com;*.google-analytics.com,google.com,No,,Yes
-Whitelist URLs-Allow,WebContentFiltering,Allow,Whitelist URLs,URL,*.htmlmail.contoso.com.au/harbourside,htmlmail.contoso.com.au,No,,Yes
+Whitelist URLs-Allow,WebContentFiltering,Allow,URL List: Whitelist URLs,FQDN,*.zoom.us;*.zoom.com;*.chime.aws,zoom.us,No,,Yes
+Whitelist URLs-Allow,WebContentFiltering,Allow,URL List: Whitelist URLs,FQDN,play.google.com;*.google-analytics.com,google.com,No,,Yes
+Whitelist URLs-Allow,WebContentFiltering,Allow,URL List: Whitelist URLs,URL,*.htmlmail.contoso.com.au/harbourside,htmlmail.contoso.com.au,No,,Yes
+Potentially malicious sites-WebCategories-Block,WebContentFiltering,Block,Potentially malicious sites - Predefined categories,webCategory,Miscellaneous;NewlyObservedDomain;NewlyRegisteredDomain;ParkedDomains,WebCategories,No,,Yes
 Online Ads-WebCategories-Block,WebContentFiltering,Block,Predefined category: Online Ads,webCategory,Advertising,WebCategories,No,,Yes
 GitHub Copilot-Application-Allow,WebContentFiltering,Allow,Application object: GitHub Copilot,FQDN,PLACEHOLDER_APPLICATION_GitHub Copilot,Application,Yes,Application object 'GitHub Copilot' requires manual mapping to destinations,No
 ```
@@ -1417,8 +1690,8 @@ GitHub Copilot-Application-Allow,WebContentFiltering,Allow,Application object: G
 
 ```csv
 SecurityProfileName,SecurityProfilePriority,EntraGroups,EntraUsers,PolicyLinks,Description,Provision,Notes
-SecurityProfile-All-Users,20,Replace_with_All_IA_Users_Group,,Whitelist URLs-Allow;Online Ads-WebCategories-Block;Block Malware Download and Upload-WebCategories-Block,Aggregated from 15 real-time protection policies,Yes,"Block Advertisements, Whitelist URLs, Block Malware Download and Upload, Block Access To ITAR Restricted Countries, Allow Sanctioned Web Apps, Block Risky Website, Block Unsanctioned Web Apps, Blacklist Category, Block Unsanctioned Cloud Storage Software, Allow URL for Malware Detection, Block Unsanctioned Remote Access Software, Concur Malicious Domains, Blacklist Compromised Websites, Blacklist URLs"
-SecurityProfile-001,30,APP Finance Users,user1@contoso.com;user2@contoso.com,Trello URLs-Allow;Block Trello Usage-WebCategories-Block,Aggregated from 2 real-time protection policies,Yes,"Whitelist Trello App, Block Trello Usage"
+SecurityProfile-All-Users,20,Replace_with_All_IA_Users_Group,,Whitelist URLs-Allow;Online Ads-WebCategories-Block;Potentially malicious sites-WebCategories-Block,Aggregated from 15 real-time protection policies,Yes,"Block Advertisements, Whitelist URLs, Block Malware Download and Upload, Block Access To ITAR Restricted Countries, Allow Sanctioned Web Apps, Block Risky Website, Block Unsanctioned Web Apps, Blacklist Category, Block Unsanctioned Cloud Storage Software, Allow URL for Malware Detection, Block Unsanctioned Remote Access Software, Concur Malicious Domains, Blacklist Compromised Websites, Blacklist URLs"
+SecurityProfile-001,30,APP Finance Users,user1@contoso.com;user2@contoso.com,Trello URLs-Allow;Trello-WebCategories-Block,Aggregated from 2 real-time protection policies,Yes,"Whitelist Trello App, Block Trello Usage"
 ```
 
 ---
