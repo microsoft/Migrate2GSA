@@ -67,7 +67,7 @@ This section describes the structure and naming conventions used when converting
 **EIA Rule Types:**
 - `FQDN` - Fully qualified domain names (e.g., `*.example.com`, `site.com`)
 - `URL` - URLs with paths or specific patterns (e.g., `*.domain.com/path`)
-- `ipAddress` - IP addresses (IPv4 only, no CIDR ranges, no ports)
+- `ipAddress` - IP addresses (IPv4 only, no CIDR ranges, no ports) - **Not yet supported in EIA**
 - `webCategory` - GSA predefined web categories (e.g., `SocialNetworking`, `Gambling`)
 
 **EIA Security Profiles:**
@@ -113,7 +113,7 @@ This section describes the structure and naming conventions used when converting
 
 **Real-time Protection Policy Conversion:**
 - Policies referencing custom categories → link to appropriate custom category policies based on action
-- Policies referencing predefined categories → create "RuleName-WebCategories-[Action]" policy
+- Policies referencing predefined categories → create "[RuleName]-WebCategories-[Action]" policy (using RT policy's ruleName)
 - Policies referencing applications → flagged for review (no direct mapping)
 - Multiple policies assigned to same users/groups → aggregated into single security profile
 
@@ -155,7 +155,7 @@ This section describes the structure and naming conventions used when converting
 ### 1. real_time_protection_policies.json
 **Source:** Netskope API/Export  
 **Required:** Yes  
-**Default Path:** `real_time_protection_policies.json` (in script root directory)
+**Default Path:** None (must be provided via parameter)
 
 #### Description
 Contains all Real-time Protection policies configured in Netskope, including policy assignments, actions, and application/category references.
@@ -211,7 +211,7 @@ Contains all Real-time Protection policies configured in Netskope, including pol
 ### 2. url_lists.json
 **Source:** Netskope API/Export  
 **Required:** Yes  
-**Default Path:** `url_lists.json` (in script root directory)
+**Default Path:** None (must be provided via parameter)
 
 #### Description
 Contains all URL lists with their destinations and type information.
@@ -241,7 +241,7 @@ Contains all URL lists with their destinations and type information.
 ### 3. custom_categories.json
 **Source:** Netskope API/Export  
 **Required:** Yes  
-**Default Path:** `custom_categories.json` (in script root directory)
+**Default Path:** None (must be provided via parameter)
 
 #### Description
 Contains all custom web categories including inclusions, exclusions, and predefined category references.
@@ -282,59 +282,45 @@ Contains all custom web categories including inclusions, exclusions, and predefi
 | `name` | string | Category name | Used for policy naming and lookups |
 | `data.inclusion` | array | URL List references to include | Resolve via URL Lists lookup |
 | `data.exclusion` | array | URL List references to exclude | Resolve via URL Lists lookup |
-| `data.categories` | array | Predefined category references | Map using NSWG2EIA-CategoryMappings.json |
+| `data.categories` | array | Predefined category references | Map using NSWG2EIA-CategoryMappings.csv |
 
 #### Processing Rules
 
 1. **Inclusion Processing:**
-   - Resolve each URL list reference by ID
-   - Combine all destinations from all referenced URL lists
-   - Process predefined categories from `categories` array
-   - If any URL list has type "regex", flag entire custom category for review
-   - Create TWO policies:
-     - `"CategoryName-Inclusions-Allow"` - For RT Allow actions
-     - `"CategoryName-Inclusions-Block"` - For RT Block actions
+   - Collect URL list IDs from `inclusion` array for tracking
+   - Track references to URL list policies created in Phase 2.1
+   - RT policies will link to appropriate URL list policies based on action
 
 2. **Exclusion Processing:**
-   - Resolve each URL list reference by ID
-   - Combine all exclusion destinations
-   - Create TWO policies (only if exclusions exist):
-     - `"CategoryName-Exclusions-Allow"` - For RT Block actions (INVERSE)
-     - `"CategoryName-Exclusions-Block"` - For RT Allow actions (INVERSE)
-   - Exclusions receive opposite action from RT policy
+   - Collect URL list IDs from `exclusion` array for tracking
+   - Track references to URL list policies created in Phase 2.1
+   - RT policies will link to opposite URL list policies (INVERSE action)
 
 3. **Predefined Categories:**
+   - Process predefined categories from `categories` array
    - Map each category using mapping file
-   - Add as webCategory rules to inclusion policies (both Allow and Block variants)
+   - Create TWO web content filtering policies (only if predefined categories exist):
+     - `"CategoryName-WebCategories-Allow"` - For RT Allow actions
+     - `"CategoryName-WebCategories-Block"` - For RT Block actions
+   - Each policy contains a single webCategory rule with all mapped GSA categories
 
-### 4. NSWG2EIA-CategoryMappings.json
+### 4. NSWG2EIA-CategoryMappings.csv
 **Source:** Manual configuration file (maintained by user)  
 **Required:** Yes  
-**Default Path:** `NSWG2EIA-CategoryMappings.json` (in script root directory)
+**Default Path:** None (must be provided via parameter)
 
 #### Description
 Provides mapping between Netskope predefined web categories and Microsoft GSA (Global Secure Access) web categories.
 
-#### Schema
+#### Format
+CSV file with header row and two columns:
 
-```json
-{
-  "LastUpdated": "2025-11-12",
-  "MappingData": [
-    {
-      "NSWGCategory": "Social",
-      "NSWGDescription": "Social networking sites",
-      "ExampleSites": "facebook.com, twitter.com",
-      "GSACategory": "SocialNetworking",
-      "MappingNotes": "Direct mapping to GSA SocialNetworking category"
-    },
-    {
-      "NSWGCategory": "Cloud Storage",
-      "GSACategory": "CloudStorage",
-      "MappingNotes": "Maps to GSA CloudStorage category"
-    }
-  ]
-}
+```csv
+NSWGCategory,GSACategory
+Social,SocialNetworking
+Cloud Storage,CloudStorage
+Streaming Media,StreamingMedia
+Business and Economy,Business
 ```
 
 #### Field Descriptions
@@ -342,19 +328,22 @@ Provides mapping between Netskope predefined web categories and Microsoft GSA (G
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `NSWGCategory` | string | Yes | Netskope category name (matches `application` or `categories[].name`) |
-| `NSWGDescription` | string | No | Category description for reference |
-| `ExampleSites` | string | No | Sample sites for documentation |
-| `GSACategory` | string | Yes | Target GSA category name |
-| `MappingNotes` | string | No | Mapping rationale |
+| `GSACategory` | string | Yes | Target GSA category name (leave empty or use "Unmapped" for unmapped categories) |
 
 #### Processing Rules
 
-1. **Lookup:** For each predefined category reference, find matching `NSWGCategory`
-2. **Unmapped Categories:**
+1. **File Loading:**
+   - Import CSV file using `Import-Csv`
+   - Build hashtable with `NSWGCategory` as key
+
+2. **Lookup:** For each predefined category reference, find matching `NSWGCategory`
+
+3. **Unmapped Categories:**
    - If `GSACategory` is null, blank, or "Unmapped": use placeholder format
    - Placeholder: `"UNMAPPED:[NSWGCategory]"`
    - Set `ReviewNeeded` = "Yes" in output
-3. **Mapped Categories:**
+
+4. **Mapped Categories:**
    - Use the `GSACategory` value
    - Set `ReviewNeeded` = "No" in output
 
@@ -403,7 +392,7 @@ Contains all web content filtering policies including those from custom categori
 - `FQDN` - Fully qualified domain names
 - `URL` - URLs with paths or wildcards in domain
 - `webCategory` - GSA web category references
-- `ipAddress` - IP addresses (no CIDR, no ports)
+- `ipAddress` - IP addresses (not yet supported in EIA - flagged for review)
 
 #### RuleDestinations Field
 - Semicolon-separated list of destinations
@@ -418,6 +407,7 @@ Contains all web content filtering policies including those from custom categori
   - Unmapped categories require manual mapping
   - Application objects require manual mapping
   - Alert/User Alert actions require review of coaching templates
+  - IP addresses not yet supported in EIA
 
 ### 2. Security Profiles CSV
 **Filename:** `[yyyyMMdd_HHmmss]_EIA_SecurityProfiles.csv`
@@ -464,10 +454,16 @@ Contains security profile definitions aggregated by user/group assignments. Mult
 
 #### PolicyLinks Field
 - Semicolon-separated list of PolicyName values
+- During aggregation (Phase 3.3): stored without priority suffixes (e.g., `Whitelist URLs-Allow;Online Ads-Block`)
+- During CSV export (Phase 4.2): priority suffixes added in format `PolicyName:Priority` (e.g., `Whitelist URLs-Allow:100;Online Ads-Block:200`)
+- Priorities start at 100 and increment by 100 for each policy
+- Policy order determines priority assignment (lower number = higher priority):
+  1. Allow policies (alphabetically sorted)
+  2. Block policies (alphabetically sorted)
 - Includes custom category policies (with -Allow or -Block based on rule action)
-- Includes predefined category policies (RuleName-WebCategories-[Action])
-- Includes application policies (RuleName-Application-[Action])
-- Example: `Whitelist URLs-Allow;Online Ads-Block;GitHub Copilot-Application-Allow`
+- Includes predefined category policies ([RuleName]-WebCategories-[Action], where RuleName is from RT policy)
+- Includes application policies ([RuleName]-Application-[Action], where RuleName is from RT policy)
+- Example in CSV: `Whitelist URLs-Allow:100;Custom Category-Allow:200;Online Ads-Block:300;GitHub Copilot-Application-Block:400`
 
 #### Notes Field
 - Comma-separated list of all real-time protection policy `ruleName` values that were aggregated
@@ -503,8 +499,8 @@ $logPath = Join-Path $OutputBasePath "${timestamp}_Convert-NSWG2EIA.log"
 3. Load `custom_categories.json`
    - Validate JSON structure (handle nested data.data structure)
    - Fatal error if file missing or invalid
-4. Load `NSWG2EIA-CategoryMappings.json`
-   - Validate JSON structure
+4. Load `NSWG2EIA-CategoryMappings.csv`
+   - Validate CSV structure
    - Fatal error if file missing or invalid
 
 #### 1.3 Build Lookup Tables
@@ -512,7 +508,7 @@ $logPath = Join-Path $OutputBasePath "${timestamp}_Convert-NSWG2EIA.log"
 ```powershell
 # Category mappings for predefined categories
 $categoryMappingsHashtable = @{}
-foreach ($mapping in $categoryMappings.MappingData) {
+foreach ($mapping in $categoryMappings) {
     $categoryMappingsHashtable[$mapping.NSWGCategory] = $mapping
 }
 
@@ -632,6 +628,9 @@ foreach ($urlList in $urlLists) {
                 for ($i = 0; $i -lt $splits.Count; $i++) {
                     $ruleName = if ($i -eq 0) { "IPs" } else { "IPs-$($i + 1)" }
                     
+                    # IP addresses are not yet supported in EIA
+                    $ipReviewDetails = if ($hasRegex) { "$reviewDetails; IP addresses not yet supported in EIA" } else { "IP addresses not yet supported in EIA" }
+                    
                     $policyEntry = [PSCustomObject]@{
                         PolicyName = $policyName
                         PolicyType = "WebContentFiltering"
@@ -640,9 +639,9 @@ foreach ($urlList in $urlLists) {
                         RuleType = $destType
                         RuleDestinations = ($splits[$i] -join ';')
                         RuleName = $ruleName
-                        ReviewNeeded = if ($hasRegex) { "Yes" } else { "No" }
-                        ReviewDetails = $reviewDetails
-                        Provision = if ($hasRegex) { "No" } else { "Yes" }
+                        ReviewNeeded = "Yes"
+                        ReviewDetails = $ipReviewDetails
+                        Provision = "No"
                     }
                     [void]$policies.Add($policyEntry)
                 }
@@ -1146,15 +1145,29 @@ if ($removedPolicies -gt 0) {
 #### 4.1 Export Policies CSV
 ```powershell
 $policiesCsvPath = Join-Path $OutputBasePath "${timestamp}_EIA_Policies.csv"
-=== CONVERSION SUMMARY ===
-Total real-time protection policies loaded: X
-Web policies processed (enabled, non-NPA, no app tags): Y
-Policies skipped (disabled): Z
-Policies skipped (NPA): A
-Policies skipped (app_tags filtering): A2
+$policies | Export-Csv -Path $policiesCsvPath -NoTypeInformation -Encoding utf8BOM
+Write-LogMessage "Exported $($policies.Count) policies to: $policiesCsvPath" -Level "INFO"
+```
 
-Custom categories processed: BBasePath "${timestamp}_EIA_SecurityProfiles.csv"
-$securityProfiles | Export-Csv -Path $spCsvPath -NoTypeInformation -Encoding utf8BOM
+#### 4.2 Export Security Profiles CSV with Priority Suffixes
+```powershell
+$spCsvPath = Join-Path $OutputBasePath "${timestamp}_EIA_SecurityProfiles.csv"
+
+# Add priority suffixes to policy links during export
+$securityProfilesForExport = $securityProfiles | ForEach-Object {
+    $profile = $_.PSObject.Copy()
+    $policyLinks = $_.PolicyLinks -split ';'
+    $formattedLinks = @()
+    $linkPriority = 100
+    foreach ($link in $policyLinks) {
+        $formattedLinks += "${link}:${linkPriority}"
+        $linkPriority += 100
+    }
+    $profile.PolicyLinks = $formattedLinks -join ';'
+    $profile
+}
+
+$securityProfilesForExport | Export-Csv -Path $spCsvPath -NoTypeInformation -Encoding utf8BOM
 Write-LogMessage "Exported $($securityProfiles.Count) security profiles to: $spCsvPath" -Level "INFO"
 ```
 
@@ -1203,16 +1216,18 @@ Output files:
 ## Function Parameters
 
 ### Required Parameters
-None (all have defaults)
+
+| Parameter | Type | Description | Validation |
+|-----------|------|-------------|------------|
+| RealTimeProtectionPoliciesPath | string | Path to policies file | ValidateScript - file must exist |
+| UrlListsPath | string | Path to URL lists file | ValidateScript - file must exist |
+| CustomCategoriesPath | string | Path to custom categories file | ValidateScript - file must exist |
+| CategoryMappingsPath | string | Path to mappings CSV file | ValidateScript - file must exist |
 
 ### Optional Parameters
 
 | Parameter | Type | Default | Description | Validation |
 |-----------|------|---------|-------------|------------|
-| RealTimeProtectionPoliciesPath | string | `real_time_protection_policies.json` | Path to policies file | ValidateScript - file must exist |
-| UrlListsPath | string | `url_lists.json` | Path to URL lists file | ValidateScript - file must exist |
-| CustomCategoriesPath | string | `custom_categories.json` | Path to custom categories file | ValidateScript - file must exist |
-| CategoryMappingsPath | string | `NSWG2EIA-CategoryMappings.json` | Path to mappings file | ValidateScript - file must exist |
 | OutputBasePath | string | `$PWD` | Output directory for CSV and log files | ValidateScript - directory must exist |
 | EnableDebugLogging | switch | `false` | Enable DEBUG level logging | None |
 
@@ -1221,33 +1236,33 @@ None (all have defaults)
 ```powershell
 [CmdletBinding(SupportsShouldProcess = $false)]
 param(
-    [Parameter(HelpMessage = "Path to Netskope Real-time Protection Policies JSON export")]
+    [Parameter(Mandatory = $true, HelpMessage = "Path to Netskope Real-time Protection Policies JSON export")]
     [ValidateScript({
         if (Test-Path $_ -PathType Leaf) { return $true }
         else { throw "File not found: $_" }
     })]
-    [string]$RealTimeProtectionPoliciesPath = (Join-Path $PWD "real_time_protection_policies.json"),
+    [string]$RealTimeProtectionPoliciesPath,
     
-    [Parameter(HelpMessage = "Path to Netskope URL Lists JSON export")]
+    [Parameter(Mandatory = $true, HelpMessage = "Path to Netskope URL Lists JSON export")]
     [ValidateScript({
         if (Test-Path $_ -PathType Leaf) { return $true }
         else { throw "File not found: $_" }
     })]
-    [string]$UrlListsPath = (Join-Path $PWD "url_lists.json"),
+    [string]$UrlListsPath,
     
-    [Parameter(HelpMessage = "Path to Netskope Custom Categories JSON export")]
+    [Parameter(Mandatory = $true, HelpMessage = "Path to Netskope Custom Categories JSON export")]
     [ValidateScript({
         if (Test-Path $_ -PathType Leaf) { return $true }
         else { throw "File not found: $_" }
     })]
-    [string]$CustomCategoriesPath = (Join-Path $PWD "custom_categories.json"),
+    [string]$CustomCategoriesPath,
     
-    [Parameter(HelpMessage = "Path to NSWG to EIA category mappings JSON file")]
+    [Parameter(Mandatory = $true, HelpMessage = "Path to NSWG to EIA category mappings CSV file")]
     [ValidateScript({
         if (Test-Path $_ -PathType Leaf) { return $true }
         else { throw "File not found: $_" }
     })]
-    [string]$CategoryMappingsPath = (Join-Path $PWD "NSWG2EIA-CategoryMappings.json"),
+    [string]$CategoryMappingsPath,
     
     [Parameter(HelpMessage = "Base directory for output files")]
     [ValidateScript({
@@ -1265,15 +1280,32 @@ param(
 
 ## Internal Helper Functions
 
-### Functions to Reuse from Convert-ZIA2EIA
+### Module Structure
 
-The following helper functions can be reused directly from `Convert-ZIA2EIA.ps1`:
+This function uses shared internal functions from `internal/functions/`:
+- **Existing shared functions** are used directly (e.g., `Write-LogMessage`)
+- **New shared destination processing functions** should be created as individual files in `internal/functions/` for reuse across multiple conversion scripts
+- **Conversion-specific helper functions** are defined within `Convert-NSWG2EIA.ps1`
 
-1. **Get-DestinationType** - Classify destination as URL, FQDN, IPv4, or IPv6
-2. **Get-BaseDomain** - Extract base domain for grouping
-3. **Test-ValidIPv4Address** - Validate IPv4 address format
-4. **Split-ByCharacterLimit** - Split destination arrays by 300-char limit
-5. **ConvertTo-CleanDestination** - Clean and normalize destinations
+### Shared Internal Functions (Use Directly)
+
+**Existing Functions:**
+- `Write-LogMessage` - For all logging operations (already exists)
+
+**New Shared Functions to Create (Individual Files in `internal/functions/`):**
+
+These destination processing functions should be extracted from `Convert-ZIA2EIA.ps1` and placed in separate files for reuse by both ZIA2EIA and NSWG2EIA conversions:
+
+1. **`Get-DestinationType.ps1`** - Classify destination as URL, FQDN, IPv4, or IPv6
+2. **`Get-BaseDomain.ps1`** - Extract base domain for grouping
+3. **`Test-ValidIPv4Address.ps1`** - Validate IPv4 address format
+4. **`Split-ByCharacterLimit.ps1`** - Split destination arrays by 300-char limit
+5. **`ConvertTo-CleanDestination.ps1`** - Clean and normalize destinations
+
+After creating these shared functions:
+- Update `Convert-ZIA2EIA.ps1` to use the shared functions instead of local copies
+- Implement `Convert-NSWG2EIA.ps1` to use these shared functions directly
+- Both conversion scripts will reference the same single source of truth for destination processing
 
 ### Functions to Create (New)
 
@@ -1382,7 +1414,8 @@ Update statistics throughout processing and display in Phase 4 summary.
 ### Non-Fatal Errors (log and continue)
 - URL list reference not found
 - Invalid destination format
-- IPv6 addresses (not supported)
+- IPv4 addresses (not yet supported - flag for review)
+- IPv6 addresses (not supported - skip)
 - Regex URL lists (flag for review)
 - Unmapped predefined categories (flag for review)
 - Application objects (flag for review)
@@ -1399,15 +1432,16 @@ Update statistics throughout processing and display in Phase 4 summary.
 ## Known Limitations
 
 1. **Regex URL Lists:** Not supported in EIA - policies created but flagged for manual review with PolicyAction=Block
-2. **IPv6 Addresses:** Not supported - logged and skipped
-3. **Application Objects:** No automatic mapping to web categories - requires manual review
-4. **Application Tag Filtering:** Not supported - policies with app_tags other than "Any" are skipped
-5. **DLP Profiles:** Not converted (profile field ignored)
-6. **Activity Constraints:** Not converted (activity field logged but not processed)
-7. **Source Criteria:** Not converted (sourceIP, srcCountry, etc. ignored)
-8. **300-Character Limit:** Applies to FQDN, URL, and ipAddress rule destinations (not webCategory)
-9. **Duplicate URL Lists:** URL lists appearing in both inclusion and exclusion arrays of same custom category require manual review
-10. **Unreferenced Policies:** URL list and custom category policies not linked by any RT policy are automatically removed
+2. **IP Addresses (IPv4):** Not yet supported in EIA - policies created but flagged for manual review with ReviewNeeded=Yes, Provision=No
+3. **IPv6 Addresses:** Not supported - logged and skipped
+4. **Application Objects:** No automatic mapping to web categories - requires manual review
+5. **Application Tag Filtering:** Not supported - policies with app_tags other than "Any" are skipped
+6. **DLP Profiles:** Not converted (profile field ignored)
+7. **Activity Constraints:** Not converted (activity field logged but not processed)
+8. **Source Criteria:** Not converted (sourceIP, srcCountry, etc. ignored)
+9. **300-Character Limit:** Applies to FQDN, URL, and ipAddress rule destinations (not webCategory)
+10. **Duplicate URL Lists:** URL lists appearing in both inclusion and exclusion arrays of same custom category require manual review
+11. **Unreferenced Policies:** URL list and custom category policies not linked by any RT policy are automatically removed
 
 ---
 
@@ -1415,17 +1449,20 @@ Update statistics throughout processing and display in Phase 4 summary.
 
 ### Example 1: Basic Conversion
 ```powershell
-Convert-NSWG2EIA
+Convert-NSWG2EIA -RealTimeProtectionPoliciesPath "real_time_protection_policies.json" `
+                 -UrlListsPath "url_lists.json" `
+                 -CustomCategoriesPath "custom_categories.json" `
+                 -CategoryMappingsPath "NSWG2EIA-CategoryMappings.csv"
 ```
 
-Converts Netskope configuration using default file paths in current directory.
+Converts Netskope configuration using files in current directory with default output path.
 
 ### Example 2: Custom Paths
 ```powershell
 Convert-NSWG2EIA -RealTimeProtectionPoliciesPath "C:\Netskope\policies.json" `
                  -UrlListsPath "C:\Netskope\url_lists.json" `
                  -CustomCategoriesPath "C:\Netskope\custom_categories.json" `
-                 -CategoryMappingsPath "C:\Mappings\NSWG2EIA-CategoryMappings.json" `
+                 -CategoryMappingsPath "C:\Mappings\NSWG2EIA-CategoryMappings.csv" `
                  -OutputBasePath "C:\Output"
 ```
 
@@ -1433,7 +1470,11 @@ Converts using specified paths for all files.
 
 ### Example 3: Debug Logging
 ```powershell
-Convert-NSWG2EIA -EnableDebugLogging
+Convert-NSWG2EIA -RealTimeProtectionPoliciesPath "real_time_protection_policies.json" `
+                 -UrlListsPath "url_lists.json" `
+                 -CustomCategoriesPath "custom_categories.json" `
+                 -CategoryMappingsPath "NSWG2EIA-CategoryMappings.csv" `
+                 -EnableDebugLogging
 ```
 
 Converts with detailed debug logging enabled.
@@ -1510,11 +1551,12 @@ Converts with detailed debug logging enabled.
 - "GitHub Copilot" = application object
 
 **Expected Output:**
-- Security profile with policy links (ordered: Allow first, then Block):
-  1. "Whitelist URLs-Allow" (from custom category exclusion - INVERSE)
-  2. "Block Multiple Applications-WebCategories-Block" (for Online Ads predefined category)
-  3. "GitHub Copilot-Application-Block" (flagged for review)
-  4. "Potentially malicious sites-WebCategories-Block" (custom category predefined categories)
+- Security profile with policy links (ordered: Allow first alphabetically, then Block alphabetically) with priority suffixes:
+  1. "Whitelist URLs-Allow:100" (from custom category exclusion - INVERSE)
+  2. "Block Multiple Applications-WebCategories-Block:200" (for Online Ads predefined category - using RT policy's ruleName "Block Multiple Applications")
+  3. "GitHub Copilot-Application-Block:300" (flagged for review)
+  4. "Potentially malicious sites-WebCategories-Block:400" (custom category predefined categories)
+- Note: Block policies are sorted alphabetically: "Block Multiple Applications..." comes before "GitHub Copilot..." and "Potentially malicious sites..."
 
 ### Scenario 6: Policy Aggregation - All Users
 **Input:**
@@ -1590,6 +1632,46 @@ Converts with detailed debug logging enabled.
 
 ---
 
+## Sample Files
+
+Create sample input files in `Samples/NSWG2EIA/` directory:
+
+1. **sample_real_time_protection_policies.rename_to_json** - Representative RT policies showing:
+   - Policies with custom category references
+   - Policies with predefined category references
+   - Policies with application objects
+   - Policies with "All" user assignment
+   - Policies with specific user/group assignments
+   - Policies with Alert/User Alert actions
+   - Disabled policies
+   - NPA policies (accessMethod = "Client")
+
+2. **sample_url_lists.rename_to_json** - Representative URL lists showing:
+   - Exact type URL lists with FQDNs
+   - Exact type URL lists with URLs (with paths)
+   - Exact type URL lists with IP addresses
+   - Regex type URL lists
+
+3. **sample_custom_categories.rename_to_json** - Representative custom categories showing:
+   - Category with predefined categories only
+   - Category with URL list inclusions only
+   - Category with URL list exclusions only
+   - Category with both predefined categories and URL lists
+   - Category with URL lists in both inclusion and exclusion arrays (duplicate)
+
+4. **sample_NSWG2EIA-CategoryMappings.rename_to_csv** - Sample mapping file with:
+   - Common mapped predefined categories
+   - Unmapped categories (blank or "Unmapped" GSACategory)
+
+5. **README.md** - Documentation explaining:
+   - How to use the sample files
+   - File naming conventions (rename_to_json/csv)
+   - Expected conversion results
+
+Note: Do not create sample output files - these will be generated by running the conversion.
+
+---
+
 ## Version History
 
 | Version | Date | Author | Changes |
@@ -1607,67 +1689,29 @@ Converts with detailed debug logging enabled.
 
 ---
 
-## Appendix A: Sample NSWG2EIA-CategoryMappings.json
+## Appendix A: Sample NSWG2EIA-CategoryMappings.csv
 
-```json
-{
-  "LastUpdated": "2025-11-12",
-  "Version": "1.0",
-  "Description": "Mapping between Netskope predefined categories and Microsoft Global Secure Access web categories",
-  "MappingData": [
-    {
-      "NSWGCategory": "Social",
-      "NSWGDescription": "Social networking sites",
-      "ExampleSites": "facebook.com, twitter.com, linkedin.com",
-      "GSACategory": "SocialNetworking",
-      "MappingNotes": "Direct mapping to GSA SocialNetworking category"
-    },
-    {
-      "NSWGCategory": "Cloud Storage",
-      "NSWGDescription": "Cloud storage and file sharing",
-      "ExampleSites": "dropbox.com, box.com",
-      "GSACategory": "CloudStorage",
-      "MappingNotes": "Direct mapping to GSA CloudStorage category"
-    },
-    {
-      "NSWGCategory": "Online Ads",
-      "NSWGDescription": "Online advertising and tracking",
-      "GSACategory": "Advertising",
-      "MappingNotes": "Maps to GSA Advertising category"
-    },
-    {
-      "NSWGCategory": "Generative AI",
-      "NSWGDescription": "Generative AI applications",
-      "ExampleSites": "openai.com, anthropic.com",
-      "GSACategory": "ArtificialIntelligence",
-      "MappingNotes": "Maps to GSA AI category"
-    },
-    {
-      "NSWGCategory": "Security Risk",
-      "NSWGDescription": "Security threats and malicious sites",
-      "GSACategory": "Malicious",
-      "MappingNotes": "Maps to GSA Malicious category"
-    },
-    {
-      "NSWGCategory": "Gambling",
-      "NSWGDescription": "Gambling and betting sites",
-      "GSACategory": "Gambling",
-      "MappingNotes": "Direct mapping"
-    },
-    {
-      "NSWGCategory": "Adult Content - Pornography",
-      "NSWGDescription": "Adult and pornographic content",
-      "GSACategory": "AdultContent",
-      "MappingNotes": "Maps to GSA AdultContent category"
-    },
-    {
-      "NSWGCategory": "Newly Registered Domain",
-      "NSWGDescription": "Recently registered domains",
-      "GSACategory": "Unmapped",
-      "MappingNotes": "No direct GSA equivalent - requires manual review"
-    }
-  ]
-}
+```csv
+NSWGCategory,GSACategory
+Social,SocialNetworking
+Cloud Storage,CloudStorage
+Streaming Media,StreamingMedia
+Business and Economy,Business
+News and Media,News
+Advertisements,Advertising
+Online Ads,Advertising
+Gambling,Gambling
+Adult Content,AdultContent
+Adult Content - Pornography,AdultContent
+Malware,Malware
+Phishing and Deception,Phishing
+Security Risk,Malicious
+Potentially Unwanted Software,PotentiallyUnwantedSoftware
+Miscellaneous,Unmapped
+Newly Observed Domain,NewlyObservedDomain
+Newly Registered Domain,Unmapped
+Parked Domains,ParkedDomains
+Generative AI,ArtificialIntelligence
 ```
 
 ---
