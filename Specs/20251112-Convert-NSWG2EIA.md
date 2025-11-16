@@ -1284,28 +1284,29 @@ param(
 
 This function uses shared internal functions from `internal/functions/`:
 - **Existing shared functions** are used directly (e.g., `Write-LogMessage`)
-- **New shared destination processing functions** should be created as individual files in `internal/functions/` for reuse across multiple conversion scripts
+- **Shared destination processing functions** (extracted from Convert-ZIA2EIA.ps1) are available for reuse
 - **Conversion-specific helper functions** are defined within `Convert-NSWG2EIA.ps1`
 
 ### Shared Internal Functions (Use Directly)
 
-**Existing Functions:**
-- `Write-LogMessage` - For all logging operations (already exists)
+**Existing Shared Functions:**
+- `Write-LogMessage` - For all logging operations
 
-**New Shared Functions to Create (Individual Files in `internal/functions/`):**
+**Shared Destination Processing Functions (Already Extracted - Reuse Directly):**
 
-These destination processing functions should be extracted from `Convert-ZIA2EIA.ps1` and placed in separate files for reuse by both ZIA2EIA and NSWG2EIA conversions:
+These functions have been extracted from `Convert-ZIA2EIA.ps1` and are available in `internal/functions/` for reuse by both ZIA2EIA and NSWG2EIA conversions:
 
 1. **`Get-DestinationType.ps1`** - Classify destination as URL, FQDN, IPv4, or IPv6
 2. **`Get-BaseDomain.ps1`** - Extract base domain for grouping
 3. **`Test-ValidIPv4Address.ps1`** - Validate IPv4 address format
 4. **`Split-ByCharacterLimit.ps1`** - Split destination arrays by 300-char limit
-5. **`ConvertTo-CleanDestination.ps1`** - Clean and normalize destinations
+5. **`ConvertTo-CleanDestination.ps1`** - Clean and normalize destinations (includes ZScaler wildcard conversion)
 
-After creating these shared functions:
-- Update `Convert-ZIA2EIA.ps1` to use the shared functions instead of local copies
-- Implement `Convert-NSWG2EIA.ps1` to use these shared functions directly
-- Both conversion scripts will reference the same single source of truth for destination processing
+**Status:**
+- ✅ Functions extracted from Convert-ZIA2EIA.ps1 (completed 2025-11-17)
+- ✅ Convert-ZIA2EIA.ps1 updated to use shared functions
+- ⏳ Convert-NSWG2EIA.ps1 should use these shared functions directly
+- Both conversion scripts reference the same single source of truth for destination processing
 
 ### Functions to Create (New)
 
