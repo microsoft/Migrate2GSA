@@ -1,0 +1,70 @@
+name,displayName
+AlcoholAndTobacco,Alcohol And Tobacco
+ArtificialIntelligence,Artificial Intelligence
+ChildAbuseImages,Child Abuse Images
+CriminalActivity,Criminal Activity
+Cheating,Cheating
+CryptocurrencyMining,Cryptocurrency Mining
+DatingAndPersonals,Dating And Personals
+Gambling,Gambling
+Hacking,Hacking
+HateAndIntolerance,Hate And Intolerance
+IllegalDrug,Illegal Drug
+IllegalSoftware,Illegal Software
+LingerieAndSwimsuits,Lingerie And Swimsuits
+Marijuana,Marijuana
+Nudity,Nudity
+PornographyAndSexuallyExplicit,Pornography And Sexually Explicit
+RemoteAccess,Remote Access
+SelfHarm,Self Harm
+SexEducation,Sex Education
+Tasteless,Tasteless
+Violence,Violence
+Weapons,Weapons
+ImageSharing,Image Sharing
+PeerToPeer,Peer To Peer
+StreamingMediaAndDownloads,Streaming Media And Downloads
+DownloadSites,Download Sites
+Entertainment,Entertainment
+WebMeetings,Web Meetings
+Business,Business
+CodeRepositories,Code Repositories
+ComputersAndTechnology,Computers And Technology
+Education,Education
+Finance,Finance
+ForumsAndNewsgroups,Forums And Newsgroups
+Government,Government
+HealthAndMedicine,Health And Medicine
+JobSearch,Job Search
+News,News
+NonProfitsAndNgos,Non Profits And Ngos
+PersonalSites,Personal Sites
+PrivateIPAddresses,Private IP Addresses
+ProfessionalNetworking,Professional Networking
+SearchEnginesAndPortals,Search Engines And Portals
+Translators,Translators
+WebRepositoryAndStorage,Web Repository And Storage
+WebBasedEmail,Web Based Email
+AdvertisementsAndPopUps,Advertisements And Pop Ups
+Chat,Chat
+Cults,Cults
+Games,Games
+InstantMessaging,Instant Messaging
+Shopping,Shopping
+SocialNetworking,Social Networking
+Arts,Arts
+FashionAndBeauty,Fashion And Beauty
+General,General
+HostedPaymentGateways,Hosted Payment Gateways
+LeisureAndRecreation,Leisure And Recreation
+NatureAndConservation,Nature And Conservation
+PoliticsAndLaw,Politics And Law
+RealEstate,Real Estate
+Religion,Religion
+RestaurantsAndDining,Restaurants And Dining
+Sports,Sports
+Transportation,Transportation
+Travel,Travel
+Uncategorized,Uncategorized
+ParkedDomains,Parked Domains
+NewlyRegisteredDomains,Newly Registered Domains

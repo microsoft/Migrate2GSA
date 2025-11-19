@@ -22,8 +22,8 @@ function Convert-ZIA2EIA {
         Default: url_categories.json in current directory
     
     .PARAMETER CategoryMappingsPath
-        Path to the ZIA to EIA category mappings JSON file.
-        Default: ZIA2EIA-CategoryMappings.json in current directory
+        Path to the ZIA to EIA category mappings CSV file.
+        Default: ZIA-to-GSA-CategoryMapping.csv in current directory
     
     .PARAMETER OutputBasePath
         Base directory for output CSV files and log file.
@@ -55,7 +55,7 @@ function Convert-ZIA2EIA {
         Requirements:
         - ZIA URL filtering policy JSON export
         - ZIA URL categories JSON export
-        - ZIA to EIA category mappings JSON file
+        - ZIA to EIA category mappings CSV file
         
         Known Limitations:
         - 300-character limit per Destinations field (except webCategory type)
@@ -80,12 +80,12 @@ function Convert-ZIA2EIA {
         })]
         [string]$UrlCategoriesPath = (Join-Path $PWD "url_categories.json"),
         
-        [Parameter(HelpMessage = "Path to ZIA to EIA category mappings JSON file")]
+        [Parameter(HelpMessage = "Path to ZIA to EIA category mappings CSV file")]
         [ValidateScript({
             if (Test-Path $_) { return $true }
             else { throw "File not found: $_" }
         })]
-        [string]$CategoryMappingsPath = (Join-Path $PWD "ZIA2EIA-CategoryMappings.json"),
+        [string]$CategoryMappingsPath = (Join-Path $PWD "ZIA-to-GSA-CategoryMapping.csv"),
         
         [Parameter(HelpMessage = "Base directory for output files")]
         [ValidateScript({
@@ -195,7 +195,8 @@ function Convert-ZIA2EIA {
         CustomCategoriesProcessed = 0
         CustomCategoriesSkipped = 0
         PredefinedCategoriesReferenced = 0
-        UnmappedCategories = 0
+        UnmappedCategories_MissingInFile = 0
+        UnmappedCategories_NoGSAValue = 0
         URLsClassified = 0
         FQDNsClassified = 0
         IPsClassified = 0
@@ -256,8 +257,8 @@ function Convert-ZIA2EIA {
     try {
         Write-LogMessage "Loading category mappings from: $CategoryMappingsPath" -Level "INFO" `
             -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
-        $categoryMappings = Get-Content -Path $CategoryMappingsPath -Raw | ConvertFrom-Json
-        Write-LogMessage "Loaded $($categoryMappings.MappingData.Count) category mappings" -Level "INFO" `
+        $categoryMappings = Import-Csv -Path $CategoryMappingsPath -ErrorAction Stop
+        Write-LogMessage "Loaded $($categoryMappings.Count) category mappings" -Level "INFO" `
             -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     }
     catch {
@@ -272,15 +273,7 @@ function Convert-ZIA2EIA {
     
     # Category mappings for predefined categories
     $categoryMappingsHashtable = @{}
-    foreach ($mapping in $categoryMappings.MappingData) {
-        # Skip mappings with null or empty ZIACategory
-        if ([string]::IsNullOrWhiteSpace($mapping.ZIACategory)) {
-            $gsaCategory = if ($mapping.PSObject.Properties['GSACategory']) { $mapping.GSACategory } else { "N/A" }
-            $description = if ($mapping.PSObject.Properties['Description']) { $mapping.Description } else { "N/A" }
-            Write-LogMessage "Skipping mapping with null or empty ZIACategory - GSACategory: '$gsaCategory', Description: '$description'" -Level "WARN" `
-                -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
-            continue
-        }
+    foreach ($mapping in $categoryMappings) {
         $categoryMappingsHashtable[$mapping.ZIACategory] = $mapping
     }
     
@@ -780,14 +773,20 @@ function Convert-ZIA2EIA {
             foreach ($categoryId in $predefinedCategoryRefs) {
                 $mapping = $categoryMappingsHashtable[$categoryId]
                 
-                if ($null -eq $mapping -or 
-                    [string]::IsNullOrWhiteSpace($mapping.GSACategory) -or
-                    $mapping.GSACategory -eq 'Unmapped') {
-                    
+                if ($null -eq $mapping) {
+                    # Category not found in mapping file
                     [void]$mappedCategories.Add("${categoryId}_Unmapped")
                     $hasUnmapped = $true
-                    $stats.UnmappedCategories++
-                    Write-LogMessage "Unmapped category: $categoryId" -Level "DEBUG" `
+                    $stats.UnmappedCategories_MissingInFile++
+                    Write-LogMessage "ZIA category '$categoryId' not found in mapping file" -Level "WARN" `
+                        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                }
+                elseif ([string]::IsNullOrWhiteSpace($mapping.GSACategory)) {
+                    # Mapping exists but no GSA category value
+                    [void]$mappedCategories.Add("${categoryId}_Unmapped")
+                    $hasUnmapped = $true
+                    $stats.UnmappedCategories_NoGSAValue++
+                    Write-LogMessage "ZIA category '$categoryId' has no matching GSA category (empty/null GSACategory)" -Level "WARN" `
                         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
                 }
                 else {
@@ -974,7 +973,11 @@ function Convert-ZIA2EIA {
         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "Predefined categories referenced: $($stats.PredefinedCategoriesReferenced)" -Level "INFO" `
         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
-    Write-LogMessage "Unmapped predefined categories: $($stats.UnmappedCategories)" -Level "INFO" `
+    Write-LogMessage "Unmapped predefined categories:" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "  - Missing in mapping file: $($stats.UnmappedCategories_MissingInFile)" -Level "INFO" `
+        -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "  - No matching GSA category: $($stats.UnmappedCategories_NoGSAValue)" -Level "INFO" `
         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "" -Level "INFO" `
         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging

@@ -1,0 +1,111 @@
+ZIACategory,GSACategory,Note
+OTHER_ADULT_MATERIAL,PornographyAndSexuallyExplicit,Partial match - other adult material relates to sexually explicit content
+ADULT_THEMES,PornographyAndSexuallyExplicit,Partial match - adult themes relate to sexually explicit content
+LINGERIE_BIKINI,LingerieAndSwimsuits,Exact match
+DEVELOPER_TOOLS,CodeRepositories,Partial match - developer tools relate to code repositories
+NUDITY,Nudity,Exact match
+PORNOGRAPHY,PornographyAndSexuallyExplicit,Exact match
+SEXUALITY,PornographyAndSexuallyExplicit,Partial match - sexuality content relates to sexually explicit content
+ADULT_SEX_EDUCATION,SexEducation,Partial match - adult sex education is sex education
+K_12_SEX_EDUCATION,SexEducation,Exact match - K-12 sex education is sex education
+OTHER_BUSINESS_AND_ECONOMY,Business,Partial match - business and economy relates to business
+CORPORATE_MARKETING,Business,Partial match - corporate marketing is business function
+FINANCE,Finance,Exact match
+PROFESSIONAL_SERVICES,Business,Partial match - professional services are business related
+CLASSIFIEDS,Shopping,Partial match - classifieds relate to shopping/marketplace
+OTHER_DRUGS,IllegalDrug,Partial match - other drugs relate to illegal drugs
+OTHER_EDUCATION,Education,Partial match - other education is education category
+CONTINUING_EDUCATION_COLLEGES,Education,Exact match - continuing education is education
+HISTORY,Education,Partial match - history content relates to education
+K_12,Education,Exact match - K-12 is education
+REFERENCE_SITES,Education,Partial match - reference sites relate to educational content
+SCIENCE_AND_TECHNOLOGY,ComputersAndTechnology,Partial match - science and technology relates to computers and technology
+OTHER_ENTERTAINMENT_AND_RECREATION,Entertainment,Partial match - entertainment and recreation is entertainment
+ENTERTAINMENT,Entertainment,Exact match
+TELEVISION_AND_MOVIES,Entertainment,Partial match - television and movies are entertainment
+MUSIC,Entertainment,Partial match - music is entertainment
+STREAMING_MEDIA,StreamingMediaAndDownloads,Exact match - streaming media is streaming
+RADIO_STATIONS,Entertainment,Partial match - radio is entertainment
+GAMBLING,Gambling,Exact match
+OTHER_GAMES,Games,Partial match - other games relates to games
+OTHER_GOVERNMENT_AND_POLITICS,Government,Partial match - government and politics relates to government
+GOVERNMENT,Government,Exact match
+POLITICS,PoliticsAndLaw,Partial match - politics relates to politics and law
+HEALTH,HealthAndMedicine,Exact match - health is health and medicine
+OTHER_ILLEGAL_OR_QUESTIONABLE,CriminalActivity,Partial match - illegal or questionable content relates to criminal activity
+COPYRIGHT_INFRINGEMENT,IllegalSoftware,Partial match - copyright infringement relates to illegal software
+COMPUTER_HACKING,Hacking,Exact match
+QUESTIONABLE,CriminalActivity,Partial match - questionable content relates to criminal activity
+PROFANITY,Tasteless,Partial match - profanity relates to tasteless content
+MATURE_HUMOR,Tasteless,Partial match - mature humor relates to tasteless content
+ANONYMIZER,RemoteAccess,Partial match - anonymizers relate to remote access/proxy
+OTHER_INFORMATION_TECHNOLOGY,ComputersAndTechnology,Partial match - information technology is computers and technology
+TRANSLATORS,Translators,Exact match
+IMAGE_HOST,ImageSharing,Exact match - image hosting is image sharing
+FILE_HOST,WebRepositoryAndStorage,Exact match - file hosting is web storage
+SHAREWARE_DOWNLOAD,DownloadSites,Exact match - shareware download is download sites
+WEB_BANNERS,AdvertisementsAndPopUps,Exact match - web banners are advertisements
+WEB_HOST,ComputersAndTechnology,Partial match - web hosting is technology related
+WEB_SEARCH,SearchEnginesAndPortals,Exact match - web search is search engines
+PORTALS,SearchEnginesAndPortals,Exact match - portals are search engines and portals
+SAFE_SEARCH_ENGINE,SearchEnginesAndPortals,Exact match - safe search engines are search engines
+OTHER_INTERNET_COMMUNICATION,Chat,Partial match - internet communication relates to chat/messaging
+INTERNET_SERVICES,ComputersAndTechnology,Partial match - internet services are technology related
+DISCUSSION_FORUMS,ForumsAndNewsgroups,Exact match
+ONLINE_CHAT,Chat,Exact match
+EMAIL_HOST,WebBasedEmail,Exact match - email host is web-based email
+BLOG,PersonalSites,Partial match - blogs relate to personal sites
+JOB_SEARCH,JobSearch,Exact match
+MILITANCY_HATE_AND_EXTREMISM,HateAndIntolerance,Exact match - militancy and hate is hate and intolerance
+OTHER_MISCELLANEOUS,General,Partial match - miscellaneous content is general
+NEWS_AND_MEDIA,News,Exact match - news and media is news
+OTHER_RELIGION,Religion,Partial match - other religion is religion
+TRADITIONAL_RELIGION,Religion,Exact match
+CULT,Cults,Exact match
+ALT_NEW_AGE,Religion,Partial match - alternative/new age relates to religion
+OTHER_SOCIAL_AND_FAMILY_ISSUES,General,Partial match - social and family issues are general interest
+SOCIAL_ISSUES,General,Partial match - social issues are general interest
+FAMILY_ISSUES,General,Partial match - family issues are general interest
+OTHER_SOCIETY_AND_LIFESTYLE,General,Partial match - society and lifestyle is general
+ART_CULTURE,Arts,Exact match - art and culture is arts
+ALTERNATE_LIFESTYLE,General,Partial match - alternate lifestyle is general interest
+HOBBIES_AND_LEISURE,LeisureAndRecreation,Exact match - hobbies and leisure is leisure and recreation
+DINING_AND_RESTAURANT,RestaurantsAndDining,Exact match
+ALCOHOL_TOBACCO,AlcoholAndTobacco,Exact match
+SOCIAL_NETWORKING,SocialNetworking,Exact match
+OTHER_SHOPPING_AND_AUCTIONS,Shopping,Partial match - shopping and auctions is shopping
+SPECIALIZED_SHOPPING,Shopping,Partial match - specialized shopping is shopping
+REAL_ESTATE,RealEstate,Exact match
+ONLINE_AUCTIONS,Shopping,Partial match - online auctions relate to shopping
+SPECIAL_INTERESTS,General,Partial match - special interests are general content
+SPORTS,Sports,Exact match
+TASTELESS,Tasteless,Exact match
+TRAVEL,Travel,Exact match
+VEHICLES,Transportation,Partial match - vehicles relate to transportation
+VIOLENCE,Violence,Exact match
+WEAPONS_AND_BOMBS,Weapons,Exact match - weapons and bombs is weapons
+USER_DEFINED,,No match
+OTHER_SECURITY,CriminalActivity,Partial match - security threats relate to criminal activity
+ADWARE_OR_SPYWARE,IllegalSoftware,Partial match - adware/spyware relates to illegal software
+P2P_COMMUNICATION,PeerToPeer,Exact match - P2P communication is peer to peer
+MISCELLANEOUS_OR_UNKNOWN,Uncategorized,Exact match - miscellaneous/unknown is uncategorized
+SOCIAL_ADULT,PornographyAndSexuallyExplicit,Partial match - social adult content relates to sexually explicit content
+SOCIAL_NETWORKING_GAMES,Games,Partial match - social networking games are games
+REMOTE_ACCESS,RemoteAccess,Exact match
+NEWLY_REG_DOMAINS,NewlyRegisteredDomains,Exact match
+CDN,,No match
+NON_CATEGORIZABLE,Uncategorized,Exact match - non-categorizable is uncategorized
+WEB_CONFERENCING,WebMeetings,Exact match
+ZSPROXY_IPS,,No match
+ENCR_WEB_CONTENT,,No match
+OSS_UPDATES,DownloadSites,Partial match - OS/software updates relate to download sites
+TRADING_BROKARAGE_INSURANCE,Finance,Exact match - trading/brokerage/insurance is finance
+DNS_OVER_HTTPS,,No match
+MARIJUANA,Marijuana,Exact match
+DYNAMIC_DNS,Hacking,Partial match - dynamic DNS often used for malicious activities
+MILITARY,Government,Partial match - military relates to government
+NEWLY_REVIVED_DOMAINS,NewlyRegisteredDomains,Partial match - newly revived domains similar to newly registered
+AI_ML_APPS,ArtificialIntelligence,Exact match - AI/ML apps are artificial intelligence
+FILE_CONVERTORS,ComputersAndTechnology,Partial match - file converters are technology tools
+GENERAL_AI_ML,ArtificialIntelligence,Exact match - general AI/ML is artificial intelligence
+INSURANCE,Finance,Partial match - insurance is financial services

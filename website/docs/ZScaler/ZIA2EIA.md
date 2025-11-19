@@ -19,9 +19,9 @@ The `Convert-ZIA2EIA` function converts ZScaler Internet Access (ZIA) URL filter
    - Exported from ZIA API endpoint: `/urlCategories`
    - Contains custom and predefined categories with URL/FQDN/IP lists
 
-3. **Category Mappings** (`ZIA2EIA-CategoryMappings.json`)
-   - Manual configuration file mapping ZIA predefined categories to GSA categories
-   - Template available in Samples directory
+3. **Category Mappings** (`ZIA-to-GSA-CategoryMapping.csv`)
+   - CSV file mapping ZIA predefined categories to GSA categories
+   - Sample file: `Samples/ZIA2EIA/ZIA-to-GSA-CategoryMapping.rename_to_csv`
 
 ### PowerShell Requirements
 
@@ -67,10 +67,10 @@ Path to the ZIA URL Categories JSON export file.
 - **Required**: No (uses default if not specified)
 
 ### -CategoryMappingsPath
-Path to the ZIA to EIA category mappings JSON file.
+Path to the ZIA to EIA category mappings CSV file.
 
 - **Type**: String
-- **Default**: `ZIA2EIA-CategoryMappings.json` in current directory
+- **Default**: `ZIA-to-GSA-CategoryMapping.csv` in current directory
 - **Required**: No (uses default if not specified)
 
 ### -OutputBasePath
@@ -100,7 +100,7 @@ Converts ZIA configuration using default file paths in the current directory.
 Convert-ZIA2EIA `
     -UrlFilteringPolicyPath "C:\ZIA\url_filtering_policy.json" `
     -UrlCategoriesPath "C:\ZIA\url_categories.json" `
-    -CategoryMappingsPath "C:\ZIA\mappings.json" `
+    -CategoryMappingsPath "C:\ZIA\ZIA-to-GSA-CategoryMapping.csv" `
     -OutputBasePath "C:\Output"
 ```
 Converts ZIA configuration from specified paths and saves output to C:\Output.
@@ -232,20 +232,34 @@ All cleaning operations are logged at DEBUG level.
 ## Category Mapping
 
 ### Predefined Categories
-Predefined ZIA categories are mapped to GSA categories using the mappings file:
+Predefined ZIA categories are mapped to GSA categories using a CSV file with the following structure:
 
-```json
-{
-  "ZIACategory": "OTHER_ADULT_MATERIAL",
-  "GSACategory": "AdultContent"
-}
+**CSV Format** (`ZIA-to-GSA-CategoryMapping.csv`):
+```csv
+ZIACategory,GSACategory,Note
+OTHER_ADULT_MATERIAL,PornographyAndSexuallyExplicit,Partial match - other adult material relates to sexually explicit content
+SOCIAL_NETWORKING,SocialNetworking,Exact match
+INTERNET_GAMBLING,Gambling,Exact match
 ```
 
+**Sample File**: A comprehensive mapping file is available at `Samples/ZIA2EIA/ZIA-to-GSA-CategoryMapping.rename_to_csv`
+
 ### Unmapped Categories
-Categories with no mapping are flagged:
-- `GSACategory` is null, blank, or "Unmapped"
+The function tracks two types of unmapped categories:
+
+1. **Missing in Mapping File**: ZIA category referenced in policies but not found in the CSV file
+   - Logged as: "ZIA category '[CategoryID]' not found in mapping file"
+   - Tracked in: `UnmappedCategories_MissingInFile` statistic
+
+2. **No Matching GSA Category**: Mapping exists but `GSACategory` column is empty or null
+   - Logged as: "ZIA category '[CategoryID]' has no matching GSA category (empty/null GSACategory)"
+   - Tracked in: `UnmappedCategories_NoGSAValue` statistic
+
+Both types are handled the same way:
 - Output uses placeholder format: `[ZIACategoryID]_Unmapped`
 - `ReviewNeeded` set to "Yes" in output
+- `ReviewDetails` includes "Unmapped categories found"
+- `Provision` set to "No"
 
 ## Policy Naming Conventions
 
@@ -296,7 +310,10 @@ When multiple rules have the same `order` value:
 The function tracks and logs:
 - Total rules loaded/processed/skipped
 - Custom categories processed/skipped
-- Predefined categories referenced/unmapped
+- Predefined categories referenced
+- Unmapped predefined categories (split into two types):
+  - Missing in mapping file
+  - No matching GSA category
 - URLs/FQDNs/IPs classified
 - Users/groups processed
 - Policies/security profiles created
@@ -321,13 +338,19 @@ Ensure all three input files exist in the specified paths:
 ```powershell
 Test-Path "url_filtering_policy.json"
 Test-Path "url_categories.json"
-Test-Path "ZIA2EIA-CategoryMappings.json"
+Test-Path "ZIA-to-GSA-CategoryMapping.csv"
 ```
 
-### Invalid JSON Errors
-Validate JSON syntax:
+### Invalid File Format Errors
+Validate JSON syntax for policy and categories files:
 ```powershell
 Get-Content "url_filtering_policy.json" -Raw | ConvertFrom-Json | Out-Null
+Get-Content "url_categories.json" -Raw | ConvertFrom-Json | Out-Null
+```
+
+Validate CSV format for category mappings:
+```powershell
+Import-Csv "ZIA-to-GSA-CategoryMapping.csv" | Select-Object -First 5
 ```
 
 ### Empty Output
