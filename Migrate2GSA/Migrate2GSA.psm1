@@ -19,6 +19,7 @@ Export-ModuleMember -Function @(
     'Convert-ZIA2EIA',
     'Export-NetskopeConfig',
     'Convert-NPA2EPA',
+    'Convert-NSWG2EIA',
     'Start-EntraPrivateAccessProvisioning',
     'Start-EntraInternetAccessProvisioning'
 )

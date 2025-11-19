@@ -1,0 +1,91 @@
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "2",
+      "name": "Whitelist URLs",
+      "data": {
+        "type": "exact",
+        "urls": [
+          "*.zoom.us",
+          "*.zoom.com",
+          "play.google.com",
+          "*.google-analytics.com",
+          "*.htmlmail.contoso.com.au/harbourside",
+          "*.chime.aws"
+        ]
+      }
+    },
+    {
+      "id": "5",
+      "name": "SSL Bypass URLs",
+      "data": {
+        "type": "exact",
+        "urls": [
+          "banking.contoso.com",
+          "secure.payment.com",
+          "*.finance.internal"
+        ]
+      }
+    },
+    {
+      "id": "10",
+      "name": "Malicious Domains",
+      "data": {
+        "type": "exact",
+        "urls": [
+          "malware-site.com",
+          "phishing-site.net",
+          "*.suspicious-domain.xyz"
+        ]
+      }
+    },
+    {
+      "id": "15",
+      "name": "IP Address List",
+      "data": {
+        "type": "exact",
+        "urls": [
+          "192.168.1.100",
+          "10.0.0.50",
+          "203.0.113.42"
+        ]
+      }
+    },
+    {
+      "id": "20",
+      "name": "Regex Patterns",
+      "data": {
+        "type": "regex",
+        "urls": [
+          "^https?://.*\\.evil\\..*",
+          ".*phishing.*\\.com$",
+          "^.*malware[0-9]+\\..*"
+        ]
+      }
+    },
+    {
+      "id": "25",
+      "name": "Shared URLs",
+      "data": {
+        "type": "exact",
+        "urls": [
+          "shared-site1.com",
+          "shared-site2.com",
+          "*.shared-domain.com"
+        ]
+      }
+    },
+    {
+      "id": "30",
+      "name": "Unreferenced URLs",
+      "data": {
+        "type": "exact",
+        "urls": [
+          "never-referenced.com",
+          "not-used.com"
+        ]
+      }
+    }
+  ]
+}

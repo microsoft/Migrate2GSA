@@ -1,0 +1,84 @@
+{
+  "status": "success",
+  "data": {
+    "totalCount": 6,
+    "data": [
+      {
+        "id": "10052",
+        "name": "Whitelist URLs",
+        "data": {
+          "inclusion": [
+            { "id": "2" }
+          ],
+          "exclusion": [],
+          "categories": []
+        }
+      },
+      {
+        "id": "10053",
+        "name": "Potentially malicious sites",
+        "data": {
+          "inclusion": [
+            { "id": "10" }
+          ],
+          "exclusion": [
+            { "id": "2" }
+          ],
+          "categories": [
+            { "name": "Miscellaneous" },
+            { "name": "Newly Observed Domain" },
+            { "name": "Newly Registered Domain" },
+            { "name": "Parked Domains" }
+          ]
+        }
+      },
+      {
+        "id": "10054",
+        "name": "SSL Bypass URLs",
+        "data": {
+          "inclusion": [
+            { "id": "5" }
+          ],
+          "exclusion": [],
+          "categories": []
+        }
+      },
+      {
+        "id": "10055",
+        "name": "Regex Patterns",
+        "data": {
+          "inclusion": [
+            { "id": "20" }
+          ],
+          "exclusion": [],
+          "categories": []
+        }
+      },
+      {
+        "id": "10056",
+        "name": "Test Duplicate URLs",
+        "data": {
+          "inclusion": [
+            { "id": "25" }
+          ],
+          "exclusion": [
+            { "id": "25" }
+          ],
+          "categories": []
+        }
+      },
+      {
+        "id": "10057",
+        "name": "Predefined Only Category",
+        "data": {
+          "inclusion": [],
+          "exclusion": [],
+          "categories": [
+            { "name": "Gambling" },
+            { "name": "Adult Content" }
+          ]
+        }
+      }
+    ]
+  }
+}

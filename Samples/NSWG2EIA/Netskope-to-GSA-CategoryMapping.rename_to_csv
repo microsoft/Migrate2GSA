@@ -1,0 +1,147 @@
+NSWGCategory,GSACategory,Note
+Abortion,HealthAndMedicine,Partial match - GSA doesn't have specific abortion category
+Adult Content - Other,PornographyAndSexuallyExplicit,Exact match for adult content
+Adult Content - Pornography,PornographyAndSexuallyExplicit,Exact match
+Advocacy Groups & Trade Associations,NonProfitsAndNgos,Partial match - advocacy groups align with non-profits
+Aggressive,Violence,Partial match - aggressive content relates to violence
+Alcohol,AlcoholAndTobacco,Exact match
+App Admin Console,,No match
+Application Suite,,No match
+Arts,Arts,Exact match
+Auctions & Marketplaces,Shopping,Partial match - auctions are e-commerce related
+Automotive,Transportation,Partial match - automotive relates to transportation
+Banking and Payments,Finance,Exact match - banking is financial services
+Business,Business,Exact match
+Business Intelligence and Data Analytics,Business,Partial match - BI/analytics is business category
+Business Process Management,Business,Partial match - BPM is business operations
+"Chat, IM & other communication",Chat,Exact match for chat and messaging
+Chat,Chat,Exact match
+Child Abuse,ChildAbuseImages,Exact match
+Cloud Backup,WebRepositoryAndStorage,Partial match - cloud backup is storage
+Cloud Storage,WebRepositoryAndStorage,Exact match for web storage
+Collaboration,Business,Partial match - collaboration tools are business applications
+Consumer,Shopping,Partial match - consumer sites relate to shopping
+Content Management,Business,Partial match - CMS are business tools
+Content Server,,No match
+Criminal Activities,CriminalActivity,Exact match
+Customer Relationship Management,Business,Partial match - CRM is business application
+Dating,DatingAndPersonals,Exact match
+Development Tools,CodeRepositories,Partial match - dev tools relate to code repositories
+Drugs,IllegalDrug,Exact match
+Dynamic DNS Domain,Hacking,Partial match - Dynamic DNS often used for malicious activities
+E-Commerce Tools,Shopping,Partial match - e-commerce relates to shopping
+Education,Education,Exact match
+Enterprise Resource Planning,Business,Partial match - ERP is business application
+Entertainment,Entertainment,Exact match
+Family & Parenting,General,Partial match - family content is general interest
+Fashion,FashionAndBeauty,Exact match
+File Converter,ComputersAndTechnology,Partial match - file converters are technology tools
+File Repositories,WebRepositoryAndStorage,Exact match for file storage
+File/Software Download Sites,DownloadSites,Exact match
+Finance/Accounting,Finance,Exact match
+Financial Aid & Scholarships,Education,Partial match - financial aid relates to education
+Financial News,Finance,Partial match - financial news is finance category
+Food & Drink,RestaurantsAndDining,Partial match - food content relates to dining
+Forums,ForumsAndNewsgroups,Exact match
+Gambling,Gambling,Exact match
+Games,Games,Exact match
+General,General,Exact match
+Generative AI,ArtificialIntelligence,Exact match - general AI category
+Generative AI - Code,ArtificialIntelligence,Exact match - AI code generation subcategory
+Generative AI - Content and Multimedia,ArtificialIntelligence,Exact match - AI content generation subcategory
+Generative AI - Conversation,ArtificialIntelligence,Exact match - AI conversation subcategory
+Generative AI - Meeting,ArtificialIntelligence,Exact match - AI meeting tools subcategory
+Generative AI - Platform,ArtificialIntelligence,Exact match - AI platform subcategory
+Generative AI - Tools and Stores,ArtificialIntelligence,Exact match - AI tools subcategory
+Generative AI - Writing,ArtificialIntelligence,Exact match - AI writing subcategory
+Government & Legal,Government,Exact match
+Health & Nutrition,HealthAndMedicine,Exact match
+Help Desk Management,Business,Partial match - help desk is business application
+Hobbies & Interests,LeisureAndRecreation,Partial match - hobbies relate to leisure
+Home & Garden,General,Partial match - home/garden is general interest
+HR,Business,Partial match - HR is business function
+IaaS/PaaS,,No match
+Identity and Access Management,,No match
+IM & other communication,InstantMessaging,Exact match
+Insurance,Finance,Partial match - insurance is financial services
+Internet Telephony,InstantMessaging,Partial match - VoIP relates to communication
+Investors & Patents,Finance,Partial match - investing is finance category
+IT Service/Application Management,,No match
+Job Search/Careers,JobSearch,Exact match
+Kids,General,Partial match - kids content is general interest
+Knowledge Management,Business,Partial match - knowledge management is business tool
+Lifestyle,LeisureAndRecreation,Partial match - lifestyle relates to leisure
+Login Screens,,No match
+Logistics,Business,Partial match - logistics is business operations
+Marijuana,Marijuana,Exact match
+Marketing,Business,Partial match - marketing is business function
+Military,Government,Partial match - military relates to government
+Miscellaneous,General,Partial match - miscellaneous maps to general
+Newly Observed Domain (NOD),Uncategorized,Partial match - newly observed domains are uncategorized
+Newly Registered Domain (NRD),NewlyRegisteredDomains,Exact match
+Newly Observed Domain,Uncategorized,Partial match - newly observed domains are uncategorized
+Newly Registered Domain,NewlyRegisteredDomains,Exact match
+News & Media,News,Exact match
+No Content,,No match
+Nursing,HealthAndMedicine,Partial match - nursing is healthcare
+Online Ads,AdvertisementsAndPopUps,Exact match
+Parked Domains,ParkedDomains,Exact match
+Pay To Surf,AdvertisementsAndPopUps,Partial match - pay-to-surf relates to ads
+Peer-to-Peer (P2P),PeerToPeer,Exact match
+Personal Sites & Blogs,PersonalSites,Exact match
+Pets,General,Partial match - pets content is general interest
+Philanthropic Organizations,NonProfitsAndNgos,Exact match for non-profits
+Photo Sharing,ImageSharing,Exact match
+Piracy & Copyright Theft,IllegalSoftware,Partial match - piracy relates to illegal software
+Private IP address,PrivateIPAddresses,Exact match
+Professional Networking,ProfessionalNetworking,Exact match
+Real Estate,RealEstate,Exact match
+Redirect,,No match
+Religion,Religion,Exact match
+Remote Access,RemoteAccess,Exact match
+Science,Education,Partial match - science content relates to education
+Search Engines,SearchEnginesAndPortals,Exact match
+Security,,No match
+Security Risk,CriminalActivity,Partial match - general security risks are criminal activity
+Security Risk - Ad Fraud,CriminalActivity,Partial match - ad fraud is criminal activity
+Security Risk - Attack,Hacking,Exact match - attacks relate to hacking
+Security Risk - Botnets,Hacking,Partial match - botnets are hacking tools
+Security Risk - Command and Control server,Hacking,Partial match - C2 servers are hacking infrastructure
+Security Risk - Compromised/malicious sites,CriminalActivity,Partial match - compromised sites are criminal activity
+Security Risk - Cryptocurrency Mining,CryptocurrencyMining,Exact match
+Security Risk - DGA,Hacking,Partial match - domain generation algorithms are hacking technique
+Security Risk - Hacking,Hacking,Exact match
+Security Risk - Malware Distribution Point,CriminalActivity,Partial match - malware distribution is criminal activity
+Security Risk - Miscellaneous,CriminalActivity,Partial match - misc security risks are criminal activity
+Security Risk - Phishing/Fraud,CriminalActivity,Partial match - phishing/fraud is criminal activity
+Security Risk - Spam sites,CriminalActivity,Partial match - spam sites are criminal activity
+Security Risk - Spyware & Questionable Software,IllegalSoftware,Partial match - spyware relates to illegal software
+Security Risk - Malware Call-Home,Hacking,Partial match - malware call-home is hacking
+Shareware/Freeware,DownloadSites,Partial match - shareware/freeware are download sites
+Shopping,Shopping,Exact match
+Social,SocialNetworking,Exact match for social networking
+Social & Affiliation Organizations,NonProfitsAndNgos,Partial match - social organizations align with non-profits
+Sports,Sports,Exact match
+Streaming & Downloadable Audio,StreamingMediaAndDownloads,Exact match
+Streaming & Downloadable Video,StreamingMediaAndDownloads,Exact match
+Survey Solutions,Business,Partial match - survey tools are business applications
+Technology,ComputersAndTechnology,Exact match
+Telecom and Call Center,Business,Partial match - telecom/call center is business operations
+Telecommuting,Business,Partial match - telecommuting relates to business
+Tobacco,AlcoholAndTobacco,Exact match
+Trading & Investing,Finance,Exact match - trading/investing is finance
+Translation,Translators,Exact match
+Travel,Travel,Exact match
+Uncategorized,Uncategorized,Exact match
+Unreachable,,No match
+URL Shorteners,CriminalActivity,Partial match - URL shorteners often used for malicious activity
+Utilities,ComputersAndTechnology,Partial match - utilities are technology tools
+Weapons,Weapons,Exact match
+Web Analytics,Business,Partial match - web analytics is business tool
+Web Conferencing,WebMeetings,Exact match
+Web Design,ComputersAndTechnology,Partial match - web design is technology related
+"Web Hosting, ISP & Telco",,No match
+Web Hosting,,No match
+ISP & Telco,,No match
+Web Proxies/Anonymizers,RemoteAccess,Partial match - proxies/anonymizers relate to remote access
+Webmail,WebBasedEmail,Exact match

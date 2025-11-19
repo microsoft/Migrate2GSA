@@ -56,13 +56,19 @@ function Split-ByCharacterLimit {
         
         [Parameter(HelpMessage = "Maximum character length per group (default: 300)")]
         [ValidateRange(1, [int]::MaxValue)]
-        [int]$MaxLength = 300
+        [int]$MaxLength = 300,
+        
+        [Parameter(HelpMessage = "Path to log file")]
+        [string]$LogPath,
+        
+        [Parameter(HelpMessage = "Enable debug logging")]
+        [switch]$EnableDebugLogging
     )
     
     Set-StrictMode -Version Latest
     
     Write-LogMessage "Split-ByCharacterLimit: Received $($Entries.Count) entries, MaxLength=$MaxLength" -Level "DEBUG" `
-        -Component "Split-ByCharacterLimit" -LogPath $script:logPath -EnableDebugLogging:$script:EnableDebugLogging
+        -Component "Split-ByCharacterLimit" -LogPath $LogPath -EnableDebugLogging:$EnableDebugLogging
     
     $groups = @()
     $currentGroup = @()
@@ -73,12 +79,12 @@ function Split-ByCharacterLimit {
         $separator = if ($currentGroup.Count -gt 0) { 1 } else { 0 }  # semicolon
         
         Write-LogMessage "Entry: '$entry' (length=$entryLength), currentLength=$currentLength, separator=$separator, would be=$($currentLength + $entryLength + $separator)" -Level "DEBUG" `
-            -Component "Split-ByCharacterLimit" -LogPath $script:logPath -EnableDebugLogging:$script:EnableDebugLogging
+            -Component "Split-ByCharacterLimit" -LogPath $LogPath -EnableDebugLogging:$EnableDebugLogging
         
         if (($currentLength + $entryLength + $separator) -gt $MaxLength -and $currentGroup.Count -gt 0) {
             # Current group is full, start new group
             Write-LogMessage "Starting new group (current group has $($currentGroup.Count) entries, length=$currentLength)" -Level "DEBUG" `
-                -Component "Split-ByCharacterLimit" -LogPath $script:logPath -EnableDebugLogging:$script:EnableDebugLogging
+                -Component "Split-ByCharacterLimit" -LogPath $LogPath -EnableDebugLogging:$EnableDebugLogging
             $groups += ,@($currentGroup)
             $currentGroup = @($entry)
             $currentLength = $entryLength
@@ -95,7 +101,7 @@ function Split-ByCharacterLimit {
     }
     
     Write-LogMessage "Split-ByCharacterLimit: Created $($groups.Count) group(s)" -Level "DEBUG" `
-        -Component "Split-ByCharacterLimit" -LogPath $script:logPath -EnableDebugLogging:$script:EnableDebugLogging
+        -Component "Split-ByCharacterLimit" -LogPath $LogPath -EnableDebugLogging:$EnableDebugLogging
     
     # Return with comma operator to prevent PowerShell from flattening the array
     return ,$groups

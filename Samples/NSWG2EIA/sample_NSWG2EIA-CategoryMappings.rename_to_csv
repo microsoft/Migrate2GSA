@@ -1,0 +1,20 @@
+NSWGCategory,GSACategory
+Social,SocialNetworking
+Cloud Storage,CloudStorage
+Streaming Media,StreamingMedia
+Business and Economy,Business
+News and Media,News
+Advertisements,Advertising
+Online Ads,Advertising
+Gambling,Gambling
+Adult Content,AdultContent
+Adult Content - Pornography,AdultContent
+Malware,Malicious
+Phishing and Deception,Phishing
+Security Risk,Malicious
+Potentially Unwanted Software,PotentiallyUnwantedSoftware
+Miscellaneous,Unmapped
+Newly Observed Domain,NewlyObservedDomain
+Newly Registered Domain,Unmapped
+Parked Domains,ParkedDomains
+Generative AI,ArtificialIntelligence
