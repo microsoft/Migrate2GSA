@@ -150,5 +150,3 @@ The tool supports migration from various Security Service Edge (SSE) platforms t
 | User & Group Policies | Azure AD/Entra Integration | 🚧 In Development |
 
 ---
-
-**Ready to Start?** Follow the step-by-step [Getting Started Guide](./getting-started.md) to begin your migration journey.
