@@ -55,6 +55,13 @@ export default function HomepageFeatures() {
             <Feature key={idx} {...props} />
           ))}
         </div>
+        <div className="row">
+          <div className="col text--center padding-top--lg">
+            <p style={{ fontSize: '1.1rem', color: 'var(--ifm-color-emphasis-700)' }}>
+              ❤️ Made possible by customers who share configuration samples. We don't have access to third-party products, so your contributions make these tools possible.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
   );

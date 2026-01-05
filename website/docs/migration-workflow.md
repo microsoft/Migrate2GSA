@@ -8,19 +8,19 @@ This page explains the core concepts and workflow of the Migrate2GSA PowerShell 
 
 ## Overview
 
-The Migrate2GSA tool follows a structured **4-phase migration workflow** that ensures data integrity, administrative control, and seamless provisioning to Microsoft's security platform.
+The Migrate2GSA tool follows a structured **4-phase migration workflow** that ensures data integrity, administrative control, and seamless provisioning to Microsoft Global Secure Access.
 
 ## Migration Flow
 
 <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '2rem 0', flexWrap: 'wrap', gap: '1rem'}}>
   
   <div style={{textAlign: 'center', minWidth: '180px'}}>
-    <div style={{backgroundColor: '#e3f2fd', border: '2px solid #1976d2', borderRadius: '12px', padding: '1rem', marginBottom: '0.5rem'}}>
+    <div style={{backgroundColor: 'rgba(25, 118, 210, 0.15)', border: '2px solid #1976d2', borderRadius: '12px', padding: '1rem', marginBottom: '0.5rem'}}>
       <div style={{fontSize: '2rem', marginBottom: '0.5rem'}}>🔍</div>
-      <div style={{fontWeight: 'bold', fontSize: '1.1rem', color: '#1976d2'}}>EXPORT</div>
-      <div style={{fontSize: '0.9rem', marginTop: '0.5rem'}}>Extract from Source Platform</div>
+      <div style={{fontWeight: 'bold', fontSize: '1.1rem', color: '#42a5f5'}}>EXPORT</div>
+      <div style={{fontSize: '0.9rem', marginTop: '0.5rem', color: 'var(--ifm-font-color-base)'}}>Extract from Source Platform</div>
     </div>
-    <div style={{fontSize: '0.8rem', color: '#666', lineHeight: '1.4'}}>
+    <div style={{fontSize: '0.8rem', color: 'var(--ifm-color-emphasis-700)', lineHeight: '1.4'}}>
       Security Policies<br/>
       URL Categories<br/>
       Access Rules<br/>
@@ -28,15 +28,15 @@ The Migrate2GSA tool follows a structured **4-phase migration workflow** that en
     </div>
   </div>
 
-  <div style={{fontSize: '1.5rem', color: '#1976d2'}}>→</div>
+  <div style={{fontSize: '2.5rem', fontWeight: 'bold', color: '#1976d2', padding: '0 0.5rem'}}>→</div>
 
   <div style={{textAlign: 'center', minWidth: '180px'}}>
-    <div style={{backgroundColor: '#f3e5f5', border: '2px solid #7b1fa2', borderRadius: '12px', padding: '1rem', marginBottom: '0.5rem'}}>
+    <div style={{backgroundColor: 'rgba(123, 31, 162, 0.15)', border: '2px solid #7b1fa2', borderRadius: '12px', padding: '1rem', marginBottom: '0.5rem'}}>
       <div style={{fontSize: '2rem', marginBottom: '0.5rem'}}>🔄</div>
-      <div style={{fontWeight: 'bold', fontSize: '1.1rem', color: '#7b1fa2'}}>CONVERT</div>
-      <div style={{fontSize: '0.9rem', marginTop: '0.5rem'}}>Transform to GSA Format</div>
+      <div style={{fontWeight: 'bold', fontSize: '1.1rem', color: '#ba68c8'}}>CONVERT</div>
+      <div style={{fontSize: '0.9rem', marginTop: '0.5rem', color: 'var(--ifm-font-color-base)'}}>Transform to GSA Format</div>
     </div>
-    <div style={{fontSize: '0.8rem', color: '#666', lineHeight: '1.4'}}>
+    <div style={{fontSize: '0.8rem', color: 'var(--ifm-color-emphasis-700)', lineHeight: '1.4'}}>
       Policy Translation<br/>
       Category Mapping<br/>
       Rule Optimization<br/>
@@ -44,31 +44,30 @@ The Migrate2GSA tool follows a structured **4-phase migration workflow** that en
     </div>
   </div>
 
-  <div style={{fontSize: '1.5rem', color: '#7b1fa2'}}>→</div>
+  <div style={{fontSize: '2.5rem', fontWeight: 'bold', color: '#ba68c8', padding: '0 0.5rem'}}>→</div>
 
   <div style={{textAlign: 'center', minWidth: '180px'}}>
-    <div style={{backgroundColor: '#fff8e1', border: '2px solid #f57c00', borderRadius: '12px', padding: '1rem', marginBottom: '0.5rem'}}>
+    <div style={{backgroundColor: 'var(--ifm-color-warning-contrast-background)', border: '2px solid #f57c00', borderRadius: '12px', padding: '1rem', marginBottom: '0.5rem'}}>
       <div style={{fontSize: '2rem', marginBottom: '0.5rem'}}>📝</div>
       <div style={{fontWeight: 'bold', fontSize: '1.1rem', color: '#f57c00'}}>CSV REVIEW</div>
-      <div style={{fontSize: '0.9rem', marginTop: '0.5rem'}}>Administrative Control Point</div>
+      <div style={{fontSize: '0.9rem', marginTop: '0.5rem', color: 'var(--ifm-font-color-base)'}}>Administrative Control Point</div>
     </div>
-    <div style={{fontSize: '0.8rem', color: '#666', lineHeight: '1.4'}}>
+    <div style={{fontSize: '0.8rem', color: 'var(--ifm-color-emphasis-700)', lineHeight: '1.4'}}>
       Review & Edit<br/>
       Selective Migration<br/>
       Custom Modifications<br/>
-      Approval Workflow
     </div>
   </div>
 
-  <div style={{fontSize: '1.5rem', color: '#f57c00'}}>→</div>
+  <div style={{fontSize: '2.5rem', fontWeight: 'bold', color: '#ff9800', padding: '0 0.5rem'}}>→</div>
 
   <div style={{textAlign: 'center', minWidth: '180px'}}>
-    <div style={{backgroundColor: '#e8f5e8', border: '2px solid #388e3c', borderRadius: '12px', padding: '1rem', marginBottom: '0.5rem'}}>
+    <div style={{backgroundColor: 'var(--ifm-color-success-contrast-background)', border: '2px solid #388e3c', borderRadius: '12px', padding: '1rem', marginBottom: '0.5rem'}}>
       <div style={{fontSize: '2rem', marginBottom: '0.5rem'}}>⚡</div>
       <div style={{fontWeight: 'bold', fontSize: '1.1rem', color: '#388e3c'}}>PROVISIONING</div>
-      <div style={{fontSize: '0.9rem', marginTop: '0.5rem'}}>Deploy to Microsoft GSA</div>
+      <div style={{fontSize: '0.9rem', marginTop: '0.5rem', color: 'var(--ifm-font-color-base)'}}>Deploy to Microsoft GSA</div>
     </div>
-    <div style={{fontSize: '0.8rem', color: '#666', lineHeight: '1.4'}}>
+    <div style={{fontSize: '0.8rem', color: 'var(--ifm-color-emphasis-700)', lineHeight: '1.4'}}>
       Microsoft Graph API<br/>
       EIA/EPA Provisioning<br/>
       Validation<br/>
@@ -110,22 +109,23 @@ Raw exported data is processed and converted into Microsoft Global Secure Access
 ### 3. 📝 CSV Review & Customization
 **Administrative control point for migration decisions**
 
-The conversion process generates **editable CSV files** that administrators can review and modify:
+The conversion process generates **timestamped, editable CSV files** that administrators can review and modify:
 
 ```
 📁 Migration Output/
-├── 📄 policies.csv           # Security policies to migrate
-├── 📄 categories.csv         # URL categories and mappings  
-├── 📄 access_rules.csv       # Access control rules
-├── 📄 user_groups.csv        # User group assignments
-└── 📄 category_mappings.csv  # Source-to-GSA category mappings
+├── 📄 20250105_143022_EIA_Policies.csv          # Web content filtering policies
+├── 📄 20250105_143022_EIA_SecurityProfiles.csv  # Security profile assignments
+└── 📄 20250105_143022_Convert-ZIA2EIA.log       # Conversion log file
 ```
+
+:::note
+File names include a timestamp prefix (yyyyMMdd_HHmmss) to prevent overwrites and maintain version history. The specific files generated depend on the migration type (ZIA→EIA, ZPA→EPA, etc.).
+:::
 
 **Administrative Benefits:**
 - **Review Before Deploy** → Validate all configurations before provisioning
 - **Selective Migration** → Choose which policies to migrate or exclude
 - **Custom Modifications** → Adjust policy names, descriptions, or parameters
-- **Approval Workflow** → Enable change management processes
 - **Audit Trail** → Document migration decisions and modifications
 
 ### 4. ⚡ Provisioning Phase
@@ -137,16 +137,5 @@ The final phase reads the CSV files and provisions configurations to GSA:
 - **Entra Internet Access (EIA)** → Provisions web security policies
 - **Entra Private Access (EPA)** → Configures application access rules
 - **Validation & Rollback** → Verifies successful deployment with error handling
-
-## Supported Migration Paths
-
-The tool supports migration from various Security Service Edge (SSE) platforms to Microsoft Global Secure Access components:
-
-| Migration Type | Target Platform | Status |
-|----------------|----------------|--------|
-| Web Security | Entra Internet Access (EIA) | ✅ Available |
-| Zero Trust Network Access | Entra Private Access (EPA) | ✅ Available |
-| Custom Categories | GSA Category Mappings | ✅ Available |
-| User & Group Policies | Azure AD/Entra Integration | 🚧 In Development |
 
 ---

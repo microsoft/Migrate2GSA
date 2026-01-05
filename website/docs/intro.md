@@ -14,6 +14,11 @@ No! Migrate2GSA can simplify your deployments as well. Simply create a csv file 
 ## Is this an official Microsoft product?
 No. It is a community project that is maintained by Microsoft employees. The PowerShell toolkit is provided as-is and is not supported through any Microsoft support program or service. Please do not contact Microsoft support with any issues or concern.
 
+## How we build these tools
+Since we don't have access to third-party products, we rely on customers who generously share their configuration samples and export files. These real-world examples are essential for understanding how different platforms structure their policies and settings.
+
+We also heavily leverage AI throughout our development process - from researching platform capabilities and writing detailed specifications, to generating and reviewing code. This AI-assisted approach allows us to build comprehensive migration tools efficiently, even without direct platform access.
+
 ## How to contact us
 If you have a migration project and need assistance with Migrate2GSA, or you can work with us to build tools for other SSE solutions, contact us at migrate2gsateam@microsoft.com
 
