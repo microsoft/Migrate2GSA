@@ -712,6 +712,7 @@ SecurityProfile,yes,Guest Profile,Limited access for guest users,Guest Web Polic
 ConditionalAccessPolicy,yes,Guest Profile,,,,GSA - Guest Access,enabled,,Guest Users,,,AND,compliantDevice
 ```
 
+
 ---
 
 ## Document History
