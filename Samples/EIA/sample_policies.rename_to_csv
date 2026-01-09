@@ -1,0 +1,15 @@
+PolicyName,PolicyType,PolicyAction,Description,RuleType,RuleDestinations,RuleName,Provision
+Dev_Tools-Allow,WebContentFiltering,Allow,Allow development tools and resources,FQDN,github.com;*.github.io;stackoverflow.com;*.stackexchange.com,GitHub_StackOverflow,yes
+Dev_Tools-Allow,WebContentFiltering,Allow,Allow development tools and resources,URL,https://docs.microsoft.com/*;https://learn.microsoft.com/*,Microsoft_Docs,yes
+Dev_Tools-Allow,WebContentFiltering,Allow,Allow development tools and resources,webCategory,CodeRepositories,Dev_Categories,yes
+Social_Media-Block,WebContentFiltering,Block,Block social media and entertainment sites,webCategory,SocialNetworking;Entertainment;Games,Social_Entertainment_Block,yes
+Social_Media-Block,WebContentFiltering,Block,Block social media and entertainment sites,FQDN,facebook.com;*.facebook.com;twitter.com;*.twitter.com;instagram.com;*.instagram.com,Popular_Social_Sites,yes
+Productivity-Allow,WebContentFiltering,Allow,Allow business productivity tools,FQDN,*.office.com;*.microsoft.com;*.teams.microsoft.com,Microsoft_Productivity,yes
+Productivity-Allow,WebContentFiltering,Allow,Allow business productivity tools,webCategory,Business,Business_Categories,yes
+Security_Threats-Block,WebContentFiltering,Block,Block known security threats and malware,webCategory,Hacking,Security_Threat_Categories,yes
+TLS_Internal-Bypass,TLSInspection,Bypass,Bypass TLS inspection for internal corporate sites,bypass,*.internal.contoso.com;*.corp.local;intranet.contoso.com,Internal_Corporate_Sites,yes
+TLS_Internal-Bypass,TLSInspection,Bypass,Bypass TLS inspection for internal corporate sites,inspect,suspicious.contoso.com;untrusted.corp.local,Suspicious_Internal_Sites,yes
+TLS_Finance-Inspect,TLSInspection,Inspect,Inspect financial and banking traffic by default,bypass,*.internal-bank.com;secure-finance.contoso.com,Trusted_Financial_Sites,yes
+TLS_Finance-Inspect,TLSInspection,Inspect,Inspect financial and banking traffic by default,inspect,*.financial-services.com;*.banking.com,Financial_Services,yes
+Marketing_Sites-Allow,WebContentFiltering,Allow,Allow marketing and analytics tools,FQDN,*.google-analytics.com;*.adobe.com;hubspot.com;*.marketo.com,Marketing_Analytics_Tools,yes
+Marketing_Sites-Allow,WebContentFiltering,Allow,Allow marketing and analytics tools,webCategory,AdvertisementsAndPopUps,Marketing_Categories,yes

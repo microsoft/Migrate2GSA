@@ -1,0 +1,6 @@
+SecurityProfileName,Priority,SecurityProfileLinks,CADisplayName,EntraUsers,EntraGroups,Provision
+Profile_Finance_Strict,100,Security_Threats-Block:100;Social_Media-Block:200;TLS_Finance-Inspect:300,CA_Finance_Access,john.doe@contoso.com;jane.smith@contoso.com,Finance_Group;Executives_Group,yes
+Profile_Marketing_Standard,200,Security_Threats-Block:100;Marketing_Sites-Allow:200;Social_Media-Block:300,CA_Marketing_Access,marketing.team@contoso.com,Marketing_Group,yes
+Profile_Developers,300,Security_Threats-Block:100;Dev_Tools-Allow:200;TLS_Internal-Bypass:300,CA_Developers_Access,dev.lead@contoso.com,Developers_Group;Engineering_Group,yes
+Profile_General_Users,400,Security_Threats-Block:100;Productivity-Allow:200;Social_Media-Block:300,CA_General_Access,_Replace_Me,All_Users_Group,yes
+Profile_IT_Admin_NoCA,500,Dev_Tools-Allow:100;Productivity-Allow:200,,,,yes
