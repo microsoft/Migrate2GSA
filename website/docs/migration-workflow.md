@@ -111,15 +111,25 @@ Raw exported data is processed and converted into Microsoft Global Secure Access
 
 The conversion process generates **timestamped, editable CSV files** that administrators can review and modify:
 
+#### Entra Internet Access (EIA) Migration Files
+
 ```
 📁 Migration Output/
-├── 📄 20250105_143022_EIA_Policies.csv          # Web content filtering policies
+├── 📄 20250105_143022_EIA_Policies.csv          # Web filtering & TLS inspection policies
 ├── 📄 20250105_143022_EIA_SecurityProfiles.csv  # Security profile assignments
 └── 📄 20250105_143022_Convert-ZIA2EIA.log       # Conversion log file
 ```
 
+#### Entra Private Access (EPA) Migration Files
+
+```
+📁 Migration Output/
+├── 📄 20250105_143022_GSA_EnterpriseApps_All.csv  # Application segments with access policies
+└── 📄 20250105_143022_Convert-ZPA2EPA.log         # Conversion log file
+```
+
 :::note
-File names include a timestamp prefix (yyyyMMdd_HHmmss) to prevent overwrites and maintain version history. The specific files generated depend on the migration type (ZIA→EIA, ZPA→EPA, etc.).
+File names include a timestamp prefix (yyyyMMdd_HHmmss) to prevent overwrites and maintain version history. The EIA_Policies.csv file contains both web content filtering rules and TLS inspection policies. The specific files generated depend on the migration type (ZIA→EIA, ZPA→EPA, NPA→EPA, NSWG→EIA).
 :::
 
 **Administrative Benefits:**
