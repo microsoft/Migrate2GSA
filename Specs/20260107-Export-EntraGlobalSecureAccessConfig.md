@@ -505,6 +505,7 @@ Export-EntraGlobalSecureAccessConfig `
 # Output: Creates C:\GSA-Backups\GSA-backup_20260107_143022\ with InternetAccess\ and PrivateAccess\ subfolders
 ```
 
+
 ---
 
 ## 7. Restore Process (Using Exported CSV Files)
