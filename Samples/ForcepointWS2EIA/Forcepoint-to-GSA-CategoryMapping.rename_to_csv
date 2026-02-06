@@ -1,0 +1,142 @@
+ForcepointCategory,GSACategory,MappingNotes
+Abortion,,No direct match - specific topic not categorized in GSA
+Pro-Choice,,No direct match - specific topic not categorized in GSA
+Pro-Life,,No direct match - specific topic not categorized in GSA
+Adult Content,PornographyAndSexuallyExplicit,Direct match - adult/sexual content
+Adult Material,PornographyAndSexuallyExplicit,Direct match - adult/sexual content
+Lingerie and Swimsuit,LingerieAndSwimsuits,Direct match
+Nudity,Nudity,Direct match
+Sex,PornographyAndSexuallyExplicit,Direct match - sexual content
+Sex Education,SexEducation,Direct match
+Advocacy Groups,,No direct match - could be multiple GSA categories
+Bandwidth,,No direct match - technical classification not content-based
+Educational Video,Education,Partial match - educational content in video format
+Entertainment Video,Entertainment,Partial match - entertainment content in video format
+Internet Radio and TV,StreamingMediaAndDownloads,Partial match - streaming media content
+Internet Telephony,WebMeetings,Partial match - real-time communication
+Peer-to-Peer File Sharing,PeerToPeer,Direct match
+Personal Network Storage and Backup,WebRepositoryAndStorage,Direct match - cloud storage
+Streaming Media,StreamingMediaAndDownloads,Direct match
+Surveillance,,No direct match - specific use case not categorized
+Viral Video,Entertainment,Partial match - entertainment content
+YouTube,StreamingMediaAndDownloads,Partial match - video streaming platform
+Business and Economy,Business,Direct match
+Financial Data and Services,Finance,Direct match
+Hosted Business Applications,Business,Partial match - business tools
+LinkedIn,ProfessionalNetworking,Direct match - professional networking platform
+Collaboration - Office,Business,Partial match - business productivity
+Office - Apps,Business,Partial match - business applications
+Office - Documents,Business,Partial match - business documents
+Office - Drive,WebRepositoryAndStorage,Partial match - cloud storage
+Office - Mail,WebBasedEmail,Partial match - web email
+Abused Drugs,IllegalDrug,Direct match
+Drugs,IllegalDrug,Direct match - illicit substances
+Marijuana,Marijuana,Direct match
+Nutrition,,No direct match - health/wellness topic
+Prescribed Medications,HealthAndMedicine,Partial match - medical/health content
+Cultural Institutions,Arts,Partial match - cultural content
+Education,Education,Direct match
+Educational Institutions,Education,Direct match - educational organizations
+Educational Materials,Education,Direct match - educational content
+Reference Materials,Education,Partial match - informational/educational content
+Entertainment,Entertainment,Direct match
+Media File Download,DownloadSites,Partial match - downloadable media
+Dynamic DNS,,No direct match - technical infrastructure
+Elevated Exposure,,No direct match - security classification
+Emerging Exploits,,No direct match - security threat classification
+Extended Protection,,No direct match - security classification
+Newly Registered Websites,NewlyRegisteredDomains,Direct match
+Suspicious Content,,No direct match - security classification
+Gambling,Gambling,Direct match
+Games,Games,Direct match
+Government,Government,Direct match
+Military,Government,Partial match - government/military operations
+Political Organizations,PoliticsAndLaw,Partial match - political content
+Health,HealthAndMedicine,Direct match
+Alcohol and Tobacco,AlcoholAndTobacco,Direct match
+Blogs and Personal Sites,PersonalSites,Direct match
+Facebook,SocialNetworking,Direct match - social media platform
+Hobbies,LeisureAndRecreation,Partial match - recreational activities
+Human Interests,General,Partial match - general interest content
+LGBTQIA,,No direct match - identity/community topic
+Personals and Dating,DatingAndPersonals,Direct match
+Restaurants and Dining,RestaurantsAndDining,Direct match
+Social Networking,SocialNetworking,Direct match
+Twitter,SocialNetworking,Direct match - social media platform
+Illegal or Unethical,CriminalActivity,Direct match
+Computer Security,ComputersAndTechnology,Partial match - IT security content
+Generative AI - Conversation,ArtificialIntelligence,Direct match - AI tools
+Generative AI - Multimedia,ArtificialIntelligence,Direct match - AI tools
+Generative AI - Text & Code,ArtificialIntelligence,Direct match - AI tools
+Hacking,Hacking,Direct match
+Information Technology,ComputersAndTechnology,Direct match
+Other AI ML Applications,ArtificialIntelligence,Direct match - AI/ML tools
+Proxy Avoidance,,No direct match - circumvention tool classification
+Search Engines and Portals,SearchEnginesAndPortals,Direct match
+Unauthorized Mobile Marketplaces,,No direct match - mobile app stores
+Web Analytics,,No direct match - analytics/tracking tools
+Web Collaboration,ForumsAndNewsgroups,Partial match - collaborative platforms
+Web Hosting,ComputersAndTechnology,Partial match - hosting services
+Web and Email Marketing,,No direct match - marketing tools
+Web and Email Spam,,No direct match - spam classification
+Website Translation,Translators,Direct match
+General Email,WebBasedEmail,Direct match - email services
+Internet Communication,Chat,Partial match - communication platforms
+Organizational Email,WebBasedEmail,Partial match - email services
+Text and Media Messaging,InstantMessaging,Direct match - messaging services
+Web Chat,Chat,Direct match
+Intolerance,HateAndIntolerance,Direct match
+Job Search,JobSearch,Direct match
+Militancy and Extremist,Violence,Partial match - violent extremism
+Content Delivery Networks,,No direct match - technical infrastructure
+Dynamic Content,,No direct match - technical classification
+File Download Servers,DownloadSites,Direct match
+Miscellaneous,Uncategorized,Direct match - uncategorized content
+Network Errors,,No direct match - technical error classification
+Private IP Addresses,PrivateIPAddresses,Direct match
+Web Images,ImageSharing,Partial match - image content
+Web Infrastructure,,No direct match - technical infrastructure
+Alternative Journals,News,Partial match - news/journalism
+News and Media,News,Direct match
+Parked Domain,ParkedDomains,Direct match
+Advertisements,AdvertisementsAndPopUps,Direct match
+Application and Software Download,DownloadSites,Partial match - software downloads
+Instant Messaging,InstantMessaging,Direct match
+Message Boards and Forums,ForumsAndNewsgroups,Direct match
+Online Brokerage and Trading,Finance,Partial match - financial services
+Pay-to-Surf,,No direct match - incentivized browsing
+Productivity,,No direct match - productivity classification is broad
+Lesser-Known Religions,Religion,Partial match - religious content
+Religion,Religion,Direct match
+Widely-Known Religions,Religion,Partial match - religious content
+Advanced Malware Command and Control,,No direct match - security threat classification
+Advanced Malware Payloads,,No direct match - security threat classification
+Bot Networks,,No direct match - security threat classification
+Compromised Websites,,No direct match - security threat classification
+Keyloggers,,No direct match - security threat classification
+Malicious Embedded Link,,No direct match - security threat classification
+Malicious Embedded iFrame,,No direct match - security threat classification
+Malicious Web Sites,,No direct match - security threat classification
+Mobile Malware,,No direct match - security threat classification
+Phishing and Other Fraud,,No direct match - security threat classification
+Potentially Unwanted Software,,No direct match - security classification
+Security,,No direct match - security classification is broad
+Spyware,,No direct match - security threat classification
+Suspicious Document,,No direct match - security threat classification
+Suspicious Embedded Link,,No direct match - security threat classification
+Internet Auctions,Shopping,Partial match - e-commerce/shopping
+Real Estate,RealEstate,Direct match
+Shopping,Shopping,Direct match
+Professional and Worker Organizations,ProfessionalNetworking,Partial match - professional organizations
+Service and Philanthropic Organizations,NonProfitsAndNgos,Direct match - nonprofit organizations
+Social Organizations,,No direct match - social groups/clubs
+Social and Affiliation Organizations,,No direct match - membership organizations
+Special Events,,No direct match - events/gatherings
+Sport Hunting and Gun Clubs,Weapons,Partial match - firearms-related content
+Sports,Sports,Direct match
+Tasteless,Tasteless,Direct match
+Travel,Travel,Direct match
+Unknown,Uncategorized,Direct match - unclassified content
+Vehicles,Transportation,Direct match
+Violence,Violence,Direct match
+Weapons,Weapons,Direct match

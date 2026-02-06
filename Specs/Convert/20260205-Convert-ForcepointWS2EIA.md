@@ -1246,6 +1246,71 @@ The DEFAULT disposition column receives special treatment throughout the process
 
 ---
 
+## Sample Files
+
+### Sample Input File for Testing
+
+Create a sample Forcepoint Policies CSV file in the `Samples/ForcepointWS2EIA/` folder to demonstrate the input format and enable testing.
+
+**Filename:** `sample_forcepoint_policies.rename_to_csv`  
+**Location:** `Samples/ForcepointWS2EIA/`  
+**Purpose:** Provide realistic example of Forcepoint Web Security policy export format
+
+#### Sample File Content
+
+The sample file should include:
+- **Predefined Categories:** Mix of mapped and unmapped categories from various parent groups
+- **User-Defined FQDNs:** Custom domain entries showing FQDN filtering
+- **DEFAULT Disposition:** Baseline policies for all users
+- **Multiple Security Groups:** 2-3 example groups with different disposition patterns
+- **Various Actions:** Block, Allow, Continue, Do not block
+- **Deduplication Scenario:** At least two groups with identical policies
+
+#### Recommended Sample Structure
+
+```csv
+Parent Category Name,Child Category Name,DEFAULT Disposition,ESS DA Disposition,Capita India DA Disposition,Finance Team Disposition
+Abortion,Abortion,Do not block,Block,Block,Do not block
+Abortion,Pro-Choice,Do not block,Block,Do not block,Do not block
+Adult Material,Adult Content,Block,Block,Block,Block
+Adult Material,Nudity,Block,Block,Block,Block
+Gambling,Online Gambling,Do not block,Block,Continue,Block
+Gambling,Sports Betting,Do not block,Block,Block,Block
+Drugs,Illegal Drugs,Block,Block,Block,Block
+Social Networking,Facebook,Do not block,Block,Allow,Block
+Social Networking,LinkedIn,Do not block,Allow,Allow,Allow
+Social Networking,Twitter,Do not block,Block,Allow,Block
+User-Defined,example.com,Block,Allow,Block,Block
+User-Defined,internal.company.com,Do not block,Do not block,Do not block,Do not block
+User-Defined,test-site.com,Do not block,Block,Block,Block
+User-Defined,trusted-partner.com,Do not block,Allow,Allow,Allow
+```
+
+#### Key Features Demonstrated
+
+| Feature | Demonstrated By |
+|---------|----------------|
+| Predefined categories | Abortion, Adult Material, Gambling, etc. |
+| Category mapping | Mix of categories in mapping file (some mapped, some unmapped) |
+| User-Defined FQDNs | example.com, internal.company.com, etc. |
+| DEFAULT baseline | Third column with baseline policies |
+| Multiple groups | Three security groups (ESS DA, Capita India DA, Finance Team) |
+| Block action | Adult Content, Illegal Drugs, etc. |
+| Allow action | LinkedIn, trusted-partner.com |
+| Continue action | Online Gambling for "Capita India DA" |
+| Do not block | Various categories and FQDNs |
+| Policy deduplication | ESS DA and Finance Team both block example.com, test-site.com |
+| Mixed policies | Groups with both Block and Allow rules |
+
+#### Notes
+
+- File uses `.rename_to_csv` extension to prevent accidental use as real data
+- Users rename to `.csv` when using for testing
+- Sample coordinates with existing `Forcepoint-to-GSA-CategoryMapping.rename_to_csv` file
+- Should include categories that appear in the mapping file and some that don't (to demonstrate unmapped handling)
+
+---
+
 ## Future Enhancements
 
 1. Add FQDN validation for User-Defined entries
