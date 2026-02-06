@@ -21,6 +21,13 @@ This PowerShell function converts Forcepoint Web Security (FWS) policy configura
 - Generate import-ready CSV files for EIA configuration
 - Deduplicate identical policies across security groups
 
+### Terminology
+- **Policy**: A named collection of rules with ONE action (Block or Allow). Identified by PolicyName (e.g., "Web Content Filtering 1-Block")
+- **Rule**: A single CSV row representing one destination filter (one FQDN or a semicolon-separated list of web categories)
+- **Policy Definition**: The internal data structure containing all blocked/allowed categories and FQDNs before being split into separate Block and Allow policies
+- **Security Profile**: Links one or more policies to one or more security groups, establishing the enforcement scope
+- **Disposition**: The action value from Forcepoint (Block, Allow, Continue, Do not block) that determines how to handle traffic
+
 ### Design Alignment
 This function follows the same architectural patterns as `Convert-ZIA2EIA.ps1`:
 - Single function with internal helper functions
@@ -36,7 +43,7 @@ This function follows the same architectural patterns as `Convert-ZIA2EIA.ps1`:
 ### Forcepoint Policies CSV
 **Source:** Forcepoint Web Security export  
 **Required:** Yes  
-**Default Path:** `ForcepointPolicies.csv` (in script root directory)
+**Default Path:** None (must be specified)
 
 #### Description
 Matrix-style CSV where:
@@ -71,9 +78,11 @@ Matrix-style CSV where:
 4. **Security Group Columns** (Column 4+)
    - Column header format: `[GroupName] Disposition`
    - Example: "ESS DA Disposition", "Capita India DA Disposition"
-   - Column headers ending with "_NOTUSED" or "NOTUSED" are processed (user's requirement)
+   - All columns ending with "Disposition" are processed ("NOTUSED" may appear as part of group names)
 
 #### Action Values
+
+All action values are case-insensitive (e.g., "Block", "block", "BLOCK" are equivalent).
 
 | Forcepoint Action | Meaning | Maps to EIA |
 |-------------------|---------|-------------|
@@ -89,7 +98,7 @@ Matrix-style CSV where:
 ### Forcepoint-to-GSA-CategoryMapping.csv
 **Source:** Manual configuration file (maintained by user)  
 **Required:** Yes  
-**Default Path:** `Forcepoint-to-GSA-CategoryMapping.csv` (in script root directory)
+**Default Path:** None (must be specified)
 
 #### Description
 Provides mapping between Forcepoint predefined web categories and Microsoft GSA (Global Secure Access) web categories.
@@ -99,29 +108,31 @@ Provides mapping between Forcepoint predefined web categories and Microsoft GSA 
 | Column | Type | Required | Description |
 |--------|------|----------|-------------|
 | ForcepointCategory | string | Yes | Child Category Name from Forcepoint CSV |
-| ForcepointDescription | string | No | Category description for reference |
-| ExampleURLs | string | No | Sample URLs for documentation |
 | GSACategory | string | Yes | Target GSA category name |
 | MappingNotes | string | No | Mapping rationale |
 
 #### Processing Rules
 1. **Lookup:** Use Child Category Name (not Parent) to find matching `ForcepointCategory`
-2. **Unmapped Categories:**
-   - If `GSACategory` is null, blank, or "Unmapped": use placeholder format
-   - Placeholder format: `[ForcepointCategory]_Unmapped`
+2. **Category Not Found in Mapping File:**
+   - If `ForcepointCategory` does not exist as a key in the mapping file: treat as unmapped
+   - Use placeholder format: `[ChildCategoryName]_Unmapped`
+   - Add to unmapped categories list for review
+3. **Unmapped Categories:**
+   - If `ForcepointCategory` exists but `GSACategory` is null, blank, or "Unmapped": use placeholder format
+   - Placeholder format: `[ChildCategoryName]_Unmapped`
    - Example: `Adult_Content` → `Adult_Content_Unmapped`
    - Mark for review in output
-3. **Mapped Categories:**
+4. **Mapped Categories:**
    - Use the `GSACategory` value directly
    - Mark as ready for provisioning
 
 #### Example Mapping File
 
 ```csv
-ForcepointCategory,ForcepointDescription,ExampleURLs,GSACategory,MappingNotes
-Abortion,Abortion-related content,example.com,Uncategorized,No direct GSA category match
-Adult Content,Adult-oriented material,adult.com,AdultContent,Direct mapping
-Drugs,Drug-related content,drugs.com,IllegalDrugs,Semantic match
+ForcepointCategory,GSACategory,MappingNotes
+Abortion,Uncategorized,No direct GSA category match
+Adult Content,AdultContent,Direct mapping
+Drugs,IllegalDrugs,Semantic match
 ```
 
 ---
@@ -134,27 +145,31 @@ All output files are created in `$OutputBasePath` with consistent timestamp pref
 **Filename:** `[yyyyMMdd_HHmmss]_EIA_Policies.csv`
 
 #### Description
-Contains all web content filtering policies with rules for blocked/allowed categories and FQDNs.
+Contains all web content filtering policies with rules for blocked/allowed categories and FQDNs. Each policy has ONE action (Block or Allow). A security group with both blocked and allowed items will generate TWO separate policies. Each policy can have multiple rules: web categories are combined into one rule with semicolon-separated destinations, while FQDNs are created as individual rules (one CSV row per FQDN).
 
 #### Fields
 
 | Field | Description | Example | Notes |
 |-------|-------------|---------|-------|
-| PolicyName | Sequential policy name | "Web Content Filtering 1" | Unique identifier |
+| PolicyName | Sequential policy name with action suffix | "Web Content Filtering 1-Block" | Includes -Block or -Allow suffix |
 | PolicyType | Type of policy | "WebContentFiltering" | Always "WebContentFiltering" |
-| PolicyAction | Allow or Block | "Block", "Allow" | From disposition |
+| PolicyAction | Allow or Block | "Block", "Allow" | ONE action per policy |
 | Description | Policy description | "Converted from Forcepoint" | Auto-generated |
 | RuleType | Type of destination | "FQDN", "webCategory" | Rule destination type |
-| RuleDestinations | Semicolon-separated list | "Abortion;Drugs;Adult Content" | Categories or FQDNs |
+| RuleDestinations | Semicolon-separated list for categories, single FQDN for FQDN rules | "Abortion;Drugs;Adult Content" or "example.com" | Categories: semicolon-separated; FQDNs: one per row |
 | RuleName | Sub-rule identifier | "Blocked_Categories", "example.com-Block" | Descriptive name |
-| ReviewNeeded | Manual review flag | "Yes", "No" | "Yes" if unmapped or Continue action |
-| ReviewDetails | Reason for review | "Unmapped categories found" | Semicolon-separated reasons |
-| Provision | Provisioning flag | "Yes", "No" | "Yes" unless ReviewNeeded |
+| ReviewNeeded | Manual review flag (per rule) | "Yes", "No" | "Yes" if THIS rule has unmapped categories or Continue action |
+| ReviewDetails | Reason for review (per rule) | "Unmapped categories found" | Semicolon-separated reasons for this specific rule |
+| Provision | Provisioning flag (per rule) | "Yes", "No" | "Yes" unless THIS rule needs review |
 
 #### PolicyName Format
-- Sequential numbering: "Web Content Filtering 1", "Web Content Filtering 2", etc.
-- Each unique policy content gets one policy name
-- Duplicate policies reuse the same policy name
+- Sequential numbering across ALL policies (global counter): 1, 2, 3, 4...
+- Action suffix added: "-Block" or "-Allow"
+- Full policy names: "Web Content Filtering 1-Block", "Web Content Filtering 2-Allow", "Web Content Filtering 3-Block"
+- Each policy has ONLY ONE action (Block or Allow)
+- Policy numbers are UNIQUE across all policies (no reuse of numbers)
+- A security group with both blocked and allowed items creates TWO policies with different numbers
+- Duplicate policy definitions reuse the same policy name (same number)
 
 #### RuleName Format
 - **Web Categories:** "Blocked_Categories" or "Allowed_Categories"
@@ -163,19 +178,28 @@ Contains all web content filtering policies with rules for blocked/allowed categ
 
 #### Policy Structure Example
 
-A security group with blocked categories and allowed FQDNs creates one policy:
+A security group with blocked categories and allowed FQDNs creates TWO policies:
 
+**Block Policy** (one rule with multiple web categories):
 ```csv
 PolicyName,PolicyType,PolicyAction,RuleType,RuleDestinations,RuleName
-Web Content Filtering 1,WebContentFiltering,Block,webCategory,Abortion;AdultContent;Drugs,Blocked_Categories
-Web Content Filtering 1,WebContentFiltering,Allow,FQDN,example.com;test.com,example.com-Allow
+Web Content Filtering 1-Block,WebContentFiltering,Block,webCategory,Abortion;AdultContent;Drugs,Blocked_Categories
 ```
+
+**Allow Policy** (one rule per FQDN):
+```csv
+PolicyName,PolicyType,PolicyAction,RuleType,RuleDestinations,RuleName
+Web Content Filtering 1-Allow,WebContentFiltering,Allow,FQDN,example.com,example.com-Allow
+Web Content Filtering 1-Allow,WebContentFiltering,Allow,FQDN,test.com,test.com-Allow
+```
+
+Both policies are linked to the same security profile.
 
 ### 2. Security Profiles CSV
 **Filename:** `[yyyyMMdd_HHmmss]_EIA_SecurityProfiles.csv`
 
 #### Description
-Contains security profile definitions that link policies to security groups.
+Contains security profile definitions that link policies to security groups. A security profile can reference multiple policies (e.g., both a Block policy and an Allow policy for the same security group). The security profile is then referenced by a Conditional Access policy to enforce the web content filtering rules.
 
 #### Fields
 
@@ -183,7 +207,7 @@ Contains security profile definitions that link policies to security groups.
 |-------|-------------|---------|-------|
 | SecurityProfileName | Sequential profile name | "Security_Profile_1" | Unique identifier |
 | Priority | Profile priority | 500, 600, 60000 | Lower = higher priority |
-| SecurityProfileLinks | Policy references with priorities | "Web Content Filtering 1:100;Web Content Filtering 2:200" | Semicolon-separated |
+| SecurityProfileLinks | Policy references with priorities | "Web Content Filtering 1-Block:100;Web Content Filtering 1-Allow:200" | Semicolon-separated, includes -Block/-Allow suffix |
 | CADisplayName | Conditional Access display name | "CA_Security_Profile_1" | Auto-generated |
 | EntraUsers | Semicolon-separated user emails | "_Replace_Me" | Placeholder |
 | EntraGroups | Semicolon-separated group names | "ESS_DA;Capita_India_DA" | From CSV columns |
@@ -194,17 +218,26 @@ Contains security profile definitions that link policies to security groups.
 - Format: `[PolicyName]:[InternalPriority]`
 - Internal priorities: 100, 200, 300, etc. (within security profile)
 - Multiple policies semicolon-separated
-- Example: `Web Content Filtering 1:100;Web Content Filtering 2:200`
+- **Ordering:** Allow policies FIRST, then Block policies
+- Example: `Web Content Filtering 2-Allow:100;Web Content Filtering 1-Block:200`
+- Note: PolicyName includes the -Block or -Allow suffix
 
 #### Priority Assignment
 - **DEFAULT disposition:** Priority 60000 (low priority, catch-all)
 - **Security groups:** Priority 500, 600, 700, etc. (increment 100)
-- Order determined by processing sequence
-- Duplicated groups share same priority (same security profile)
+- Order determined by CSV column position (left to right, starting from column 4)
+- Groups with identical policy definitions share the same security profile and priority
 
 ### 3. Log File
 **Filename:** `[yyyyMMdd_HHmmss]_Convert-ForcepointWS2EIA.log`  
 **Location:** Same directory as output CSV files (`$OutputBasePath`)
+
+#### Output Encoding
+All CSV exports use UTF-8 with BOM (Byte Order Mark) encoding:
+- PowerShell parameter: `-Encoding utf8BOM`
+- Ensures Excel compatibility on Windows
+- Maintains international character support
+- Consistent with other Convert-* functions in Migrate2GSA module
 
 ---
 
@@ -233,14 +266,25 @@ $logPath = Join-Path $OutputBasePath "${timestamp}_Convert-ForcepointWS2EIA.log"
 $allColumns = $policiesCsv[0].PSObject.Properties.Name
 
 # Filter for disposition columns (exclude first 3 fixed columns)
+# Note: Column matching is case-insensitive
 $groupColumns = $allColumns | Where-Object {
-    $_ -notmatch '^(Parent Category Name|Child Category Name|DEFAULT)' -and
+    $_ -notmatch '^(Parent Category Name|Child Category Name|DEFAULT Disposition)$' -and
     $_ -match 'Disposition$'
 }
 
-# Extract group names (remove " Disposition" suffix)
+# Extract group names (remove " Disposition" suffix and trim whitespace)
+# Preserve spaces in group names
 $securityGroups = $groupColumns | ForEach-Object {
-    $_ -replace ' Disposition$', ''
+    ($_ -replace ' Disposition$', '').Trim()
+}
+
+# Store original column order for priority assignment
+$groupColumnOrder = @{}
+$priority = 0
+foreach ($col in $groupColumns) {
+    $groupName = ($col -replace ' Disposition$', '').Trim()
+    $groupColumnOrder[$groupName] = $priority
+    $priority++
 }
 ```
 
@@ -306,17 +350,23 @@ $childCategory = $row.'Child Category Name'
 $disposition = $row."$groupName Disposition"
 
 # Skip if no disposition or empty
-if ([string]::IsNullOrWhiteSpace($disposition)) { continue }
+if ([string]::IsNullOrWhiteSpace($disposition)) { 
+    Write-LogMessage "Skipping $childCategory for $groupName - empty disposition" -Level "DEBUG"
+    continue 
+}
 
-# Map action
-$action = switch ($disposition) {
-    'Block' { 'Block' }
-    'Continue' { 
+# Normalize disposition (trim whitespace, case-insensitive comparison)
+$disposition = $disposition.Trim()
+
+# Map action (case-insensitive using -Regex with case-insensitive flag)
+$action = switch -Regex ($disposition) {
+    '^Block$' { 'Block' }
+    '^Continue$' { 
         $policyDefinition.HasContinueAction = $true
         'Block' 
     }
-    'Allow' { 'Allow' }
-    'Do not block' { 'Allow' }
+    '^Allow$' { 'Allow' }
+    '^Do not block$' { 'Allow' }
     default { 
         Write-LogMessage "Unknown disposition '$disposition' for $childCategory" -Level "WARN"
         $null 
@@ -399,6 +449,8 @@ if ($totalItems -eq 0) {
 
 ```powershell
 # Create deterministic string representation
+# NOTE: Arrays MUST be sorted (done in Phase 2.3) to ensure identical policies 
+# generate identical hashes regardless of the order items were added
 $hashInput = @(
     "BlockedCategories:$($policyDefinition.BlockedCategories -join ',')"
     "AllowedCategories:$($policyDefinition.AllowedCategories -join ',')"
@@ -428,60 +480,73 @@ if ($policyDefinitionsHashtable.ContainsKey($hash)) {
     Write-LogMessage "Security group '$groupName' matches existing policy definition (hash: $($hash.Substring(0,8))...)" -Level "DEBUG"
 }
 else {
-    # New unique policy - create it
-    $policyName = "Web Content Filtering $policyCounter"
-    $policyCounter++
+    # New unique policy - create policies for Block and/or Allow
+    # Note: PolicyCounter increments for EACH policy created (Block and Allow get separate numbers)
     
     # Store policy definition
     $policyDefObject = @{
         Hash = $hash
-        PolicyName = $policyName
         Definition = $policyDefinition
         SecurityGroups = @($groupName)
+        BlockPolicyName = $null
+        AllowPolicyName = $null
     }
     
     $policyDefinitionsHashtable[$hash] = $policyDefObject
     $groupToPolicyDefHashtable[$groupName] = $hash
     
-    # Create policy entries
-    Create-PolicyEntries -PolicyDefObject $policyDefObject -Policies $policies
+    # Create policy entries (assigns policy names with unique numbers)
+    Create-PolicyEntries -PolicyDefObject $policyDefObject -Policies $policies -PolicyCounterRef ([ref]$policyCounter)
 }
 ```
 
 #### 3.3 Create Policy Entries (Helper Logic)
 
-For each unique policy definition, create CSV rows:
+For each unique policy definition, create CSV rows. Each policy has ONE action (Block or Allow), so if a security group has both blocked and allowed items, TWO separate policies are created with UNIQUE numbers:
+- One Block policy with blocked categories and/or blocked FQDNs
+- One Allow policy with allowed categories and/or allowed FQDNs
+
+Web categories are combined into a single rule with semicolon-separated destinations. FQDNs are created as individual rules (one per FQDN).
+
+**ReviewNeeded and Provision are evaluated PER RULE**, not per policy.
 
 ```powershell
 function Create-PolicyEntries {
-    param($PolicyDefObject, $Policies)
+    param(
+        $PolicyDefObject, 
+        $Policies,
+        [ref]$PolicyCounterRef
+    )
     
-    $policyName = $PolicyDefObject.PolicyName
     $def = $PolicyDefObject.Definition
     
-    # Determine if review needed
-    $reviewNeeded = $false
-    $reviewReasons = @()
-    
-    if ($def.UnmappedCategories.Count -gt 0) {
-        $reviewNeeded = $true
-        $reviewReasons += "Unmapped categories: $($def.UnmappedCategories -join ', ')"
-    }
-    
-    if ($def.HasContinueAction) {
-        $reviewNeeded = $true
-        $reviewReasons += "Continue action converted to Block (requires review)"
-    }
-    
-    $provision = if ($reviewNeeded) { "No" } else { "Yes" }
-    $reviewDetails = $reviewReasons -join "; "
-    
-    # Create Block policy with rules
+    # Create Block policy with rules (if needed)
     if ($def.BlockedCategories.Count -gt 0 -or $def.BlockedFQDNs.Count -gt 0) {
-        $blockPolicyName = $policyName + "-Block"
+        $blockPolicyName = "Web Content Filtering $($PolicyCounterRef.Value)-Block"
+        $PolicyDefObject.BlockPolicyName = $blockPolicyName
+        $PolicyCounterRef.Value++
         
         # Rule 1: Blocked categories
         if ($def.BlockedCategories.Count -gt 0) {
+            # Check if THIS RULE needs review
+            $ruleReviewNeeded = $false
+            $ruleReviewReasons = @()
+            
+            # Check if any blocked categories are unmapped
+            $unmappedInThisRule = $def.BlockedCategories | Where-Object { $_ -like '*_Unmapped' }
+            if ($unmappedInThisRule) {
+                $ruleReviewNeeded = $true
+                $ruleReviewReasons += "Unmapped categories: $($unmappedInThisRule -join ', ')"
+            }
+            
+            if ($def.HasContinueAction) {
+                $ruleReviewNeeded = $true
+                $ruleReviewReasons += "Continue action converted to Block (requires review)"
+            }
+            
+            $ruleProvision = if ($ruleReviewNeeded) { "No" } else { "Yes" }
+            $ruleReviewDetails = $ruleReviewReasons -join "; "
+            
             $policies.Add([PSCustomObject]@{
                 PolicyName = $blockPolicyName
                 PolicyType = "WebContentFiltering"
@@ -490,14 +555,26 @@ function Create-PolicyEntries {
                 RuleType = "webCategory"
                 RuleDestinations = $def.BlockedCategories -join ";"
                 RuleName = "Blocked_Categories"
-                ReviewNeeded = if ($reviewNeeded) { "Yes" } else { "No" }
-                ReviewDetails = $reviewDetails
-                Provision = $provision
+                ReviewNeeded = if ($ruleReviewNeeded) { "Yes" } else { "No" }
+                ReviewDetails = $ruleReviewDetails
+                Provision = $ruleProvision
             })
         }
         
         # Rules 2+: Blocked FQDNs (one per FQDN)
+        # FQDNs from User-Defined don't have unmapped issues, but Continue action still applies
         foreach ($fqdn in $def.BlockedFQDNs) {
+            $ruleReviewNeeded = $false
+            $ruleReviewReasons = @()
+            
+            if ($def.HasContinueAction) {
+                $ruleReviewNeeded = $true
+                $ruleReviewReasons += "Continue action converted to Block (requires review)"
+            }
+            
+            $ruleProvision = if ($ruleReviewNeeded) { "No" } else { "Yes" }
+            $ruleReviewDetails = $ruleReviewReasons -join "; "
+            
             $policies.Add([PSCustomObject]@{
                 PolicyName = $blockPolicyName
                 PolicyType = "WebContentFiltering"
@@ -506,19 +583,35 @@ function Create-PolicyEntries {
                 RuleType = "FQDN"
                 RuleDestinations = $fqdn
                 RuleName = "$fqdn-Block"
-                ReviewNeeded = if ($reviewNeeded) { "Yes" } else { "No" }
-                ReviewDetails = $reviewDetails
-                Provision = $provision
+                ReviewNeeded = if ($ruleReviewNeeded) { "Yes" } else { "No" }
+                ReviewDetails = $ruleReviewDetails
+                Provision = $ruleProvision
             })
         }
     }
     
-    # Create Allow policy with rules
+    # Create Allow policy with rules (if needed)
     if ($def.AllowedCategories.Count -gt 0 -or $def.AllowedFQDNs.Count -gt 0) {
-        $allowPolicyName = $policyName + "-Allow"
+        $allowPolicyName = "Web Content Filtering $($PolicyCounterRef.Value)-Allow"
+        $PolicyDefObject.AllowPolicyName = $allowPolicyName
+        $PolicyCounterRef.Value++
         
         # Rule 1: Allowed categories
         if ($def.AllowedCategories.Count -gt 0) {
+            # Check if THIS RULE needs review
+            $ruleReviewNeeded = $false
+            $ruleReviewReasons = @()
+            
+            # Check if any allowed categories are unmapped
+            $unmappedInThisRule = $def.AllowedCategories | Where-Object { $_ -like '*_Unmapped' }
+            if ($unmappedInThisRule) {
+                $ruleReviewNeeded = $true
+                $ruleReviewReasons += "Unmapped categories: $($unmappedInThisRule -join ', ')"
+            }
+            
+            $ruleProvision = if ($ruleReviewNeeded) { "No" } else { "Yes" }
+            $ruleReviewDetails = $ruleReviewReasons -join "; "
+            
             $policies.Add([PSCustomObject]@{
                 PolicyName = $allowPolicyName
                 PolicyType = "WebContentFiltering"
@@ -527,13 +620,14 @@ function Create-PolicyEntries {
                 RuleType = "webCategory"
                 RuleDestinations = $def.AllowedCategories -join ";"
                 RuleName = "Allowed_Categories"
-                ReviewNeeded = if ($reviewNeeded) { "Yes" } else { "No" }
-                ReviewDetails = $reviewDetails
-                Provision = $provision
+                ReviewNeeded = if ($ruleReviewNeeded) { "Yes" } else { "No" }
+                ReviewDetails = $ruleReviewDetails
+                Provision = $ruleProvision
             })
         }
         
         # Rules 2+: Allowed FQDNs (one per FQDN)
+        # FQDNs don't have mapping issues, always provision
         foreach ($fqdn in $def.AllowedFQDNs) {
             $policies.Add([PSCustomObject]@{
                 PolicyName = $allowPolicyName
@@ -543,9 +637,9 @@ function Create-PolicyEntries {
                 RuleType = "FQDN"
                 RuleDestinations = $fqdn
                 RuleName = "$fqdn-Allow"
-                ReviewNeeded = if ($reviewNeeded) { "Yes" } else { "No" }
-                ReviewDetails = $reviewDetails
-                Provision = $provision
+                ReviewNeeded = "No"
+                ReviewDetails = ""
+                Provision = "Yes"
             })
         }
     }
@@ -574,45 +668,57 @@ foreach ($groupName in $groupToPolicyDefHashtable.Keys) {
 #### 4.2 Create Security Profiles
 
 ```powershell
-# Track if DEFAULT has been processed
+# Track DEFAULT processing
 $defaultPriority = 60000
+
+# Process groups in column order for consistent priority assignment
+$groupsToProcess = $securityGroups | Sort-Object { $groupColumnOrder[$_] }
+
+# Assign priorities based on column order
+$groupPriorities = @{}
 $currentPriority = 500
+foreach ($groupName in $groupsToProcess) {
+    if ($groupName -eq 'DEFAULT') {
+        $groupPriorities[$groupName] = $defaultPriority
+    }
+    else {
+        $groupPriorities[$groupName] = $currentPriority
+        $currentPriority += 100
+    }
+}
 
 foreach ($hash in $hashToGroupsHashtable.Keys) {
     $policyDefObject = $policyDefinitionsHashtable[$hash]
     $groups = $hashToGroupsHashtable[$hash]
     
-    # Sanitize group names for EntraGroups field
-    $sanitizedGroups = $groups | ForEach-Object { 
-        $_ -replace '\s', '_' -replace '[^a-zA-Z0-9_-]', ''
-    }
+    # Group names preserve spaces (only trim whitespace at start/end)
+    $targetGroups = $groups | ForEach-Object { $_.Trim() }
     
-    # Determine priority
+    # Determine priority (use lowest priority of all groups sharing this policy)
+    $priority = ($groups | ForEach-Object { $groupPriorities[$_] } | Measure-Object -Minimum).Minimum
+    
+    # Handle DEFAULT group
     if ($groups -contains 'DEFAULT') {
-        $priority = $defaultPriority
         $targetGroup = 'Replace_with_All_IA_Users_Group'
     }
     else {
-        $priority = $currentPriority
-        $currentPriority += 100
-        $targetGroup = $sanitizedGroups -join ";"
+        $targetGroup = $targetGroups -join ";"
     }
     
     # Build policy links
+    # IMPORTANT: Allow policies FIRST, then Block policies
     $policyLinks = @()
     $linkPriority = 100
     
-    $blockPolicyName = "$($policyDefObject.PolicyName)-Block"
-    $allowPolicyName = "$($policyDefObject.PolicyName)-Allow"
-    
-    # Check if policies actually exist
-    if ($policies | Where-Object { $_.PolicyName -eq $blockPolicyName }) {
-        $policyLinks += "${blockPolicyName}:${linkPriority}"
+    # Add Allow policy first (if exists)
+    if ($policyDefObject.AllowPolicyName) {
+        $policyLinks += "$($policyDefObject.AllowPolicyName):${linkPriority}"
         $linkPriority += 100
     }
     
-    if ($policies | Where-Object { $_.PolicyName -eq $allowPolicyName }) {
-        $policyLinks += "${allowPolicyName}:${linkPriority}"
+    # Add Block policy second (if exists)
+    if ($policyDefObject.BlockPolicyName) {
+        $policyLinks += "$($policyDefObject.BlockPolicyName):${linkPriority}"
         $linkPriority += 100
     }
     
@@ -661,34 +767,41 @@ Write-LogMessage "Exported $($securityProfiles.Count) security profiles to: $spC
 
 ```powershell
 === CONVERSION SUMMARY ===
-Total Forcepoint rows processed: X
-Security groups found: Y
-  - DEFAULT group included: Yes/No
+Input Processing:
+  - Total Forcepoint rows processed: {TotalRowsProcessed}
+  - Security groups found: {SecurityGroupsFound}
+  - DEFAULT group included: {Yes/No}
 
-Unique policies created: Z
-  - Block policies: Z1
-  - Allow policies: Z2
-Policy entries (CSV rows): A
-Security profiles created: B
+Policy Creation:
+  - Unique policies created: {UniquePoliciesCreated}
+    - Block policies: {BlockPoliciesCreated}
+    - Allow policies: {AllowPoliciesCreated}
+  - Total policy entries (CSV rows): {PolicyEntriesCreated}
+  - Rules requiring review: {RulesNeedingReview}
+  
+Security Profiles:
+  - Security profiles created: {SecurityProfilesCreated}
 
-Categories processed:
-  - Predefined blocked categories: C1
-  - Predefined allowed categories: C2
-  - User-defined blocked FQDNs: C3
-  - User-defined allowed FQDNs: C4
+Actions Processed:
+  - Block actions: {BlockActionsProcessed}
+  - Allow actions: {AllowActionsProcessed}
+  - Continue actions converted to Block: {ContinueActionsConverted}
+  - Unknown actions skipped: {UnknownActionsSkipped}
 
-Unmapped categories: U
-Continue actions converted to Block: V
+Category Mapping:
+  - Mapped categories: {TotalMappedCategories}
+  - Unmapped categories: {TotalUnmappedCategories}
+  - User-defined FQDNs: {TotalUserDefinedFQDNs}
 
-Deduplication results:
-  - Total security groups: W
-  - Unique policy definitions: X
-  - Groups sharing policies: Y
+Deduplication Results:
+  - Total security groups: {TotalSecurityGroups}
+  - Unique policy definitions: {UniquePolicyDefinitions}
+  - Groups sharing policies: {GroupsSharingPolicies}
 
-Output files:
-  - Policies: [path]
-  - Security Profiles: [path]
-  - Log File: [path]
+Output Files:
+  - Policies: {policiesCsvPath}
+  - Security Profiles: {spCsvPath}
+  - Log File: {logPath}
 ```
 
 #### 5.4 Validate Against GSA Limits
@@ -733,8 +846,8 @@ if ($securityProfiles.Count -gt $limits.MaxSecurityProfiles) {
 
 | Parameter | Type | Default | Description | Validation |
 |-----------|------|---------|-------------|------------|
-| ForcepointPoliciesPath | string | `ForcepointPolicies.csv` | Path to Forcepoint policies CSV | ValidateScript - file must exist |
-| CategoryMappingsPath | string | `Forcepoint-to-GSA-CategoryMapping.csv` | Path to category mappings CSV | ValidateScript - file must exist |
+| ForcepointPoliciesPath | string | None (required) | Path to Forcepoint policies CSV | ValidateScript - file must exist |
+| CategoryMappingsPath | string | None (required) | Path to category mappings CSV | ValidateScript - file must exist |
 | OutputBasePath | string | `$PWD` | Output directory for CSV and log files | ValidateScript - directory must exist |
 | EnableDebugLogging | switch | `false` | Enable DEBUG level logging | None |
 
@@ -743,19 +856,19 @@ if ($securityProfiles.Count -gt $limits.MaxSecurityProfiles) {
 ```powershell
 [CmdletBinding(SupportsShouldProcess = $false)]
 param(
-    [Parameter(HelpMessage = "Path to Forcepoint Policies CSV export")]
+    [Parameter(Mandatory = $true, HelpMessage = "Path to Forcepoint Policies CSV export")]
     [ValidateScript({
         if (Test-Path $_) { return $true }
         else { throw "File not found: $_" }
     })]
-    [string]$ForcepointPoliciesPath = (Join-Path $PWD "ForcepointPolicies.csv"),
+    [string]$ForcepointPoliciesPath,
     
-    [Parameter(HelpMessage = "Path to Forcepoint to GSA category mappings CSV file")]
+    [Parameter(Mandatory = $true, HelpMessage = "Path to Forcepoint to GSA category mappings CSV file")]
     [ValidateScript({
         if (Test-Path $_) { return $true }
         else { throw "File not found: $_" }
     })]
-    [string]$CategoryMappingsPath = (Join-Path $PWD "Forcepoint-to-GSA-CategoryMapping.csv"),
+    [string]$CategoryMappingsPath,
     
     [Parameter(HelpMessage = "Base directory for output files")]
     [ValidateScript({
@@ -789,35 +902,62 @@ Write-LogMessage "Processing security group: $groupName" -Level "INFO" `
 
 ## Examples
 
-### Example 1: Basic Conversion
+### Example 1: Basic Conversion with Multiple Policies
+
+**Scenario:** Three groups with different dispositions demonstrate policy creation and deduplication.
 
 **Input Forcepoint CSV:**
 ```csv
-Parent Category Name,Child Category Name,DEFAULT Disposition,Finance_Group Disposition,Marketing_Group Disposition
+Parent Category Name,Child Category Name,DEFAULT Disposition,Finance Group Disposition,Marketing Group Disposition
 Abortion,Abortion,Do not block,Block,Do not block
 Adult Material,Adult Content,Block,Block,Block
 User-Defined,example.com,Block,Allow,Block
 ```
 
+**Processing Steps:**
+
+1. **DEFAULT Group:** 
+   - Blocking: Adult Content (category), example.com (FQDN)
+   - Creates: "Web Content Filtering 1-Block" (policy #1)
+
+2. **Finance Group:** 
+   - Blocking: Abortion, Adult Content (categories)
+   - Allowing: example.com (FQDN)
+   - Creates: "Web Content Filtering 2-Block" (policy #2) and "Web Content Filtering 3-Allow" (policy #3)
+
+3. **Marketing Group:**
+   - Blocking: Adult Content (category), example.com (FQDN)
+   - Matches DEFAULT → REUSES "Web Content Filtering 1-Block"
+
 **Output - Policies CSV:**
 ```csv
 PolicyName,PolicyType,PolicyAction,RuleType,RuleDestinations,RuleName,ReviewNeeded,ReviewDetails,Provision
-Web Content Filtering 1-Block,WebContentFiltering,Block,webCategory,Abortion,Blocked_Categories,No,,Yes
-Web Content Filtering 2-Block,WebContentFiltering,Block,webCategory,AdultContent,Blocked_Categories,No,,Yes
-Web Content Filtering 2-Block,WebContentFiltering,Block,FQDN,example.com,example.com-Block,No,,Yes
+Web Content Filtering 1-Block,WebContentFiltering,Block,webCategory,AdultContent,Blocked_Categories,No,,Yes
+Web Content Filtering 1-Block,WebContentFiltering,Block,FQDN,example.com,example.com-Block,No,,Yes
+Web Content Filtering 2-Block,WebContentFiltering,Block,webCategory,Abortion;AdultContent,Blocked_Categories,No,,Yes
 Web Content Filtering 3-Allow,WebContentFiltering,Allow,FQDN,example.com,example.com-Allow,No,,Yes
 ```
 
 **Output - Security Profiles CSV:**
 ```csv
 SecurityProfileName,Priority,SecurityProfileLinks,CADisplayName,EntraUsers,EntraGroups,Description,Provision
-Security_Profile_1,500,Web Content Filtering 1-Block:100,CA_Security_Profile_1,_Replace_Me,Finance_Group,Converted from Forcepoint - Groups: Finance_Group,Yes
-Security_Profile_2,600,Web Content Filtering 2-Block:100,CA_Security_Profile_2,_Replace_Me,Marketing_Group,Converted from Forcepoint - Groups: Marketing_Group,Yes
-Security_Profile_3,700,Web Content Filtering 3-Allow:100,CA_Security_Profile_3,_Replace_Me,Finance_Group,Converted from Forcepoint - Groups: Finance_Group,Yes
-Security_Profile_4,60000,Web Content Filtering 2-Block:100,CA_Security_Profile_4,_Replace_Me,Replace_with_All_IA_Users_Group,Converted from Forcepoint - Groups: DEFAULT,Yes
+Security_Profile_1,500,Web Content Filtering 3-Allow:100;Web Content Filtering 2-Block:200,CA_Security_Profile_1,_Replace_Me,Finance Group,Converted from Forcepoint - Groups: Finance Group,Yes
+Security_Profile_2,600,Web Content Filtering 1-Block:100,CA_Security_Profile_2,_Replace_Me,Marketing Group,Converted from Forcepoint - Groups: Marketing Group,Yes
+Security_Profile_3,60000,Web Content Filtering 1-Block:100,CA_Security_Profile_3,_Replace_Me,Replace_with_All_IA_Users_Group,Converted from Forcepoint - Groups: DEFAULT,Yes
 ```
 
-### Example 2: Deduplication
+**Key Observations:**
+- Policy numbers are unique: 1, 2, 3 (no reuse of numbers)
+- Finance Group has TWO policies (#2-Block and #3-Allow) linked in security profile
+- In SecurityProfileLinks, Allow policy (#3) comes FIRST, then Block policy (#2)
+- Marketing Group SHARES policy #1 with DEFAULT (identical rules)
+- Group names preserve spaces: "Finance Group", "Marketing Group"
+- Each group gets own security profile even when sharing policies
+- Priority based on column order: Finance (500), Marketing (600), DEFAULT (60000)
+
+### Example 2: Deduplication and Group Consolidation
+
+**Scenario:** Multiple groups with identical policies are consolidated.
 
 **Input:**
 ```csv
@@ -826,7 +966,10 @@ Abortion,Abortion,Do not block,Block,Block
 Adult Material,Adult Content,Block,Block,Block
 ```
 
-Both Group1 and Group2 have identical dispositions (both block Abortion and Adult Content).
+**Processing:**
+- **Group1 & Group2:** Both block Abortion and Adult Content (identical)
+- **DEFAULT:** Blocks only Adult Content
+- Group1 and Group2 generate same policy definition hash → share policies
 
 **Output - Policies CSV:**
 ```csv
@@ -842,26 +985,48 @@ Security_Profile_1,500,Web Content Filtering 1-Block:100,CA_Security_Profile_1,_
 Security_Profile_2,60000,Web Content Filtering 2-Block:100,CA_Security_Profile_2,_Replace_Me,Replace_with_All_IA_Users_Group,Converted from Forcepoint - Groups: DEFAULT,Yes
 ```
 
-**Note:** Group1 and Group2 share one security profile since they have identical policies.
+**Key Observations:**
+- ONE policy created for Group1 and Group2 (policy #1)
+- ONE security profile for both groups (consolidated in EntraGroups field)
+- Groups separated by semicolons in EntraGroups: "Group1;Group2"
+- Priority 500 assigned (based on first group's column position)
+- Deduplication reduces policy count from 3 potential policies to 2 actual policies
 
 ### Example 3: Unmapped Categories and Continue Action
 
+**Scenario:** Demonstrates handling of unmapped categories and Continue action with per-rule review flags.
+
 **Input:**
 ```csv
-Parent Category Name,Child Category Name,DEFAULT Disposition,Test_Group Disposition
+Parent Category Name,Child Category Name,DEFAULT Disposition,Test Group Disposition
 Gambling,Online Gambling,Do not block,Continue
-Custom Category,Test,Do not block,Block
+Custom Category,Test Category,Do not block,Block
+User-Defined,trusted.com,Do not block,Allow
 ```
 
-Assuming "Online Gambling" is not in the mapping file and "Custom Category" is also unmapped.
+**Assumptions:**
+- "Online Gambling" not in mapping file → becomes "Online Gambling_Unmapped"
+- "Test Category" not in mapping file → becomes "Test Category_Unmapped"
+- trusted.com is a User-Defined FQDN (no mapping needed)
+
+**Processing:**
+- Test Group blocks: Online Gambling (Continue→Block, unmapped), Test Category (unmapped)
+- Test Group allows: trusted.com (FQDN)
+- DEFAULT has no dispositions → skipped
 
 **Output - Policies CSV:**
 ```csv
 PolicyName,PolicyType,PolicyAction,RuleType,RuleDestinations,RuleName,ReviewNeeded,ReviewDetails,Provision
-Web Content Filtering 1-Block,WebContentFiltering,Block,webCategory,Online Gambling_Unmapped;Custom Category_Unmapped,Blocked_Categories,Yes,Unmapped categories: Online Gambling; Custom Category; Continue action converted to Block (requires review),No
+Web Content Filtering 1-Block,WebContentFiltering,Block,webCategory,Online Gambling_Unmapped;Test Category_Unmapped,Blocked_Categories,Yes,Unmapped categories: Online Gambling_Unmapped; Test Category_Unmapped; Continue action converted to Block (requires review),No
+Web Content Filtering 2-Allow,WebContentFiltering,Allow,FQDN,trusted.com,trusted.com-Allow,No,,Yes
 ```
 
-**Note:** Policy marked for review due to unmapped categories and Continue action.
+**Key Observations:**
+- Blocked_Categories rule: ReviewNeeded=Yes, Provision=No (unmapped + Continue action)
+- FQDN rule: ReviewNeeded=No, Provision=Yes (no mapping issues)
+- Review flags are per-rule, not per-policy
+- Policy #1 (Block) and Policy #2 (Allow) have different review statuses
+- Unmapped categories include "_Unmapped" suffix in destinations
 
 ---
 
@@ -927,48 +1092,135 @@ function Convert-ForcepointWS2EIA {
 
 ```powershell
 $stats = @{
-    # Input
-    TotalRowsProcessed = 0
-    SecurityGroupsFound = 0
-    DefaultGroupIncluded = $false
+    # Input (raw counts)
+    TotalRowsProcessed = 0              # Total CSV rows read
+    SecurityGroupsFound = 0             # Number of group columns found
+    DefaultGroupIncluded = $false       # Whether DEFAULT disposition column exists
     
-    # Categories
-    PredefinedBlockedCategories = 0
-    PredefinedAllowedCategories = 0
-    UserDefinedBlockedFQDNs = 0
-    UserDefinedAllowedFQDNs = 0
-    UnmappedCategories = 0
+    # Actions (total occurrence counts)
+    ContinueActionsConverted = 0        # Count of Continue actions converted to Block
+    BlockActionsProcessed = 0           # Total Block + Continue actions
+    AllowActionsProcessed = 0           # Total Allow + "Do not block" actions
+    UnknownActionsSkipped = 0           # Actions with unrecognized values
     
-    # Actions
-    ContinueActionsConverted = 0
-    BlockActionsProcessed = 0
-    AllowActionsProcessed = 0
+    # Categories (occurrence-based counts)
+    TotalUnmappedCategories = 0         # Total unmapped category occurrences
+    TotalMappedCategories = 0           # Total successfully mapped categories
+    TotalUserDefinedFQDNs = 0           # Total FQDN entries from User-Defined rows
     
     # Deduplication
-    TotalSecurityGroups = 0
-    UniquePolicyDefinitions = 0
-    GroupsSharingPolicies = 0
+    TotalSecurityGroups = 0             # Total groups processed
+    UniquePolicyDefinitions = 0         # Unique policy definition hashes
+    GroupsSharingPolicies = 0           # Count of groups sharing policies with others
     
     # Outputs
-    UniquePoliciesCreated = 0
-    BlockPoliciesCreated = 0
-    AllowPoliciesCreated = 0
-    PolicyEntriesCreated = 0
-    SecurityProfilesCreated = 0
+    UniquePoliciesCreated = 0           # Total unique policy names created
+    BlockPoliciesCreated = 0            # Count of policies with -Block suffix
+    AllowPoliciesCreated = 0            # Count of policies with -Allow suffix
+    PolicyEntriesCreated = 0            # Total CSV rows in Policies output
+    RulesNeedingReview = 0              # Count of rules with ReviewNeeded=Yes
+    SecurityProfilesCreated = 0         # Total security profiles created
 }
 ```
+
+### DEFAULT Group Special Handling
+
+The DEFAULT disposition column receives special treatment throughout the processing:
+
+**Column Detection:**
+- Column name matches "DEFAULT Disposition" (case-insensitive)
+- Exact match required (e.g., "DEFAULT" column without "Disposition" suffix is not processed)
+
+**Priority Assignment:**
+- Always receives priority 60000 (lowest priority)
+- Acts as catch-all for users not in specific security groups
+- Priority assigned regardless of column position in CSV
+
+**EntraGroups Mapping:**
+- Always set to `Replace_with_All_IA_Users_Group` (placeholder)
+- User must replace with actual Entra group name for all Internet Access users
+- Never uses "DEFAULT" as the group name in output
+
+**Policy Deduplication:**
+- DEFAULT can share policy definitions with other security groups
+- If DEFAULT policies match another group, they reuse the same policy names
+- DEFAULT always gets its own security profile (never combined with other groups)
+
+**Processing Behavior:**
+- Processed in same manner as other groups for policy creation
+- Empty DEFAULT dispositions are skipped (same as other groups)
+- Can have both Block and Allow policies
+
+**Rationale:** DEFAULT represents the baseline policy for all users not explicitly covered by other security groups.
+
+---
+
+## Edge Cases and Special Scenarios
+
+### Scenario 1: Group with Only "Do not block" / "Allow" Entries
+**Input:** All dispositions for a group are "Allow" or "Do not block"  
+**Result:** 
+- Policy definition contains only AllowedCategories and/or AllowedFQDNs
+- Creates ONE Allow policy only (no Block policy)
+- Security profile links to Allow policy only
+
+### Scenario 2: All Groups Have Identical Policies
+**Input:** Multiple security groups with identical disposition sets  
+**Result:**
+- One policy definition hash generated
+- Policies created once, reused across all groups
+- Each group gets its own security profile pointing to the same policies
+- Different priorities assigned based on column order ensure correct evaluation
+
+### Scenario 3: Empty Parent Category Name
+**Input:** CSV row has empty/null "Parent Category Name"  
+**Result:**
+- Treated as non-User-Defined (predefined category)
+- Uses "Child Category Name" for mapping lookup
+- WARN logged about empty parent category
+- Processing continues normally
+
+### Scenario 4: No Mapping File Provided or File Not Found
+**Input:** CategoryMappingsPath parameter not provided or file missing  
+**Result:**
+- FATAL ERROR - function exits
+- All predefined categories would be unmapped
+- Error message directs user to provide valid mapping file
+
+### Scenario 5: FQDN Contains Wildcards or Special Characters
+**Input:** User-Defined row has "*.example.com" or similar patterns  
+**Result:**
+- Passed through as-is to FQDN rule (no validation)
+- RuleDestinations contains the exact value from CSV
+- Note: FQDN format validation is NOT performed (see Known Limitations)
+- User responsible for ensuring valid FQDN syntax
+
+### Scenario 6: Security Group Has No Non-Empty Dispositions
+**Input:** All dispositions for a group are empty, null, or whitespace  
+**Result:**
+- Policy definition has zero items
+- Group is skipped (INFO logged)
+- No policy or security profile created for this group
+
+### Scenario 7: Only DEFAULT Disposition Exists
+**Input:** CSV has only 3 columns (no security group columns)  
+**Result:**
+- DEFAULT is processed as the only group
+- Creates policies and one security profile for DEFAULT
+- Priority 60000 assigned to security profile
 
 ---
 
 ## Known Limitations
 
-1. **Column Header Format:** Assumes columns end with " Disposition" suffix
-2. **User-Defined Detection:** Relies on exact match of "User-Defined" as parent category
-3. **No FQDN Validation:** Does not validate if User-Defined entries are valid FQDNs
-4. **Sequential Naming:** Policy and profile names are sequential, not customizable
+1. **Column Header Format:** Assumes columns end with " Disposition" suffix (case-insensitive)
+2. **User-Defined Detection:** Relies on "User-Defined" as parent category name (case-insensitive) to identify FQDNs
+3. **No FQDN Validation:** Does not validate if User-Defined entries are valid FQDNs or follow proper format
+4. **Sequential Naming:** Policy and profile names are sequential integers, not customizable
 5. **No Filtering:** Cannot filter specific categories or groups (processes entire CSV)
-6. **Memory:** All data held in memory (acceptable for expected data sizes)
+6. **Memory:** All data held in memory (acceptable for expected data sizes < 10,000 rows)
 7. **No Incremental Updates:** Always processes full file, not optimized for incremental changes
+8. **Group Name Preservation:** Group names with special characters are preserved; user must ensure Entra compatibility
 
 ---
 
