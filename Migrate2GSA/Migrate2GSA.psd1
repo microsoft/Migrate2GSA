@@ -70,6 +70,7 @@ FunctionsToExport = @(
     'Export-NetskopeConfig',
     'Convert-NPA2EPA',
     'Convert-NSWG2EIA',
+    'Convert-ForcepointWS2EIA',
     'Start-EntraPrivateAccessProvisioning',
     'Start-EntraInternetAccessProvisioning'
 )

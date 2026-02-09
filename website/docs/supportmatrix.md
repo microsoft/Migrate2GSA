@@ -43,3 +43,11 @@ This support matrix provides a comprehensive overview of the migration toolkit's
 |---------|--------|-----------|-----------|-------|
 | **Private Applications** | Supported | Supported | Supported | |
 | **NPA Policies** | Supported | Supported | Supported | |
+
+## Forcepoint Web Security to Entra Internet Access
+
+| Feature / Object | Export | Transform | Provision | Notes |
+|---------|--------|-----------|-----------|-------|
+| **Web Category Policies** | Manual export | Supported | Supported | Matrix-style CSV with security groups and dispositions |
+| **Predefined Categories** | Manual export | Supported | Supported | Transformation requires provided mapping file |
+| **User-Defined FQDNs** | Manual export | Supported | Supported | FQDNs listed in User-Defined category |
