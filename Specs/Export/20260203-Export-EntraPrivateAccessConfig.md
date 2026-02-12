@@ -109,7 +109,7 @@ EnterpriseAppName, SegmentId, destinationHost, DestinationType, Protocol, Ports,
 | Column | Description | Data Type | Example Values |
 |--------|-------------|-----------|----------------|
 | `EnterpriseAppName` | Display name of the Private Access application | String | `Corporate Intranet`, `HR Portal` |
-| `SegmentId` | Graph ID of the application segment | String (GUID) | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
+| `SegmentId` | Graph ID of the application segment (optional metadata for reference/audit only; not used by provisioning function) | String (GUID) | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
 | `destinationHost` | FQDN, IP address, or IP range for the segment | String | `intranet.contoso.com`, `10.0.1.0/24` |
 | `DestinationType` | Type of destination | String | `fqdn`, `ipAddress`, `ipRange`, `dnsSuffix` |
 | `Protocol` | Network protocol | String | `tcp`, `udp` |
@@ -135,9 +135,31 @@ EnterpriseAppName, SegmentId, destinationHost, DestinationType, Protocol, Ports,
 - Users: Semicolon-separated (`;`) without spaces
 - Ports: Comma-separated (`,`) without spaces
 
-**Special Characters:**
-- CSV-escape fields containing commas, quotes, or newlines
-- Use standard CSV quoting (double quotes)
+**Special Characters and CSV Escaping:**
+
+Proper CSV escaping is critical to maintain data integrity. Apply the following rules:
+
+1. **Fields containing commas:** Enclose entire field in double quotes
+   - Input: `US-East, EMEA Connectors`
+   - Output: `"US-East, EMEA Connectors"`
+
+2. **Fields containing semicolons:** Enclose entire field in double quotes
+   - Input: `Finance; HR Group`
+   - Output: `"Finance; HR Group"`
+
+3. **Fields containing double quotes:** Escape with double-quote (`""`) and enclose field in double quotes
+   - Input: `Corporate "Main" Intranet`
+   - Output: `"Corporate ""Main"" Intranet"`
+
+4. **Fields containing newlines:** Replace newlines with space OR enclose field in double quotes
+   - Preferred: Replace `\r\n` or `\n` with single space
+   - Alternative: Enclose field in double quotes (preserves newlines)
+
+5. **Leading/trailing spaces:** Enclose field in double quotes to preserve spaces
+   - Input: ` Connector Group ` (with spaces)
+   - Output: `" Connector Group "`
+
+**PowerShell Export-Csv handles most of these automatically, but validate edge cases during testing.**
 
 ### 3.4 Row Structure
 
@@ -173,15 +195,17 @@ HR Portal,c3d4e5f6-a7b8-9012-cdef-123456789012,hr.contoso.com,fqdn,tcp,443,EMEA 
 6. Test Graph connection with required scopes (Test-GraphConnection)
 7. Validate GSA tenant onboarding status (Get-IntGSATenantStatus)
 8. Retrieve all Private Access applications
-7. For each application:
-   a. Get application properties (name, connector group)
-   b. Get service principal for app role assignments
-   c. Get assigned groups and users
-   d. Get all application segments
-   e. For each segment, create CSV row with app + segment data
-8. Write CSV file
-9. Generate summary report
-10. Display completion message with folder location
+9. For each application (with progress indicators):
+   a. Update progress: "Processing app X of Y"
+   b. Get application properties (name, connector group)
+   c. Get service principal for app role assignments
+   d. Get assigned groups and users
+   e. Get all application segments
+   f. Validate segment data quality
+   g. For each segment, create CSV row with app + segment data
+10. Write CSV file
+11. Generate enhanced summary report with statistics
+12. Display completion message with folder location
 ```
 
 ### 4.2 Detailed Export Steps
@@ -219,6 +243,28 @@ if ($tenantStatus.onboardingStatus -ne 'onboarded') {
 Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.onboardingStatus)" -Level SUCCESS -Component "Validation"
 ```
 
+**Private Access Feature Validation:**
+```powershell
+Write-LogMessage "Validating Private Access feature is enabled..." -Level INFO -Component "Validation"
+$paProfile = Get-IntNetworkAccessForwardingProfile -ProfileType 'privateAccess'
+if (-not $paProfile -or $paProfile.state -ne 'enabled') {
+    Write-LogMessage "Private Access is not enabled on this tenant. Current state: $($paProfile.state)" -Level ERROR -Component "Validation"
+    throw "Private Access feature validation failed. Please enable Private Access before exporting."
+}
+Write-LogMessage "Private Access feature validated: enabled" -Level SUCCESS -Component "Validation"
+```
+
+**Connector Groups Availability Check:**
+```powershell
+Write-LogMessage "Checking connector groups availability..." -Level INFO -Component "Validation"
+$allConnectorGroups = Get-IntApplicationProxyConnectorGroup
+if (-not $allConnectorGroups -or $allConnectorGroups.Count -eq 0) {
+    Write-LogMessage "No connector groups found in tenant. Exported apps will have empty ConnectorGroup field. This may cause provisioning issues in target tenant." -Level WARN -Component "Validation"
+} else {
+    Write-LogMessage "Found $($allConnectorGroups.Count) connector group(s) in tenant" -Level INFO -Component "Validation"
+}
+```
+
 **Note:** These validation functions are internal functions that must be explicitly called within the function body. They are NOT automatically invoked by module initialization.
 
 #### 4.2.2 Retrieve Private Access Applications
@@ -232,6 +278,13 @@ Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.
 - Application Client ID (`appId`)
 - Display Name (`displayName`)
 - Created DateTime (`createdDateTime`)
+
+**Progress Indicator:**
+```powershell
+Write-Progress -Activity "Exporting Private Access Configuration" `
+    -Status "Retrieving applications..." `
+    -PercentComplete 10
+```
 
 **Error Handling:**
 - If no applications found, create empty CSV with headers only
@@ -261,8 +314,13 @@ Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.
 - Cache connector group lookups (ID → Name mapping)
 
 **Error Handling:**
-- If no connector group assigned, leave field blank
-- Log warning: "Application '{appName}' has no connector group assigned"
+- If no connector group assigned (ID is null), leave field blank
+  - Log warning: "Application '{appName}' has no connector group assigned"
+- If connector group ID exists but cannot be resolved (deleted connector group):
+  - Use placeholder: `[DELETED]_{connectorGroupId}`
+  - Log warning: "Connector group ID {id} referenced by app '{appName}' but not found (likely deleted)"
+  - Mark for review in summary report
+- Continue with remaining applications on connector group errors
 
 #### 4.2.4 Get Group Assignments
 
@@ -319,14 +377,49 @@ Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.
 - Graph returns port ranges as objects with `destinationPort` property
 - Convert to comma-separated string: `80,443` or `8080-8090`
 
+**Segment Data Validation:**
+
+Validate segment data quality to prevent provisioning failures:
+
+1. **Destination Host Validation:**
+   - Check `destinationHost` is not null, empty, or whitespace
+   - Warn if suspicious patterns: `localhost`, `127.0.0.1`, `0.0.0.0`
+   - Log ERROR and skip segment if destination is invalid
+
+2. **Port Validation:**
+   - Validate port numbers are in valid range (1-65535)
+   - Check for invalid values (port 0, negative ports)
+   - Validate port range format (e.g., `8080-8090`)
+   - Warn if suspicious ports (e.g., port 0)
+   - Convert to comma-separated string: `80,443` or `8080-8090`
+
+3. **Destination Type vs Host Consistency:**
+   - If `destinationType = 'fqdn'`, validate destination looks like FQDN (contains dot)
+   - If `destinationType = 'ipAddress'`, validate destination is valid IP
+   - If `destinationType = 'ipRange'`, validate CIDR notation (e.g., `/24`)
+   - Log WARNING if type doesn't match format
+
+4. **Protocol Validation:**
+   - Verify protocol is `tcp` or `udp`
+   - Log WARNING for unexpected protocols
+
 **Error Handling:**
 - If no segments exist, log warning and skip application
+- If segment data validation fails, log ERROR with details and skip segment
 - If segment data is incomplete, leave field blank
+- Continue with remaining segments/applications on errors
 
 #### 4.2.7 Build CSV Rows
 
 **Process:**
-- For each application:
+- For each application (with progress tracking):
+  - Update progress indicator:
+    ```powershell
+    $percentComplete = (($currentAppIndex / $totalApps) * 80) + 20  # 20-100% range
+    Write-Progress -Activity "Exporting Private Access Configuration" `
+        -Status "Processing application $currentAppIndex of $totalApps: $($app.displayName)" `
+        -PercentComplete $percentComplete
+    ```
   - Get all segments
   - Create one CSV row per segment
   - All rows for same app have identical app-level properties:
@@ -375,6 +468,12 @@ Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.
 #### 4.2.8 Write CSV File
 
 **Export:**
+- Complete progress indicator:
+  ```powershell
+  Write-Progress -Activity "Exporting Private Access Configuration" `
+      -Status "Writing CSV file..." `
+      -PercentComplete 95
+  ```
 - Use `Export-Csv` cmdlet
 - Parameters:
   - `-Path`: Full path to CSV file
@@ -384,6 +483,10 @@ Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.
 **Validation:**
 - Verify file created successfully
 - Log file size and row count
+- Close progress indicator:
+  ```powershell
+  Write-Progress -Activity "Exporting Private Access Configuration" -Completed
+  ```
 
 ---
 
@@ -418,8 +521,10 @@ Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.
 - Function start/end
 - Application counts
 - Warnings for missing data (groups, users, connector groups)
+- Warnings for deleted connector groups
+- Segment validation errors with details
 - API errors with details
-- Export summary statistics
+- Export summary statistics (detailed, see section 5.3)
 
 ### 5.3 Console Output
 
@@ -437,13 +542,33 @@ Backup folder: C:\Backups\GSA-backup_20260203_143022\
 Entra Private Access (EPA):
   Exported: 12 Applications
   Exported: 47 Segments
+  
+  Connector Groups:
+    Unique connector groups referenced: 3
+    Apps with no connector group: 2
+    Deleted connector groups detected: 1
+  
+  Assignments:
+    Apps with no user/group assignments: 1
+    Total unique groups assigned: 8
+    Total unique users assigned: 15
+  
+  Segment Statistics:
+    Average segments per app: 3.9
+    App with most segments: Corporate Intranet (12 segments)
+    Apps with no segments: 0
+  
+  Performance:
+    Graph API calls made: 127
+    Cached lookups used: 89
+    Total duration: 8.2 seconds
+  
   Warnings: 3 (see log file for details)
+  Errors: 0
   
 Files created in PrivateAccess\:
   - 20260203_143022_EPA_Config.csv (15 KB)
   - 20260203_143022_Export-EPA.log (8 KB)
-
-Total duration: 8.2 seconds
 ```
 
 ---
