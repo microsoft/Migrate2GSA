@@ -38,13 +38,6 @@ Head to the **[Entra Private Access Provisioning Guide](../../Provision/EntraPri
 - Step-by-step provisioning workflow
 - Examples and best practices
 
-### Migration Scenarios
-
-If you're migrating from ZScaler Private Access (ZPA):
-- 📖 [Export ZPA Configuration](../../Export/ExportZPAConfig.md)
-- 📖 [Convert ZPA to EPA](../../Convert/ConvertZPA2EPA.md)
-- 📖 [Provision to Entra](../../Provision/EntraPrivateAccessProvisioning.md)
-
 ---
 
 ## What's Coming in the Greenfield Guide?
@@ -90,7 +83,3 @@ The upcoming EPA greenfield deployment documentation will include:
 - [Entra Private Access Provisioning](../../Provision/EntraPrivateAccessProvisioning.md) - Deploy EPA configurations
 - [Microsoft Learn - Private Access Overview](https://learn.microsoft.com/en-us/entra/global-secure-access/concept-private-access)
 - [Microsoft Learn - Configure Quick Access](https://learn.microsoft.com/en-us/entra/global-secure-access/how-to-configure-quick-access)
-
-**Migration Documentation:**
-- [Export ZPA Configuration](../../Export/ExportZPAConfig.md)
-- [Convert ZPA to EPA](../../Convert/ConvertZPA2EPA.md)
