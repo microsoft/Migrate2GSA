@@ -1,0 +1,10 @@
+{
+  "label": "GreenField Deployment",
+  "position": 65,
+  "collapsible": true,
+  "collapsed": false,
+  "link": {
+    "type": "generated-index",
+    "description": "Deploy Global Secure Access from scratch without migrating from another platform."
+  }
+}
