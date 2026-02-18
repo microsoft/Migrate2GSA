@@ -22,5 +22,6 @@ Export-ModuleMember -Function @(
     'Convert-NSWG2EIA',
     'Convert-ForcepointWS2EIA',
     'Start-EntraPrivateAccessProvisioning',
-    'Start-EntraInternetAccessProvisioning'
+    'Start-EntraInternetAccessProvisioning',
+    'Export-EntraPrivateAccessConfig'
 )

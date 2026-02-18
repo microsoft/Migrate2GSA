@@ -838,11 +838,14 @@ function New-ApplicationSegments {
         }
         
         # Create segment parameters
+        # Split protocol if provided as comma-separated string and normalize to uppercase
+        $protocolArray = @($SegmentConfig.Protocol -split ',' | ForEach-Object { $_.Trim().ToUpper() })
+
         $segmentParams = @{
             ApplicationId = $AppId
             DestinationHost = $SegmentConfig.destinationHost
             DestinationType = $SegmentConfig.DestinationType
-            Protocol = $SegmentConfig.Protocol
+            Protocol = $protocolArray
             Ports = $portArray
             ErrorAction = 'Stop'
         }

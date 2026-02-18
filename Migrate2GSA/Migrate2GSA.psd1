@@ -72,7 +72,8 @@ FunctionsToExport = @(
     'Convert-NSWG2EIA',
     'Convert-ForcepointWS2EIA',
     'Start-EntraPrivateAccessProvisioning',
-    'Start-EntraInternetAccessProvisioning'
+    'Start-EntraInternetAccessProvisioning',
+    'Export-EntraPrivateAccessConfig'
 )
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
