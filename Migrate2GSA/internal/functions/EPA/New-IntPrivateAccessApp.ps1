@@ -6,12 +6,21 @@ function New-IntPrivateAccessApp {
     .DESCRIPTION
         Creates and configures a new Entra Private Access application using the Microsoft Graph API.
         Optionally assigns a connector group to the application.
+        Supports creating Quick Access applications with DNS resolution when the -QuickAccess switch is specified.
     
     .PARAMETER ApplicationName
         The display name for the new Private Access application.
     
     .PARAMETER ConnectorGroupId
         Optional. The ID of the connector group to assign to the application.
+    
+    .PARAMETER QuickAccess
+        Optional. When specified, creates a Quick Access application (applicationType = 'quickaccessapp')
+        instead of a regular Private Access application (applicationType = 'nonwebapp').
+    
+    .PARAMETER EnableDnsResolution
+        Optional. When specified with -QuickAccess, enables DNS resolution on the Quick Access application.
+        Only applicable when -QuickAccess is also specified. Should be set to $true when dnsSuffix segments exist.
     
     .EXAMPLE
         $result = New-IntPrivateAccessApp -ApplicationName "MyApp"
@@ -20,6 +29,10 @@ function New-IntPrivateAccessApp {
     .EXAMPLE
         $result = New-IntPrivateAccessApp -ApplicationName "MyApp" -ConnectorGroupId "12345-abcde" -Verbose
         Creates a new Private Access app and assigns it to a connector group.
+    
+    .EXAMPLE
+        $result = New-IntPrivateAccessApp -ApplicationName "QA-App" -QuickAccess -EnableDnsResolution
+        Creates a new Quick Access application with DNS resolution enabled.
     
     .OUTPUTS
         PSCustomObject with Success, ApplicationName, ApplicationObjectId, AppId, ServicePrincipalId, and Message properties.
@@ -36,7 +49,13 @@ function New-IntPrivateAccessApp {
         [string]$ApplicationName,
         
         [Parameter(Mandatory = $false)]
-        [string]$ConnectorGroupId
+        [string]$ConnectorGroupId,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$QuickAccess,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$EnableDnsResolution
     )
 
     process {
@@ -93,12 +112,22 @@ function New-IntPrivateAccessApp {
             # Write-Verbose "Application instantiated with Object ID: $newAppId"
 
             # Prepare the request body for setting the app to be accessible via the ZTNA client
-            $bodyJson = @{
-                "onPremisesPublishing" = @{
-                    "applicationType"           = "nonwebapp"
-                    "isAccessibleViaZTNAClient" = $true
-                }
-            } | ConvertTo-Json -Depth 99 -Compress
+            if ($QuickAccess) {
+                $bodyJson = @{
+                    "onPremisesPublishing" = @{
+                        "applicationType"           = "quickaccessapp"
+                        "isAccessibleViaZTNAClient" = $true
+                        "isDnsResolutionEnabled"    = [bool]$EnableDnsResolution
+                    }
+                } | ConvertTo-Json -Depth 99 -Compress
+            } else {
+                $bodyJson = @{
+                    "onPremisesPublishing" = @{
+                        "applicationType"           = "nonwebapp"
+                        "isAccessibleViaZTNAClient" = $true
+                    }
+                } | ConvertTo-Json -Depth 99 -Compress
+            }
 
             # Set the Private Access app to be accessible via the ZTNA client
             # Write-Verbose "Configuring application as Private Access (ZTNA) app"
@@ -109,6 +138,39 @@ function New-IntPrivateAccessApp {
             }
 
             Invoke-InternalGraphRequest @params
+
+            # Update service principal tags for Quick Access apps
+            # The template instantiation only sets tags on the application object, not the service principal.
+            # The GSA portal requires the service principal to have the correct tags to display properly.
+            if ($QuickAccess -and $newApp.PSObject.Properties['servicePrincipal']) {
+                $spId = if ($newApp.servicePrincipal.PSObject.Properties['objectId']) {
+                    $newApp.servicePrincipal.objectId
+                } elseif ($newApp.servicePrincipal.PSObject.Properties['id']) {
+                    $newApp.servicePrincipal.id
+                } else {
+                    $null
+                }
+
+                if ($spId) {
+                    $spTagsBody = @{
+                        tags = @(
+                            "NetworkAccessQuickAccessApplication"
+                            "IsAccessibleViaZTNAClient"
+                            "HideApp"
+                            "WindowsAzureActiveDirectoryCustomSingleSignOnApplication"
+                            "WindowsAzureActiveDirectoryIntegratedApp"
+                        )
+                    } | ConvertTo-Json -Depth 99 -Compress
+
+                    $spParams = @{
+                        Method = 'PATCH'
+                        Uri    = "https://graph.microsoft.com/beta/servicePrincipals/$spId"
+                        Body   = $spTagsBody
+                    }
+
+                    Invoke-InternalGraphRequest @spParams
+                }
+            }
 
             # If ConnectorGroupId has been specified, assign the connector group to the app
             if ($ConnectorGroupId) {

@@ -9,7 +9,11 @@ function Get-IntPrivateAccessApp {
         
         [Parameter(Mandatory = $False, ParameterSetName = 'SingleAppName')]
         [System.String]
-        $ApplicationName
+        $ApplicationName,
+
+        [Parameter(Mandatory = $False, ParameterSetName = 'QuickAccessApp')]
+        [switch]
+        $QuickAccessOnly
     )
 
     PROCESS {
@@ -31,6 +35,12 @@ function Get-IntPrivateAccessApp {
                 "SingleAppName" {
                     # Retrieve a single application by name
                     $response = Invoke-InternalGraphRequest -Method GET -OutputType PSObject -Uri "https://graph.microsoft.com/beta/applications?`$count=true&`$select=displayName,appId,id,tags,createdDateTime,servicePrincipalType,createdDateTime,servicePrincipalNames&`$filter=DisplayName eq '$ApplicationName'"
+                    $response
+                    break
+                }
+                "QuickAccessApp" {
+                    # Retrieve only Quick Access applications using server-side filter
+                    $response = Invoke-InternalGraphRequest -Method GET -OutputType PSObject -Uri "https://graph.microsoft.com/beta/applications?`$count=true&`$select=displayName,appId,id,tags,createdDateTime&`$filter=tags/Any(x: x eq 'NetworkAccessQuickAccessApplication')"
                     $response
                     break
                 }
