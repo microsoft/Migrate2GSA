@@ -51,3 +51,16 @@ This support matrix provides a comprehensive overview of the migration toolkit's
 | **Web Category Policies** | Manual export | Supported | Supported | Matrix-style CSV with security groups and dispositions |
 | **Predefined Categories** | Manual export | Supported | Supported | Transformation requires provided mapping file |
 | **User-Defined FQDNs** | Manual export | Supported | Supported | FQDNs listed in User-Defined category |
+
+## Cisco Umbrella to Entra Internet Access
+
+| Feature / Object | Export | Transform | Provision | Notes |
+|---------|--------|-----------|-----------|-------|
+| **DNS Policies** | Supported | Not implemented | Not implemented | Exported from HAR file captured from Umbrella dashboard |
+| **Firewall Rules** | Supported | Not implemented | Not implemented | Exported from HAR file |
+| **Web Policies** | Supported | Not implemented | Not implemented | Includes proxy rulesets and ruleset settings |
+| **Destination Lists** | Supported | Not implemented | Not implemented | Custom allow/block lists with entries |
+| **Category Settings** | Supported | Not implemented | Not implemented | Full category arrays extracted from detail views |
+| **Application Settings** | Supported | Not implemented | Not implemented | Includes system-inherited settings |
+| **Security Settings** | Supported | Not implemented | Not implemented | MSP-inherited records tagged |
+| **Selective Decryption Lists** | Supported | Not implemented | Not implemented | SSL/TLS inspection bypass settings |

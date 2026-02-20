@@ -23,5 +23,6 @@ Export-ModuleMember -Function @(
     'Convert-ForcepointWS2EIA',
     'Start-EntraPrivateAccessProvisioning',
     'Start-EntraInternetAccessProvisioning',
-    'Export-EntraPrivateAccessConfig'
+    'Export-EntraPrivateAccessConfig',
+    'Export-CiscoUmbrellaConfig'
 )
