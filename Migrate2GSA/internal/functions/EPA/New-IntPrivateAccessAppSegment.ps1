@@ -16,7 +16,7 @@ function New-IntPrivateAccessAppSegment {
         $Ports,
         
         [Parameter(Mandatory = $False)]
-        [ValidateSet("TCP", "UDP")]
+        [ValidateSet("TCP", "UDP", IgnoreCase = $true)]
         [System.String[]]
         $Protocol,
 

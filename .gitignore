@@ -60,3 +60,6 @@ config.json
 
 # Guidance
 *-Migration.md
+
+# Testing folder
+testing/

@@ -1,0 +1,14 @@
+Parent Category Name,Child Category Name,DEFAULT Disposition,Marketing Users Disposition,Engineering Users Disposition,Finance Team Disposition,Sales Team Disposition
+Abortion,Abortion,Do not block,Block,Block,Do not block,Block
+Abortion,Pro-Choice,Do not block,Block,Do not block,Do not block,Block
+Adult Material,Adult Content,Block,Block,Block,Block,Block
+Adult Material,Nudity,Block,Block,Block,Block,Block
+Gambling,Gambling,Do not block,Block,Continue,Block,Block
+Drugs,Drugs,Block,Block,Block,Block,Block
+Social Networking,Facebook,Do not block,Block,Allow,Block,Block
+Social Networking,LinkedIn,Do not block,Allow,Allow,Allow,Allow
+Social Networking,Twitter,Do not block,Block,Allow,Block,Block
+User-Defined,example.com,Block,Allow,Block,Block,Allow
+User-Defined,internal.company.com,Do not block,Do not block,Do not block,Do not block,Do not block
+User-Defined,test-site.com,Do not block,Block,Block,Block,Block
+User-Defined,trusted-partner.com,Do not block,Allow,Allow,Allow,Allow

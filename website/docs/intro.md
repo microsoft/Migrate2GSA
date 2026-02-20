@@ -11,6 +11,8 @@ Migrate2GSA is PowerShell-based migration toolkit designed to help organizations
 ## Does Migrate2GSA only help on migrations from other SSE solutions?
 No! Migrate2GSA can simplify your deployments as well. Simply create a csv file with your configuration and use the Entra Private Access and Entra Internet Access provisioning tools to create the config for you.
 
+Additionally, Migrate2GSA can **export existing Global Secure Access configurations** for backup, disaster recovery, tenant-to-tenant migrations, or configuration replication across environments. Think of it as "migrating from GSA to GSA" - perfect for backup/restore scenarios and promoting configurations between dev, test, and production tenants.
+
 ## Is this an official Microsoft product?
 No. It is a community project that is maintained by Microsoft employees. The PowerShell toolkit is provided as-is and is not supported through any Microsoft support program or service. Please do not contact Microsoft support with any issues or concern.
 

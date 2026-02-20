@@ -6,6 +6,17 @@ sidebar_position: 10
 
 This support matrix provides a comprehensive overview of the migration toolkit's capabilities across different migration scenarios. Each migration path supports exporting configuration from source systems, transforming data to match Microsoft Entra's format, and provisioning to the target environment.
 
+## Global Secure Access Export (Backup/Restore/Tenant Migration)
+
+| Feature | Export | Transform | Provision | Notes |
+|---------|--------|-----------|-----------|-------|
+| **Entra Private Access** | ✅ Supported | N/A | Supported | Direct export from GSA for backup, disaster recovery, or tenant-to-tenant migration. No transformation needed - exported CSV is directly compatible with provisioning function. |
+| **Entra Internet Access** | ⏳ Coming Soon | N/A | Supported | Export functionality under development. Will export policies, security profiles, and Conditional Access assignments. |
+
+:::info Use Case
+Unlike migrations from third-party platforms, GSA export captures existing Global Secure Access configurations for backup, restore, or replication scenarios. This is ideal for tenant-to-tenant migrations, disaster recovery, or promoting configurations between environments.
+:::
+
 ## Zscaler Internet Access to Entra Internet Access
 
 | Feature | Export | Transform | Provision | Notes |
@@ -43,3 +54,24 @@ This support matrix provides a comprehensive overview of the migration toolkit's
 |---------|--------|-----------|-----------|-------|
 | **Private Applications** | Supported | Supported | Supported | |
 | **NPA Policies** | Supported | Supported | Supported | |
+
+## Forcepoint Web Security to Entra Internet Access
+
+| Feature / Object | Export | Transform | Provision | Notes |
+|---------|--------|-----------|-----------|-------|
+| **Web Category Policies** | Manual export | Supported | Supported | Matrix-style CSV with security groups and dispositions |
+| **Predefined Categories** | Manual export | Supported | Supported | Transformation requires provided mapping file |
+| **User-Defined FQDNs** | Manual export | Supported | Supported | FQDNs listed in User-Defined category |
+
+## Cisco Umbrella to Entra Internet Access
+
+| Feature / Object | Export | Transform | Provision | Notes |
+|---------|--------|-----------|-----------|-------|
+| **DNS Policies** | Supported | Not implemented | Not implemented | Exported from HAR file captured from Umbrella dashboard |
+| **Firewall Rules** | Supported | Not implemented | Not implemented | Exported from HAR file |
+| **Web Policies** | Supported | Not implemented | Not implemented | Includes proxy rulesets and ruleset settings |
+| **Destination Lists** | Supported | Not implemented | Not implemented | Custom allow/block lists with entries |
+| **Category Settings** | Supported | Not implemented | Not implemented | Full category arrays extracted from detail views |
+| **Application Settings** | Supported | Not implemented | Not implemented | Includes system-inherited settings |
+| **Security Settings** | Supported | Not implemented | Not implemented | MSP-inherited records tagged |
+| **Selective Decryption Lists** | Supported | Not implemented | Not implemented | SSL/TLS inspection bypass settings |

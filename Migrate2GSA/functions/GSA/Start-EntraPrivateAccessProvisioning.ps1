@@ -10,6 +10,12 @@
     The script supports assigning multiple Entra ID groups per Enterprise Application using
     semicolon-separated values in the EntraGroups column. Groups are aggregated across all
     segments of an application, deduplicated, and assigned at the application level.
+    
+    Quick Access application support: The CSV may include an optional 'isQuickAccess' column.
+    Rows with isQuickAccess=yes are provisioned into a single Quick Access application, which
+    supports DNS suffix segments (DestinationType=dnsSuffix) for Private DNS resolution.
+    The script discovers an existing Quick Access app in the tenant or creates a new one.
+    CSVs without the isQuickAccess column are fully backward compatible.
 
 .PARAMETER ProvisioningConfigPath
     Path to the CSV provisioning configuration file.
@@ -32,9 +38,13 @@
 .EXAMPLE
     Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config.csv" -AppNamePrefix "GSA-" -WhatIf
 
+.EXAMPLE
+    Start-EntraPrivateAccessProvisioning -ProvisioningConfigPath ".\config_with_quickaccess.csv" -Force
+    Provisions both regular and Quick Access applications from a CSV containing isQuickAccess column.
+
 .NOTES
     Author: Andres Canello
-    Version: 2.0
+    Version: 3.0
     Requires: PowerShell 7+, Entra PowerShell Beta Modules
 #>
 
@@ -73,6 +83,10 @@ $Global:ProvisioningStats = @{
     FilteredRecords = 0
     StartTime = Get-Date
     EndTime = $null
+    QuickAccessApp = $null          # "Created", "Existing", "Failed", or $null (no QA rows)
+    QuickAccessSegments = 0
+    QuickAccessFailedSegments = 0
+    QuickAccessDnsSuffixSegments = 0
 }
 
 $Global:ConnectorGroupCache = @{}
@@ -135,15 +149,59 @@ function Import-ProvisioningConfig {
         }
 
         Write-LogMessage "All required columns found. Filtering to include only required columns..." -Level INFO -Component "Config"
+
+        # Handle optional isQuickAccess column for backward compatibility
+        $hasQuickAccessColumn = 'isQuickAccess' -in $actualColumns
+        if (-not $hasQuickAccessColumn) {
+            Write-LogMessage "isQuickAccess column not found in CSV. Treating all rows as regular Private Access apps." -Level INFO -Component "Config"
+            foreach ($row in $configData) {
+                $row | Add-Member -NotePropertyName 'isQuickAccess' -NotePropertyValue 'no' -Force
+            }
+        } else {
+            # Normalize and validate isQuickAccess values
+            foreach ($row in $configData) {
+                $qaValue = if ([string]::IsNullOrWhiteSpace($row.isQuickAccess)) { 'no' } else { $row.isQuickAccess.Trim().ToLower() }
+                if ($qaValue -notin @('yes', 'no')) {
+                    Write-LogMessage "Invalid isQuickAccess value '$($row.isQuickAccess)' for segment $($row.SegmentId). Treating as 'no'." -Level WARN -Component "Config"
+                    $qaValue = 'no'
+                }
+                $row.isQuickAccess = $qaValue
+            }
+
+            # Validate dnsSuffix is only used with isQuickAccess=yes
+            foreach ($row in $configData) {
+                if ($row.DestinationType -eq 'dnsSuffix' -and $row.isQuickAccess -ne 'yes') {
+                    Write-LogMessage "ERROR: Segment $($row.SegmentId) has DestinationType=dnsSuffix but isQuickAccess is not 'yes'. This row will be skipped." -Level ERROR -Component "Config"
+                    $row | Add-Member -NotePropertyName 'ValidationError' -NotePropertyValue 'dnsSuffix DestinationType is only supported for Quick Access applications (set isQuickAccess=yes)' -Force
+                }
+            }
+
+            # Validate all isQuickAccess=yes rows have the same EnterpriseAppName
+            $qaRows = $configData | Where-Object { $_.isQuickAccess -eq 'yes' }
+            if ($qaRows.Count -gt 0) {
+                $qaAppNames = $qaRows | Select-Object -ExpandProperty EnterpriseAppName -Unique
+                if ($qaAppNames.Count -gt 1) {
+                    Write-LogMessage "WARNING: Quick Access rows have different EnterpriseAppName values: $($qaAppNames -join ', '). Using '$($qaRows[0].EnterpriseAppName)' from the first row." -Level WARN -Component "Config"
+                }
+            }
+        }
+        
+        # Include isQuickAccess in the required columns for filtering
+        $allColumns = $requiredColumns + @('isQuickAccess')
         
         # Filter to only include required columns and add ProvisioningResult for tracking
         $filteredConfigData = @()
         foreach ($row in $configData) {
             $filteredRow = New-Object PSObject
             
-            # Add only required columns
-            foreach ($column in $requiredColumns) {
+            # Add only required columns plus isQuickAccess
+            foreach ($column in $allColumns) {
                 $filteredRow | Add-Member -MemberType NoteProperty -Name $column -Value $row.$column
+            }
+
+            # Carry forward validation errors if any
+            if ($row.PSObject.Properties['ValidationError']) {
+                $filteredRow | Add-Member -MemberType NoteProperty -Name 'ValidationError' -Value $row.ValidationError
             }
             
             # Add ProvisioningResult column for tracking
@@ -227,8 +285,78 @@ function Show-ProvisioningPlan {
     
     Write-LogMessage "=== PROVISIONING PLAN ===" -Level SUMMARY -Component "Plan"
     
-    # Group by application
-    $appGroups = $ConfigData | Group-Object -Property EnterpriseAppName
+    # Separate Quick Access rows from regular rows
+    $quickAccessRows = $ConfigData | Where-Object { $_.isQuickAccess -eq 'yes' }
+    $regularRows = $ConfigData | Where-Object { $_.isQuickAccess -ne 'yes' }
+    
+    # Show Quick Access plan if any QA rows exist
+    if ($quickAccessRows.Count -gt 0) {
+        $qaAppName = $quickAccessRows[0].EnterpriseAppName
+        $qaDnsSuffixSegments = $quickAccessRows | Where-Object { $_.DestinationType -eq 'dnsSuffix' }
+        $qaRegularSegments = $quickAccessRows | Where-Object { $_.DestinationType -ne 'dnsSuffix' }
+        $qaGroups = Get-AggregatedEntraGroups -Segments $quickAccessRows
+
+        Write-LogMessage "=== QUICK ACCESS APPLICATION ===" -Level SUMMARY -Component "Plan"
+        Write-LogMessage "Quick Access App: $qaAppName" -Level SUMMARY -Component "Plan"
+
+        if ($WhatIfPreference) {
+            # Discover existing QA app for WhatIf display
+            try {
+                $existingQAApp = Get-IntPrivateAccessApp -QuickAccessOnly -ErrorAction SilentlyContinue
+                if ($existingQAApp) {
+                    if ($existingQAApp -is [array]) {
+                        $existingQAApp = $existingQAApp | Sort-Object createdDateTime -Descending | Select-Object -First 1
+                    }
+                    Write-LogMessage "  Status: Exists in tenant (ID: $($existingQAApp.id))" -Level INFO -Component "Plan"
+                } else {
+                    Write-LogMessage "  Status: Will be created (NEW)" -Level INFO -Component "Plan"
+                    $qaConnector = ($quickAccessRows | Where-Object { -not [string]::IsNullOrWhiteSpace($_.ConnectorGroup) } | Select-Object -First 1).ConnectorGroup
+                    if ($qaConnector) {
+                        Write-LogMessage "  Connector Group: $qaConnector" -Level INFO -Component "Plan"
+                    }
+                }
+            }
+            catch {
+                Write-LogMessage "  Status: Unknown (could not query tenant)" -Level WARN -Component "Plan"
+            }
+
+            if ($qaDnsSuffixSegments.Count -gt 0) {
+                Write-LogMessage "  DNS Suffix Segments: $($qaDnsSuffixSegments.Count)" -Level INFO -Component "Plan"
+                foreach ($seg in $qaDnsSuffixSegments) {
+                    Write-LogMessage "    - $($seg.destinationHost) (dnsSuffix)" -Level INFO -Component "Plan"
+                }
+            }
+            if ($qaRegularSegments.Count -gt 0) {
+                Write-LogMessage "  Regular Segments: $($qaRegularSegments.Count)" -Level INFO -Component "Plan"
+                foreach ($seg in $qaRegularSegments) {
+                    Write-LogMessage "    - $($seg.destinationHost) ($($seg.DestinationType), $($seg.Protocol):$($seg.Ports))" -Level INFO -Component "Plan"
+                }
+            }
+            if ($qaGroups.Count -gt 0) {
+                Write-LogMessage "  Entra Groups ($($qaGroups.Count)):" -Level INFO -Component "Plan"
+                foreach ($groupName in $qaGroups) {
+                    Write-LogMessage "    - $groupName" -Level INFO -Component "Plan"
+                }
+            }
+
+            if ($existingQAApp) {
+                Write-LogMessage "  [WHATIF] Would add $($quickAccessRows.Count) segments to existing Quick Access application" -Level INFO -Component "Plan"
+                Write-LogMessage "  [WHATIF] Would assign $($qaGroups.Count) group(s) to Quick Access application" -Level INFO -Component "Plan"
+            } else {
+                Write-LogMessage "  [WHATIF] Would create Quick Access application '$qaAppName'" -Level INFO -Component "Plan"
+                Write-LogMessage "  [WHATIF] Would add $($quickAccessRows.Count) segments to Quick Access application" -Level INFO -Component "Plan"
+                Write-LogMessage "  [WHATIF] Would assign $($qaGroups.Count) group(s) to Quick Access application" -Level INFO -Component "Plan"
+            }
+        } else {
+            Write-LogMessage "  DNS Suffix Segments: $($qaDnsSuffixSegments.Count)" -Level INFO -Component "Plan"
+            Write-LogMessage "  Regular Segments: $($qaRegularSegments.Count)" -Level INFO -Component "Plan"
+        }
+
+        Write-LogMessage "" -Level INFO -Component "Plan"
+    }
+
+    # Group by application (regular rows only)
+    $appGroups = $regularRows | Group-Object -Property EnterpriseAppName
     
     Write-LogMessage "Applications to provision: $($appGroups.Count)" -Level SUMMARY -Component "Plan"
     Write-LogMessage "Total segments to create: $($ConfigData.Count)" -Level SUMMARY -Component "Plan"
@@ -548,9 +676,26 @@ function Test-ApplicationDependencies {
         $appName = $appGroup.Name
         $segments = $appGroup.Group
         $skipApp = $false
+        $isQuickAccessApp = ($segments | Where-Object { $_.isQuickAccess -eq 'yes' }).Count -gt 0
+        
+        # Check for validation errors (e.g., dnsSuffix on non-QA rows)
+        $validationErrorSegments = $segments | Where-Object { $_.PSObject.Properties['ValidationError'] -and $_.ValidationError }
+        foreach ($errorSegment in $validationErrorSegments) {
+            $resultRecord = $Global:RecordLookup[$errorSegment.UniqueRecordId]
+            if ($resultRecord) {
+                $resultRecord.ProvisioningResult = "Error: $($errorSegment.ValidationError)"
+            }
+        }
+        # Remove segments with validation errors from processing
+        $segments = $segments | Where-Object { -not ($_.PSObject.Properties['ValidationError'] -and $_.ValidationError) }
+        if ($segments.Count -eq 0) {
+            $skippedApplications += $appName
+            continue
+        }
         
         # Check connector groups for this application
-        $connectorGroups = $segments | Select-Object -ExpandProperty ConnectorGroup -Unique
+        # For Quick Access apps, connector group is optional if app already exists
+        $connectorGroups = $segments | Select-Object -ExpandProperty ConnectorGroup -Unique | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
         $unresolvedConnectorGroups = @()
         
         foreach ($cgName in $connectorGroups) {
@@ -559,6 +704,11 @@ function Test-ApplicationDependencies {
             } elseif (-not $Global:ConnectorGroupCache.ContainsKey($cgName) -or -not $Global:ConnectorGroupCache[$cgName]) {
                 $unresolvedConnectorGroups += $cgName
             }
+        }
+        
+        # For Quick Access apps, allow empty connector groups (app may already exist with one assigned)
+        if ($isQuickAccessApp -and $connectorGroups.Count -eq 0) {
+            Write-LogMessage "Quick Access app '$appName' has no connector group specified. Connector group will only be assigned if creating a new app." -Level INFO -Component "Validation"
         }
         
         # Check Entra groups for this application (aggregated from all segments)
@@ -631,64 +781,117 @@ function Test-ApplicationDependencies {
 function New-PrivateAccessApplication {
     <#
     .SYNOPSIS
-        Creates or updates Private Access applications.
+        Creates or updates Private Access applications, including Quick Access apps.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory=$true)]
         [string]$AppName,
         
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory=$false)]
         [string]$ConnectorGroupName,
         
         [Parameter(Mandatory=$false)]
-        [bool]$SkipExisting = $true
+        [bool]$SkipExisting = $true,
+
+        [Parameter(Mandatory=$false)]
+        [switch]$QuickAccess,
+
+        [Parameter(Mandatory=$false)]
+        [switch]$EnableDnsResolution
     )
     
     Write-LogMessage "Processing Private Access application: $AppName" -Level INFO -Component "AppProvisioning"
     
     try {
-        # Check if application already exists
-        $checkAppParams = @{
-            ApplicationName = $AppName
-            ErrorAction = 'SilentlyContinue'
-        }
-        if ($DebugPreference -eq 'Continue') {
-            $checkAppParams['Debug'] = $true
-        }
-        $existingApp = Get-IntPrivateAccessApp @checkAppParams
-        
-        if ($existingApp) {
-            # Handle case where multiple apps with same name exist - select the most recent one
-            if ($existingApp -is [array]) {
-                Write-LogMessage "Multiple applications found with name '$AppName' ($($existingApp.Count) apps). Selecting most recent." -Level WARN -Component "AppProvisioning"
-                $existingApp = $existingApp | Sort-Object createdDateTime -Descending | Select-Object -First 1
+        $existingApp = $null
+
+        if ($QuickAccess) {
+            # Quick Access: discover via tag filter
+            Write-LogMessage "Discovering existing Quick Access application in tenant..." -Level INFO -Component "AppProvisioning"
+            $checkAppParams = @{
+                QuickAccessOnly = $true
+                ErrorAction = 'SilentlyContinue'
             }
-            
-            if ($SkipExisting) {
-                Write-LogMessage "Application '$AppName' already exists. Skipping segment creation (SkipExistingApps enabled)." -Level WARN -Component "AppProvisioning"
-                return @{ Success = $true; AppId = $existingApp.appId; AppObjectId = $existingApp.id; Action = "SkippedExisting" }
-            } else {
-                Write-LogMessage "Application '$AppName' already exists. Will add segments to existing app." -Level INFO -Component "AppProvisioning"
+            if ($DebugPreference -eq 'Continue') {
+                $checkAppParams['Debug'] = $true
+            }
+            $existingApp = Get-IntPrivateAccessApp @checkAppParams
+
+            if ($existingApp) {
+                # Handle multiple Quick Access apps
+                if ($existingApp -is [array]) {
+                    Write-LogMessage "WARNING: Multiple Quick Access applications found in tenant ($($existingApp.Count)). Using most recent: '$($existingApp[0].displayName)'" -Level WARN -Component "AppProvisioning"
+                    $existingApp = $existingApp | Sort-Object createdDateTime -Descending | Select-Object -First 1
+                }
+
+                Write-LogMessage "Found existing Quick Access application: '$($existingApp.displayName)' (ID: $($existingApp.id))" -Level SUCCESS -Component "AppProvisioning"
+                # Quick Access apps are always processed (SkipExisting does not apply)
                 return @{ Success = $true; AppId = $existingApp.appId; AppObjectId = $existingApp.id; Action = "ExistingApp" }
             }
-        }
+
+            # Quick Access app not found — create a new one
+            Write-LogMessage "No existing Quick Access application found. Creating new one: '$AppName'" -Level INFO -Component "AppProvisioning"
+        } else {
+            # Regular app: check by name
+            $checkAppParams = @{
+                ApplicationName = $AppName
+                ErrorAction = 'SilentlyContinue'
+            }
+            if ($DebugPreference -eq 'Continue') {
+                $checkAppParams['Debug'] = $true
+            }
+            $existingApp = Get-IntPrivateAccessApp @checkAppParams
+        
+            if ($existingApp) {
+                # Handle case where multiple apps with same name exist - select the most recent one
+                if ($existingApp -is [array]) {
+                    Write-LogMessage "Multiple applications found with name '$AppName' ($($existingApp.Count) apps). Selecting most recent." -Level WARN -Component "AppProvisioning"
+                    $existingApp = $existingApp | Sort-Object createdDateTime -Descending | Select-Object -First 1
+                }
+                
+                if ($SkipExisting) {
+                    Write-LogMessage "Application '$AppName' already exists. Skipping segment creation (SkipExistingApps enabled)." -Level WARN -Component "AppProvisioning"
+                    return @{ Success = $true; AppId = $existingApp.appId; AppObjectId = $existingApp.id; Action = "SkippedExisting" }
+                } else {
+                    Write-LogMessage "Application '$AppName' already exists. Will add segments to existing app." -Level INFO -Component "AppProvisioning"
+                    return @{ Success = $true; AppId = $existingApp.appId; AppObjectId = $existingApp.id; Action = "ExistingApp" }
+                }
+            }
+        }  # end regular app check
         
         # Get connector group ID
-        $connectorGroupId = $Global:ConnectorGroupCache[$ConnectorGroupName]
-        if (-not $connectorGroupId) {
-            throw "Connector group '$ConnectorGroupName' not found"
+        $connectorGroupId = $null
+        if ($ConnectorGroupName) {
+            $connectorGroupId = $Global:ConnectorGroupCache[$ConnectorGroupName]
+            if (-not $connectorGroupId) {
+                throw "Connector group '$ConnectorGroupName' not found"
+            }
+        } elseif (-not $QuickAccess) {
+            throw "Connector group is required for regular Private Access applications"
         }
         
         if ($WhatIfPreference) {
-            Write-LogMessage "[WHATIF] Would create Private Access application: $AppName" -Level INFO -Component "AppProvisioning"
-            return @{ Success = $true; AppId = "whatif-app-id"; Action = "WhatIf" }
+            if ($QuickAccess) {
+                Write-LogMessage "[WHATIF] Would create Quick Access application: $AppName" -Level INFO -Component "AppProvisioning"
+            } else {
+                Write-LogMessage "[WHATIF] Would create Private Access application: $AppName" -Level INFO -Component "AppProvisioning"
+            }
+            return @{ Success = $true; AppId = "whatif-app-id"; AppObjectId = "whatif-app-object-id"; Action = "WhatIf" }
         }
         
         # Create new application using internal function
         $appParams = @{
             ApplicationName = $AppName
-            ConnectorGroupId = $connectorGroupId
+        }
+        if ($connectorGroupId) {
+            $appParams['ConnectorGroupId'] = $connectorGroupId
+        }
+        if ($QuickAccess) {
+            $appParams['QuickAccess'] = $true
+            if ($EnableDnsResolution) {
+                $appParams['EnableDnsResolution'] = $true
+            }
         }
         
         # Add Debug parameter if script was called with -Debug
@@ -716,9 +919,16 @@ function New-PrivateAccessApplication {
             try {
                 Write-LogMessage "Attempting to retrieve created application '$AppName' (attempt $attempt/$maxRetries)" -Level INFO -Component "AppProvisioning"
                 
-                $getAppParams = @{
-                    ApplicationName = $AppName
-                    ErrorAction = 'Stop'
+                if ($QuickAccess) {
+                    $getAppParams = @{
+                        QuickAccessOnly = $true
+                        ErrorAction = 'Stop'
+                    }
+                } else {
+                    $getAppParams = @{
+                        ApplicationName = $AppName
+                        ErrorAction = 'Stop'
+                    }
                 }
                 if ($DebugPreference -eq 'Continue') {
                     $getAppParams['Debug'] = $true
@@ -759,7 +969,11 @@ function New-PrivateAccessApplication {
             throw "Failed to retrieve created application '$AppName' after creation and $maxRetries retry attempts"
         }
         
-        Write-LogMessage "Successfully created Private Access application: $AppName (ID: $($newApp.id))" -Level SUCCESS -Component "AppProvisioning"
+        if ($QuickAccess) {
+            Write-LogMessage "Created Quick Access application: '$AppName' (ID: $($newApp.id))" -Level SUCCESS -Component "AppProvisioning"
+        } else {
+            Write-LogMessage "Successfully created Private Access application: $AppName (ID: $($newApp.id))" -Level SUCCESS -Component "AppProvisioning"
+        }
         
         return @{ Success = $true; AppId = $newApp.appId; AppObjectId = $newApp.id; Action = "Created" }
     }
@@ -807,8 +1021,46 @@ function New-ApplicationSegments {
     
     try {
         # Validate segment configuration
-        if (-not $SegmentConfig.destinationHost -or -not $SegmentConfig.Protocol -or -not $SegmentConfig.Ports) {
-            throw "Invalid segment configuration: missing required fields"
+        $isDnsSuffix = $SegmentConfig.DestinationType -eq 'dnsSuffix'
+
+        if (-not $SegmentConfig.destinationHost) {
+            throw "Invalid segment configuration: missing destinationHost"
+        }
+
+        if (-not $isDnsSuffix -and (-not $SegmentConfig.Protocol -or -not $SegmentConfig.Ports)) {
+            throw "Invalid segment configuration: missing Protocol or Ports (required for non-dnsSuffix segments)"
+        }
+
+        if ($isDnsSuffix) {
+            # Warn if Ports or Protocol are populated for dnsSuffix segments
+            if (-not [string]::IsNullOrWhiteSpace($SegmentConfig.Ports)) {
+                Write-LogMessage "WARNING: Ports value '$($SegmentConfig.Ports)' ignored for dnsSuffix segment '$segmentName'" -Level WARN -Component "SegmentProvisioning"
+            }
+            if (-not [string]::IsNullOrWhiteSpace($SegmentConfig.Protocol)) {
+                Write-LogMessage "WARNING: Protocol value '$($SegmentConfig.Protocol)' ignored for dnsSuffix segment '$segmentName'" -Level WARN -Component "SegmentProvisioning"
+            }
+
+            if ($WhatIfPreference) {
+                Write-LogMessage "[WHATIF] Would create DNS suffix segment: $($SegmentConfig.destinationHost)" -Level INFO -Component "SegmentProvisioning"
+                return @{ Success = $true; Action = "WhatIf" }
+            }
+
+            # Create dnsSuffix segment without ports/protocol
+            $segmentParams = @{
+                ApplicationId   = $AppId
+                DestinationHost = $SegmentConfig.destinationHost
+                DestinationType = 'dnsSuffix'
+                ErrorAction     = 'Stop'
+            }
+
+            if ($DebugPreference -eq 'Continue') {
+                $segmentParams['Debug'] = $true
+            }
+
+            $newSegment = New-IntPrivateAccessAppSegment @segmentParams
+
+            Write-LogMessage "Successfully created DNS suffix segment: $($SegmentConfig.destinationHost) (ID: $($newSegment.Id))" -Level SUCCESS -Component "SegmentProvisioning"
+            return @{ Success = $true; SegmentId = $newSegment.Id; Action = "Created" }
         }
         
         # Parse ports - convert to string array format expected by Entra API
@@ -838,11 +1090,14 @@ function New-ApplicationSegments {
         }
         
         # Create segment parameters
+        # Split protocol if provided as comma-separated string and normalize to uppercase
+        $protocolArray = @($SegmentConfig.Protocol -split ',' | ForEach-Object { $_.Trim().ToUpper() })
+
         $segmentParams = @{
             ApplicationId = $AppId
             DestinationHost = $SegmentConfig.destinationHost
             DestinationType = $SegmentConfig.DestinationType
-            Protocol = $SegmentConfig.Protocol
+            Protocol = $protocolArray
             Ports = $portArray
             ErrorAction = 'Stop'
         }
@@ -1149,10 +1404,18 @@ function Show-ExecutionSummary {
     Write-LogMessage "Total Records: $($Global:ProvisioningStats.TotalRecords)" -Level SUMMARY -Component "Summary"
     Write-LogMessage "Processed Records: $($Global:ProvisioningStats.ProcessedRecords)" -Level SUMMARY -Component "Summary"
     Write-LogMessage "Filtered Records: $($Global:ProvisioningStats.FilteredRecords)" -Level SUMMARY -Component "Summary"
-    Write-LogMessage "Successful Applications: $($Global:ProvisioningStats.SuccessfulApps)" -Level SUMMARY -Component "Summary"
-    Write-LogMessage "Failed Applications: $($Global:ProvisioningStats.FailedApps)" -Level SUMMARY -Component "Summary"
-    Write-LogMessage "Successful Segments: $($Global:ProvisioningStats.SuccessfulSegments)" -Level SUMMARY -Component "Summary"
-    Write-LogMessage "Failed Segments: $($Global:ProvisioningStats.FailedSegments)" -Level SUMMARY -Component "Summary"
+
+    # Quick Access statistics
+    if ($Global:ProvisioningStats.QuickAccessApp) {
+        Write-LogMessage "Quick Access Application: $($Global:ProvisioningStats.QuickAccessApp)" -Level SUMMARY -Component "Summary"
+        Write-LogMessage "Quick Access Segments: $($Global:ProvisioningStats.QuickAccessSegments) created, $($Global:ProvisioningStats.QuickAccessFailedSegments) failed" -Level SUMMARY -Component "Summary"
+        if ($Global:ProvisioningStats.QuickAccessDnsSuffixSegments -gt 0) {
+            Write-LogMessage "Quick Access DNS Suffix Segments: $($Global:ProvisioningStats.QuickAccessDnsSuffixSegments)" -Level SUMMARY -Component "Summary"
+        }
+    }
+
+    Write-LogMessage "Regular Applications: $($Global:ProvisioningStats.SuccessfulApps) created, $($Global:ProvisioningStats.FailedApps) failed" -Level SUMMARY -Component "Summary"
+    Write-LogMessage "Regular Segments: $($Global:ProvisioningStats.SuccessfulSegments) created, $($Global:ProvisioningStats.FailedSegments) failed" -Level SUMMARY -Component "Summary"
     
     if ($Global:ProvisioningStats.FailedApps -gt 0 -or $Global:ProvisioningStats.FailedSegments -gt 0) {
         Write-LogMessage "❌ Some provisioning operations failed. Check the log for details." -Level ERROR -Component "Summary"
@@ -1240,8 +1503,129 @@ function Invoke-ProvisioningProcess {
             Write-LogMessage "$(($configData.Count - $validConfigData.Count)) segments were skipped due to dependency issues" -Level WARN -Component "Main"
         }
         
-        # Group configuration by application (now using filtered data)
-        $appGroups = $validConfigData | Group-Object -Property EnterpriseAppName
+        # Separate Quick Access rows from regular rows
+        $quickAccessRows = @($validConfigData | Where-Object { $_.isQuickAccess -eq 'yes' })
+        $regularRows = @($validConfigData | Where-Object { $_.isQuickAccess -ne 'yes' })
+
+        Write-LogMessage "Found $($quickAccessRows.Count) Quick Access segments and $($regularRows.Count) regular segments in configuration" -Level INFO -Component "Main"
+
+        # --- Quick Access provisioning ---
+        if ($quickAccessRows.Count -gt 0) {
+            $qaAppName = $quickAccessRows[0].EnterpriseAppName
+            $hasDnsSuffixSegments = ($quickAccessRows | Where-Object { $_.DestinationType -eq 'dnsSuffix' }).Count -gt 0
+            $qaConnectorGroupName = ($quickAccessRows | Where-Object { -not [string]::IsNullOrWhiteSpace($_.ConnectorGroup) -and $_.ConnectorGroup -ne 'Placeholder_Replace_Me' } | Select-Object -First 1).ConnectorGroup
+            $qaGroups = Get-AggregatedEntraGroups -Segments $quickAccessRows
+
+            Write-LogMessage " " -Level INFO -Component "Main"
+            Write-LogMessage "╔═══════════════════════════════════════════════════════════════════════════════════════" -Level SUMMARY -Component "Main"
+            Write-LogMessage "║ 🌐 QUICK ACCESS APPLICATION: $qaAppName" -Level SUMMARY -Component "Main"
+            Write-LogMessage "║ 🔗 Segments: $($quickAccessRows.Count) (DNS Suffix: $(($quickAccessRows | Where-Object { $_.DestinationType -eq 'dnsSuffix' }).Count)) | Groups: $($qaGroups.Count)" -Level SUMMARY -Component "Main"
+            Write-LogMessage "╚═══════════════════════════════════════════════════════════════════════════════════════" -Level SUMMARY -Component "Main"
+
+            # Create or discover Quick Access app
+            $qaAppParams = @{
+                AppName            = $qaAppName
+                QuickAccess        = $true
+                SkipExisting       = $false  # Always process QA app segments
+            }
+            if ($qaConnectorGroupName) {
+                $qaAppParams['ConnectorGroupName'] = $qaConnectorGroupName
+            }
+            if ($hasDnsSuffixSegments) {
+                $qaAppParams['EnableDnsResolution'] = $true
+            }
+
+            $qaAppResult = New-PrivateAccessApplication @qaAppParams
+
+            if ($qaAppResult.Success) {
+                if ($qaAppResult.Action -eq "Created") {
+                    $Global:ProvisioningStats.QuickAccessApp = "Created"
+                    $Global:ProvisioningStats.SuccessfulApps++
+                } elseif ($qaAppResult.Action -eq "WhatIf") {
+                    $Global:ProvisioningStats.QuickAccessApp = "WhatIf"
+                } else {
+                    $Global:ProvisioningStats.QuickAccessApp = "Existing"
+                }
+
+                # Assign groups to Quick Access app
+                if ($qaGroups.Count -gt 0) {
+                    $qaAssignmentResult = Set-ApplicationGroupAssignments -AppId $qaAppResult.AppId -GroupNames $qaGroups
+
+                    $qaGroupAssignmentStatus = ""
+                    if ($qaAssignmentResult.Failed -eq 1) {
+                        $qaGroupAssignmentStatus = " (Warning: 1 group failed assignment)"
+                    } elseif ($qaAssignmentResult.Failed -gt 1) {
+                        $qaGroupAssignmentStatus = " (Warning: Multiple groups failed assignment, check the log)"
+                    }
+                } else {
+                    $qaGroupAssignmentStatus = ""
+                }
+
+                # Process Quick Access segments
+                Write-LogMessage "Processing $($quickAccessRows.Count) Quick Access segments..." -Level INFO -Component "Main"
+                foreach ($segment in $quickAccessRows) {
+                    Write-ProgressUpdate -Current $Global:ProvisioningStats.ProcessedRecords -Total $Global:ProvisioningStats.TotalRecords -Activity "Provisioning Segments" -Status "Processing Quick Access: $($segment.destinationHost)"
+
+                    if ($segment.DestinationType -eq 'dnsSuffix') {
+                        Write-LogMessage "Creating DNS suffix segment: $($segment.destinationHost)" -Level INFO -Component "Main"
+                    } else {
+                        Write-LogMessage "Creating application segment: $($segment.destinationHost)" -Level INFO -Component "Main"
+                    }
+
+                    $segmentResult = New-ApplicationSegments -AppId $qaAppResult.AppObjectId -SegmentConfig $segment
+
+                    if ($segmentResult.Success) {
+                        $Global:ProvisioningStats.QuickAccessSegments++
+                        if ($segment.DestinationType -eq 'dnsSuffix') {
+                            $Global:ProvisioningStats.QuickAccessDnsSuffixSegments++
+                        }
+
+                        $resultRecord = $Global:RecordLookup[$segment.UniqueRecordId]
+                        if ($resultRecord) {
+                            if ($segmentResult.Action -eq "AlreadyExists") {
+                                $resultRecord.ProvisioningResult = "AlreadyExists$qaGroupAssignmentStatus"
+                                $resultRecord.Provision = "No"
+                            } elseif ($qaAppResult.Action -eq "ExistingApp") {
+                                $resultRecord.ProvisioningResult = "AddedToExisting$qaGroupAssignmentStatus"
+                                $resultRecord.Provision = "No"
+                            } else {
+                                $resultRecord.ProvisioningResult = "Provisioned$qaGroupAssignmentStatus"
+                                $resultRecord.Provision = "No"
+                            }
+                        }
+                    } else {
+                        $Global:ProvisioningStats.QuickAccessFailedSegments++
+
+                        $resultRecord = $Global:RecordLookup[$segment.UniqueRecordId]
+                        if ($resultRecord) {
+                            $resultRecord.ProvisioningResult = "Error: $($segmentResult.Error)"
+                        }
+                    }
+
+                    $Global:ProvisioningStats.ProcessedRecords++
+                }
+
+                Write-LogMessage "Quick Access application '$qaAppName' completed: $($quickAccessRows.Count) segments processed" -Level SUCCESS -Component "Main"
+            } else {
+                $Global:ProvisioningStats.QuickAccessApp = "Failed"
+                $Global:ProvisioningStats.FailedApps++
+
+                # Mark all Quick Access segments as failed
+                foreach ($segment in $quickAccessRows) {
+                    $resultRecord = $Global:RecordLookup[$segment.UniqueRecordId]
+                    if ($resultRecord) {
+                        $resultRecord.ProvisioningResult = "Skipped: Quick Access app creation failed - $($qaAppResult.Error)"
+                    }
+                    $Global:ProvisioningStats.ProcessedRecords++
+                }
+
+                Write-LogMessage "Quick Access application '$qaAppName' failed: $($qaAppResult.Error)" -Level ERROR -Component "Main"
+            }
+        }
+
+        # --- Regular app provisioning (existing flow) ---
+        # Group configuration by application (now using only regular rows)
+        $appGroups = $regularRows | Group-Object -Property EnterpriseAppName
         $currentAppNumber = 0
         
         foreach ($appGroup in $appGroups) {

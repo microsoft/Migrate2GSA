@@ -1,0 +1,10 @@
+{
+  "label": "Migration Sources",
+  "position": 35,
+  "collapsible": true,
+  "collapsed": true,
+  "link": {
+    "type": "generated-index",
+    "description": "Export and migrate configurations from different SSE platforms to Microsoft Global Secure Access."
+  }
+}

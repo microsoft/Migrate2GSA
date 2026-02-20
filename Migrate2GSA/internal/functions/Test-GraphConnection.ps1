@@ -120,17 +120,28 @@ function Test-GraphConnection {
         
         # Validate required scopes are present in current context
         # Use case-insensitive comparison to handle scope name variations
+        # Also accept ReadWrite scopes when Read-only scopes are required
+        # (e.g., Application.ReadWrite.All satisfies Application.Read.All)
         $missingScopes = @()
         
         foreach ($requiredScope in $RequiredScopes) {
             # Check if this required scope exists in the context scopes (case-insensitive)
             $scopeFound = $false
             
+            # Build list of acceptable scopes: the exact scope plus ReadWrite equivalent
+            $acceptableScopes = @($requiredScope)
+            if ($requiredScope -match '\.Read\.') {
+                $acceptableScopes += $requiredScope -replace '\.Read\.', '.ReadWrite.'
+            }
+            
             foreach ($contextScope in $context.Scopes) {
-                if ($requiredScope.ToLower() -eq $contextScope.ToLower()) {
-                    $scopeFound = $true
-                    break
+                foreach ($acceptable in $acceptableScopes) {
+                    if ($acceptable.ToLower() -eq $contextScope.ToLower()) {
+                        $scopeFound = $true
+                        break
+                    }
                 }
+                if ($scopeFound) { break }
             }
             
             if (-not $scopeFound) {

@@ -20,6 +20,9 @@ Export-ModuleMember -Function @(
     'Export-NetskopeConfig',
     'Convert-NPA2EPA',
     'Convert-NSWG2EIA',
+    'Convert-ForcepointWS2EIA',
     'Start-EntraPrivateAccessProvisioning',
-    'Start-EntraInternetAccessProvisioning'
+    'Start-EntraInternetAccessProvisioning',
+    'Export-EntraPrivateAccessConfig',
+    'Export-CiscoUmbrellaConfig'
 )

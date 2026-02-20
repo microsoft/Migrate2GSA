@@ -1,0 +1,10 @@
+{
+  "label": "Cisco Umbrella",
+  "position": 10,
+  "collapsible": true,
+  "collapsed": true,
+  "link": {
+    "type": "generated-index",
+    "description": "Migrate from Cisco Umbrella."
+  }
+}

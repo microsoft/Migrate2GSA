@@ -1,10 +1,10 @@
 {
-  "label": "Provisioning GSA",
-  "position": 70,
+  "label": "Forcepoint",
+  "position": 20,
   "collapsible": true,
   "collapsed": true,
   "link": {
     "type": "generated-index",
-    "description": "Provisioning GSA."
+    "description": "Migrate from Forcepoint."
   }
 }
