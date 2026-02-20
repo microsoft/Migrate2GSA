@@ -125,7 +125,7 @@ For complete provisioning details, see [Entra Internet Access Provisioning](../.
 
 This function is planned for implementation following the same architecture and patterns as `Export-EntraPrivateAccessConfig`:
 
-- ✅ **Technical specification completed** - See [Specs/Export/20260212-Export-EntraInternetAccessConfig.md](/Specs/Export/20260212-Export-EntraInternetAccessConfig.md)
+- ✅ **Technical specification completed** - See Specs/Export/20260212-Export-EntraInternetAccessConfig.md
 - ✅ **CSV format defined** - Output compatible with existing provisioning function
 - ⏳ **Implementation in progress** - Function development underway
 - ⏳ **Testing planned** - Validation with production tenant configurations
