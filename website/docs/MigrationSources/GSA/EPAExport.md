@@ -17,7 +17,7 @@ The `Export-EntraPrivateAccessConfig` function exports your complete Microsoft E
 - Quick Access application indicators
 - Segment metadata (IDs, destination types)
 
-**Output Format:** CSV file compatible with [Start-EntraPrivateAccessProvisioning](../Provision/EntraPrivateAccessProvisioning.md), enabling seamless restoration or migration.
+**Output Format:** CSV file compatible with [Start-EntraPrivateAccessProvisioning](../../Provision/EntraPrivateAccessProvisioning.md), enabling seamless restoration or migration.
 
 ## Use Cases
 
@@ -275,7 +275,7 @@ You can restore specific applications by editing the CSV:
 - Modify settings before restoration (change connector groups, update assignments, etc.)
 :::
 
-For complete provisioning documentation, see [Entra Private Access Provisioning](../Provision/EntraPrivateAccessProvisioning.md).
+For complete provisioning documentation, see [Entra Private Access Provisioning](../../Provision/EntraPrivateAccessProvisioning.md).
 
 ## What Gets Exported
 
@@ -489,10 +489,10 @@ After exporting your EPA configuration:
 
 ## Related Documentation
 
-- [Entra Private Access Provisioning](../Provision/EntraPrivateAccessProvisioning.md) - Restore/provision EPA configurations
-- [Migration Workflow](../migration-workflow.md) - Overall migration process
+- [Entra Private Access Provisioning](../../Provision/EntraPrivateAccessProvisioning.md) - Restore/provision EPA configurations
+- [Migration Workflow](../../migration-workflow.md) - Overall migration process
 - [ZPA to EPA Migration](../ZScaler/ZPA2EPA.md) - Alternative: Migrate from Zscaler Private Access
-- [GreenField EPA Deployment](../GreenField/EntraPrivateAccess.md) - Deploy EPA from scratch
+- [GreenField EPA Deployment](../../GreenField/EntraPrivateAccess.md) - Deploy EPA from scratch
 
 ## Additional Resources
 

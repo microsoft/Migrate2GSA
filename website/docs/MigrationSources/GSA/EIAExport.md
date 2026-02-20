@@ -104,7 +104,7 @@ Start-EntraInternetAccessProvisioning `
     -OutputPath "C:\EIA-Restore-Results"
 ```
 
-For complete provisioning details, see [Entra Internet Access Provisioning](../Provision/EntraInternetAccessProvisioning.md).
+For complete provisioning details, see [Entra Internet Access Provisioning](../../Provision/EntraInternetAccessProvisioning.md).
 
 ## Prerequisites (Planned)
 
@@ -153,8 +153,8 @@ Export-EntraInternetAccessConfig `
 ## Related Documentation
 
 - ✅ **[EPA Export](./EPAExport.md)** - Available now for Private Access configurations
-- [Entra Internet Access Provisioning](../Provision/EntraInternetAccessProvisioning.md) - Restore/provision EIA configurations
-- [Migration Workflow](../migration-workflow.md) - Overall migration process
+- [Entra Internet Access Provisioning](../../Provision/EntraInternetAccessProvisioning.md) - Restore/provision EIA configurations
+- [Migration Workflow](../../migration-workflow.md) - Overall migration process
 - [ZIA to EIA Migration](../ZScaler/ZIA2EIA.md) - Alternative: Migrate from Zscaler Internet Access
 
 ## Need This Feature Now?
@@ -163,7 +163,7 @@ If you have an immediate need for EIA export functionality:
 
 1. **Contact the team:** migrate2gsateam@microsoft.com
 2. **Share your use case:** Help us prioritize development based on real-world scenarios
-3. **Manual export alternative:** For now, you can manually document your EIA policies and convert to CSV format matching the [provisioning function schema](../Provision/EntraInternetAccessProvisioning.md)
+3. **Manual export alternative:** For now, you can manually document your EIA policies and convert to CSV format matching the [provisioning function schema](../../Provision/EntraInternetAccessProvisioning.md)
 
 ## Updates
 
