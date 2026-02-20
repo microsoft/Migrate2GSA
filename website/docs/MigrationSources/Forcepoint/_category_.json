@@ -1,8 +1,8 @@
 {
   "label": "Forcepoint",
-  "position": 60,
+  "position": 20,
   "collapsible": true,
-  "collapsed": false,
+  "collapsed": true,
   "link": {
     "type": "generated-index",
     "description": "Migrate from Forcepoint."

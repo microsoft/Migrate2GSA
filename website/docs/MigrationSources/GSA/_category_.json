@@ -1,0 +1,10 @@
+{
+  "label": "Global Secure Access",
+  "position": 30,
+  "collapsible": true,
+  "collapsed": true,
+  "link": {
+    "type": "generated-index",
+    "description": "Export Global Secure Access configurations for backup, disaster recovery, or tenant-to-tenant migration."
+  }
+}

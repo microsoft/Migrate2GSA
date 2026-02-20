@@ -32,7 +32,7 @@ The toolkit currently supports provisioning:
 
 ### Get Started
 
-Head to the **[Entra Private Access Provisioning Guide](../../Provision/EntraPrivateAccessProvisioning.md)** to learn:
+Head to the **[Entra Private Access Provisioning Guide](../Provision/EntraPrivateAccessProvisioning.md)** to learn:
 - How to structure your EPA configuration CSVs
 - Required CSV columns and formats
 - Step-by-step provisioning workflow
@@ -80,6 +80,6 @@ The upcoming EPA greenfield deployment documentation will include:
 ## Resources
 
 **Current Documentation:**
-- [Entra Private Access Provisioning](../../Provision/EntraPrivateAccessProvisioning.md) - Deploy EPA configurations
+- [Entra Private Access Provisioning](../Provision/EntraPrivateAccessProvisioning.md) - Deploy EPA configurations
 - [Microsoft Learn - Private Access Overview](https://learn.microsoft.com/en-us/entra/global-secure-access/concept-private-access)
 - [Microsoft Learn - Configure Quick Access](https://learn.microsoft.com/en-us/entra/global-secure-access/how-to-configure-quick-access)

@@ -6,6 +6,17 @@ sidebar_position: 10
 
 This support matrix provides a comprehensive overview of the migration toolkit's capabilities across different migration scenarios. Each migration path supports exporting configuration from source systems, transforming data to match Microsoft Entra's format, and provisioning to the target environment.
 
+## Global Secure Access Export (Backup/Restore/Tenant Migration)
+
+| Feature | Export | Transform | Provision | Notes |
+|---------|--------|-----------|-----------|-------|
+| **Entra Private Access** | ✅ Supported | N/A | Supported | Direct export from GSA for backup, disaster recovery, or tenant-to-tenant migration. No transformation needed - exported CSV is directly compatible with provisioning function. |
+| **Entra Internet Access** | ⏳ Coming Soon | N/A | Supported | Export functionality under development. Will export policies, security profiles, and Conditional Access assignments. |
+
+:::info Use Case
+Unlike migrations from third-party platforms, GSA export captures existing Global Secure Access configurations for backup, restore, or replication scenarios. This is ideal for tenant-to-tenant migrations, disaster recovery, or promoting configurations between environments.
+:::
+
 ## Zscaler Internet Access to Entra Internet Access
 
 | Feature | Export | Transform | Provision | Notes |

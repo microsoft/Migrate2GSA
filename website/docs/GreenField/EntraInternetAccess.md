@@ -55,8 +55,8 @@ Before starting:
 - ✅ Global Secure Access license
 - ✅ Global administrator or appropriate delegated permissions
 - ✅ PowerShell 7.0 or higher
-- ✅ [Migrate2GSA toolkit installed](../../installation.md)
-- ✅ [Understanding of EIA concepts](EIAOverview.md) (Rules, Policies, Security Profiles, Conditional Access)
+- ✅ [Migrate2GSA toolkit installed](../installation.md)
+- ✅ [Understanding of EIA concepts](../UnderstandingGSA/EIA-Configuration-Model.md) (Rules, Policies, Security Profiles, Conditional Access)
 
 ---
 
@@ -329,7 +329,7 @@ RuleDestinations: github.com;npmjs.com;bitbucket.com;gitlab.com
 ```
 
 #### Adding More Web Categories
-Check the [EIA Overview page](EIAOverview.md#available-web-categories) for the full category list and add with semicolon:
+Check the [EIA Configuration Model](../UnderstandingGSA/EIA-Configuration-Model.md#web-categories-reference) for the full category list and add with semicolon:
 ```csv
 # Before:
 RuleDestinations: SocialNetworking
@@ -437,9 +437,9 @@ Pre-configured CSV files will be available in the GitHub repository under `Sampl
 
 ## Next Steps
 
-1. **[Review EIA Concepts](EIAOverview.md)** - Understand the 4-layer architecture if you haven't already
+1. **[Review EIA Concepts](../UnderstandingGSA/EIA-Configuration-Model.md)** - Understand the 4-layer architecture if you haven't already
 2. **Copy a template** - Choose from the 5 templates above
 3. **Customize CSVs** - Replace group names and adjust policies
-4. **Deploy** - Head to [Provisioning Guide](../../Provision/EntraInternetAccessProvisioning.md) for deployment instructions
+4. **Deploy** - Head to [Provisioning Guide](../Provision/EntraInternetAccessProvisioning.md) for deployment instructions
 
-**Questions?** Refer to the [EIA Overview](EIAOverview.md) for conceptual guidance or reach out to the community!
+**Questions?** Refer to the [EIA Configuration Model](../UnderstandingGSA/EIA-Configuration-Model.md) for conceptual guidance or reach out to the community!

@@ -2,9 +2,9 @@
 sidebar_position: 1
 ---
 
-# Understanding Entra Internet Access Configuration
+# Entra Internet Access Configuration Model
 
-This guide explains the core concepts you need to understand before deploying Entra Internet Access (EIA) from scratch.
+This guide explains the core concepts you need to understand before deploying Entra Internet Access (EIA) from scratch or when migrating from other platforms.
 
 ## The Four Core Components
 
@@ -39,11 +39,10 @@ Entra Internet Access uses a four-layer architecture where each layer builds upo
 - [Policies - Grouping Rules Together](#2-policies---grouping-rules-together)
 - [Security Profiles - Linking Multiple Policies](#3-security-profiles---linking-multiple-policies)
 - [Conditional Access - Assigning to Users](#4-conditional-access---assigning-to-users)
-- [Decision Guide - How Many Policies Do I Need?](#decision-guide-how-many-policies-do-i-need)
-- [Common Configuration Patterns](#common-configuration-patterns)
-- [Available Web Categories](#available-web-categories)
+- [Decision Guide - How Many Policies Do I Need?](#decision-guide-designing-your-configuration)
+- [Common Configuration Patterns](#common-patterns)
+- [Available Web Categories](#web-categories-reference)
 - [TLS Inspection Considerations](#tls-inspection-considerations)
-- [CSV File Structure](#csv-file-structure)
 
 ### 1. Rules - The Building Blocks
 
@@ -314,10 +313,12 @@ This policy bypasses TLS for internal sites (rule 1) but inspects suspicious one
 
 ## Next Steps
 
-Now that you understand the EIA concepts and architecture:
+Now that you understand the EIA configuration model:
 
-1. **[Get Started with CSV Templates](GettingStarted.md)** - Learn how to use the toolkit's CSV-based approach for greenfield deployment
-2. **[Deploy to Entra](../../Provision/EntraInternetAccessProvisioning.md)** - Provision your configuration with PowerShell
+1. **[GreenField Deployment](../GreenField/EntraInternetAccess.md)** - Deploy EIA from scratch using CSV templates
+2. **[Migrate from Other Platforms](../migration-workflow.md)** - Export, transform, and provision from ZScaler, Netskope, Forcepoint, or Cisco Umbrella
+3. **[Export Existing Configuration](../MigrationSources/GSA/EIAExport.md)** - Backup your current EIA setup for disaster recovery or tenant migration
+4. **[Provisioning Reference](../Provision/EntraInternetAccessProvisioning.md)** - Detailed provisioning function documentation
 
 📖 **Additional Resources:**
 - [Web Content Filtering Documentation](https://learn.microsoft.com/en-us/entra/global-secure-access/how-to-configure-web-content-filtering)
