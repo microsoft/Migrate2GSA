@@ -53,8 +53,9 @@ When migrating, a single Zscaler Private Access object often "explodes" into mul
 | \*.finance.corp | TCP | 443 |
 | \*.finance.corp | TCP | 8080-8090 |
 
-> [!TIP]
-> This granularity provides better visibility and control but results in a higher number of configuration lines during migration.
+:::tip
+This granularity provides better visibility and control but results in a higher number of configuration lines during migration.
+:::
 
 ### Access Policies
 
