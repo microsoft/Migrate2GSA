@@ -2,7 +2,7 @@
   "label": "Provisioning GSA",
   "position": 70,
   "collapsible": true,
-  "collapsed": true,
+  "collapsed": false,
   "link": {
     "type": "generated-index",
     "description": "Provisioning GSA."

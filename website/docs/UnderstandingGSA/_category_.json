@@ -2,7 +2,7 @@
   "label": "Understanding GSA",
   "position": 11,
   "collapsible": true,
-  "collapsed": true,
+  "collapsed": false,
   "link": {
     "type": "generated-index",
     "description": "Learn the core concepts and configuration models of Global Secure Access policies and applications."

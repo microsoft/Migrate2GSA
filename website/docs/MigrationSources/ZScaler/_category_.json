@@ -2,7 +2,7 @@
   "label": "ZScaler",
   "position": 50,
   "collapsible": true,
-  "collapsed": true,
+  "collapsed": false,
   "link": {
     "type": "generated-index",
     "description": "Migrate from ZScaler."
