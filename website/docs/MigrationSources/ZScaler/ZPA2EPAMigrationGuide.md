@@ -21,7 +21,7 @@ The fundamental difference between Zscaler Private Access and Entra Private Acce
 |---|---|---|
 | Application Segment | Enterprise Application | A one-to-one mapping. One Zscaler Private Access App Segment becomes one Entra Private Access Enterprise App container. |
 | Domain/Port Entry | Application Segment | A one-to-many mapping. The contents of a Zscaler Private Access segment (domains times ports) are expanded into individual Entra Private Access segments. |
-| Segment Group | None | Not migrated. Segment Groups are logical containers in Zscaler Private Access that do not have a functional equivalent in Entra Private Access configuration. |
+| Segment Group | None | Not migrated. Segment Groups are logical containers in Zscaler Private Access that do not have a direct functional equivalent in Entra Private Access configuration. If desired, manually migrate to Custom Security Attributes to simplify Conditional Access policy enforcement. |
 | Server Group | None | Not migrated. Backend server definitions are handled by network routing via Connectors, not distinct configuration objects. |
 | Connector Group | Connector Group | Direct mapping. Physical grouping of connectors for routing and redundancy. |
 | Access Policy | User/Group Assignment & Conditional Access | Policy rules are converted into direct assignments (who can access) and Conditional Access Policies (under what conditions). |
@@ -59,7 +59,7 @@ This granularity provides better visibility and control but results in a higher 
 
 ### Access Policies
 
-Zscaler Private Access uses a rule-based engine (If \<Criteria\> then Allow). Entra Private Access uses an identity-centric assignment model (Assign \<Group\> to \<App\>).
+Zscaler Private Access uses a rule-based engine (If \<Criteria\> then Allow). Entra Private Access uses an identity-centric assignment model (Assign \<Group\> to \<App\>), and Conditional Access to provide dynamic access control.
 
 **Zscaler Private Access Logic:**
 
