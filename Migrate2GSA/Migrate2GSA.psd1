@@ -71,6 +71,7 @@ FunctionsToExport = @(
     'Convert-NPA2EPA',
     'Convert-NSWG2EIA',
     'Convert-ForcepointWS2EIA',
+    'Convert-CitrixNS2EPA',
     'Start-EntraPrivateAccessProvisioning',
     'Start-EntraInternetAccessProvisioning',
     'Export-EntraPrivateAccessConfig',
