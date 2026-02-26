@@ -75,7 +75,8 @@ FunctionsToExport = @(
     'Start-EntraPrivateAccessProvisioning',
     'Start-EntraInternetAccessProvisioning',
     'Export-EntraPrivateAccessConfig',
-    'Export-CiscoUmbrellaConfig'
+    'Export-CiscoUmbrellaConfig',
+    'Export-MDEWebFilteringConfig'
 )
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.

@@ -25,5 +25,6 @@ Export-ModuleMember -Function @(
     'Start-EntraPrivateAccessProvisioning',
     'Start-EntraInternetAccessProvisioning',
     'Export-EntraPrivateAccessConfig',
-    'Export-CiscoUmbrellaConfig'
+    'Export-CiscoUmbrellaConfig',
+    'Export-MDEWebFilteringConfig'
 )
