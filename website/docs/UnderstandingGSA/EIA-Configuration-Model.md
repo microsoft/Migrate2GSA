@@ -315,7 +315,7 @@ This policy bypasses TLS for internal sites (rule 1) but inspects suspicious one
 
 Now that you understand the EIA configuration model:
 
-1. **[GreenField Deployment](../GreenField/EntraInternetAccess.md)** - Deploy EIA from scratch using CSV templates
+1. **[CSV Configuration & Templates](../WorkingWithCSVs/eia-csv-configuration.md)** - Deploy EIA from scratch using CSV templates and validation guidance
 2. **[Migrate from Other Platforms](../migration-workflow.md)** - Export, transform, and provision from ZScaler, Netskope, Forcepoint, or Cisco Umbrella
 3. **[Export Existing Configuration](../MigrationSources/GSA/EIAExport.md)** - Backup your current EIA setup for disaster recovery or tenant migration
 4. **[Provisioning Reference](../Provision/EntraInternetAccessProvisioning.md)** - Detailed provisioning function documentation

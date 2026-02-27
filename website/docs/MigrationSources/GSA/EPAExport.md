@@ -492,7 +492,7 @@ After exporting your EPA configuration:
 - [Entra Private Access Provisioning](../../Provision/EntraPrivateAccessProvisioning.md) - Restore/provision EPA configurations
 - [Migration Workflow](../../migration-workflow.md) - Overall migration process
 - [ZPA to EPA Migration](../ZScaler/ZPA2EPA.md) - Alternative: Migrate from Zscaler Private Access
-- [GreenField EPA Deployment](../../GreenField/EntraPrivateAccess.md) - Deploy EPA from scratch
+- [EPA CSV Configuration & Templates](../../WorkingWithCSVs/epa-csv-configuration.md) - Deploy EPA from scratch using CSV templates
 
 ## Additional Resources
 

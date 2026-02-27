@@ -460,7 +460,7 @@ Branch_Office_LA,yes,192.168.10.0/24,ipRangeCidr,udp,1-65535
 
 Now that you understand the EPA configuration model:
 
-1. **[GreenField Deployment](../GreenField/EntraPrivateAccess.md)** - Deploy EPA from scratch using CSV templates
+1. **[CSV Configuration & Templates](../WorkingWithCSVs/epa-csv-configuration.md)** - Deploy EPA from scratch using CSV templates and validation guidance
 2. **[Migrate from ZPA](../MigrationSources/ZScaler/ZPA2EPA.md)** - Export and transform from Zscaler Private Access
 3. **[Export Existing Configuration](../MigrationSources/GSA/EPAExport.md)** - Backup your current EPA setup for disaster recovery or tenant migration
 4. **[Provisioning Reference](../Provision/EntraPrivateAccessProvisioning.md)** - Detailed provisioning function documentation
