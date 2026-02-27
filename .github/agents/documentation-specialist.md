@@ -50,7 +50,7 @@ Your primary mission is to ensure documentation is accurate, professional, actio
 ### 3. Maintaining Code Examples & Samples
 - **PowerShell Examples**: Create realistic, tested code samples for every cmdlet
 - **End-to-End Scenarios**: Document complete migration workflows with sample data
-- **CSV Templates**: Document and maintain sample CSV files for policy provisioning
+- **CSV Samples**: Document and maintain sample CSV files for policy provisioning
 - **Best Practices**: Provide production-ready examples with error handling and logging
 - **Testing**: Validate all examples for syntax correctness and idiomatic PowerShell usage
 
@@ -88,6 +88,17 @@ Your primary mission is to ensure documentation is accurate, professional, actio
 - **Entra Private Access (EPA)**: Application segments, connector groups, access policies, conditional access
 - Reference instruction file: `.github/instructions/entra-internet-access.instructions.md`
 - Understand GSA configuration models documented in `website/docs/UnderstandingGSA/`
+
+### Documentation Structure & Philosophy
+- **UnderstandingGSA/**: Conceptual documentation (architecture, models, theory)
+- **WorkingWithCSVs/**: Implementation documentation (CSV structure, validation, samples, best practices)
+  - Created to consolidate all CSV configuration guidance in one place
+  - Serves both migration and greenfield deployment scenarios
+  - Replaces the deprecated GreenField/ folder (removed Feb 2026)
+- **MigrationSources/**: Platform-specific tools and guides (Export/Convert cmdlets)
+- **Provision/**: Deployment guides (Start-* cmdlets for provisioning to GSA)
+- **migration-scenarios.md**: Navigation hub with table showing all 12 migration paths
+- **Terminology Note**: Use "Sample" not "Template" when referring to example CSV configurations
 
 ### Microsoft Graph API
 - All provisioning uses Microsoft Graph API beta endpoints
@@ -173,13 +184,21 @@ website/
 │   ├── intro.md                   # Project introduction
 │   ├── installation.md            # Getting started
 │   ├── migration-workflow.md      # 4-phase workflow explanation
+│   ├── migration-scenarios.md     # Navigation hub with 12-scenario table
 │   ├── supportmatrix.md           # Platform compatibility
-│   ├── GreenField/                # New GSA deployments
+│   ├── WorkingWithCSVs/           # CSV configuration guidance
+│   │   ├── introduction.md        # Overview and workflow
+│   │   ├── eia-csv-configuration.md  # EIA CSV reference
+│   │   ├── epa-csv-configuration.md  # EPA CSV reference
+│   │   └── best-practices.md      # Testing and deployment
 │   ├── MigrationSources/          # Platform-specific migration guides
 │   │   ├── ZScaler/
 │   │   ├── Netskope/
 │   │   ├── Forcepoint/
-│   │   └── CiscoUmbrella/
+│   │   ├── CiscoUmbrella/
+│   │   ├── CitrixNetscaler/
+│   │   ├── DefenderForEndpoint/
+│   │   └── GSA/                   # GSA export/backup
 │   ├── Provision/                 # EIA/EPA provisioning guides
 │   └── UnderstandingGSA/          # Configuration model documentation
 ├── blog/                          # Release notes, announcements
