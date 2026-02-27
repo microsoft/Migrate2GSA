@@ -10,27 +10,37 @@ This document describes the Entra Internet Access (EIA) object model used within
 ## Object Hierarchy
 
 ```
+── Independent Policy Objects ──────────────────────────
+
+Filtering Policy (action: block/allow)
+  └── policyRules[]
+        ├── fqdnFilteringRule (destinations: fqdn[])
+        ├── webCategoryFilteringRule (destinations: webCategory[])
+        └── urlFilteringRule (destinations: url[])  ← uses fqdnFilteringRule @odata.type with ruleType "url"
+
+TLS Inspection Policy (defaultAction: bypass/inspect)
+  └── policyRules[] (tlsInspectionRule)
+        ├── action: bypass | inspect
+        ├── priority (lower = higher precedence)
+        └── matchingConditions.destinations (fqdn and/or webCategory)
+
+Threat Intelligence Policy
+  └── system-managed, "Block Malicious Destinations"
+
+Cloud Firewall Policy (defaultAction: allow/block)
+  └── network-level firewall rules (L3/L4)
+
+── Aggregation & Assignment ────────────────────────────
+
 Conditional Access Policy
   └── references a Security Profile (via sessionControls.globalSecureAccessFilteringProfile)
         └── Security Profile (filteringProfile)
-              ├── filteringPolicyLink (priority, state, loggingState, action) → Filtering Policy
-              ├── tlsInspectionPolicyLink (state) → TLS Inspection Policy
-              ├── threatIntelligencePolicyLink (state) → Threat Intelligence Policy
-              └── cloudFirewallPolicyLink (state) → Cloud Firewall Policy
-                    │
-                    ▼
-              Filtering Policy (action: block/allow)
-                    └── policyRules[]
-                          ├── fqdnFilteringRule (destinations: fqdn[])
-                          ├── webCategoryFilteringRule (destinations: webCategory[])
-                          └── urlFilteringRule (destinations: url[])  ← uses fqdnFilteringRule @odata.type with ruleType "url"
-              TLS Inspection Policy (defaultAction: bypass/inspect)
-                    └── policyRules[] (tlsInspectionRule)
-                          ├── action: bypass | inspect
-                          ├── priority (lower = higher precedence)
-                          └── matchingConditions.destinations (fqdn and/or webCategory)
-              Threat Intelligence Policy
-                    └── system-managed, "Block Malicious Destinations"
+              ├── name, description, state, priority
+              └── policyLinks[] (each links to an independent policy above)
+                    ├── filteringPolicyLink (priority, state, loggingState, action)
+                    ├── tlsInspectionPolicyLink (state)
+                    ├── threatIntelligencePolicyLink (state)
+                    └── cloudFirewallPolicyLink (state)
 ```
 
 ## Key Concepts
