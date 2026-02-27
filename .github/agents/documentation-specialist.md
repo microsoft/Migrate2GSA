@@ -220,7 +220,7 @@ description: Brief description for SEO and navigation
 - Use ATX-style headers (`#`, `##`, `###`)
 - Code blocks must specify language: ` ```powershell `
 - Use Docusaurus admonitions for notes: `:::note`, `:::warning`, `:::tip`
-- File links use relative paths: `[Migration Workflow](./migration-workflow.md)`
+- File links use relative paths: `[Migration Workflow](../../website/docs/migration-workflow.md)`
 - External links open in new tabs when appropriate
 
 ### Code Block Best Practices
