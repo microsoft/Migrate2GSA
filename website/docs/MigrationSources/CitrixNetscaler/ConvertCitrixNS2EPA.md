@@ -57,13 +57,13 @@ Base directory for output files.
 - **Required**: No
 
 ### -GroupFilter
-Wildcard pattern to include only matching AAA groups.
+Comma-separated list of wildcard patterns to include only matching AAA groups.
 
 - **Type**: String
 - **Required**: No
 
 ### -ExcludeGroupFilter
-Wildcard pattern to exclude matching AAA groups.
+Comma-separated list of wildcard patterns to exclude matching AAA groups.
 
 - **Type**: String
 - **Required**: No
@@ -104,11 +104,21 @@ Convert-CitrixNS2EPA -ConfigFilePath ".\netscaler.conf" -GroupFilter "vpn-wareho
 
 Processes only AAA groups matching the wildcard pattern.
 
-### Example 4: Exclude Groups
+### Example 4: Filter by Multiple Group Patterns
 
 ```powershell
-Convert-CitrixNS2EPA -ConfigFilePath ".\netscaler.conf" -ExcludeGroupFilter "*-test-*"
+Convert-CitrixNS2EPA -ConfigFilePath ".\netscaler.conf" -GroupFilter "vpn-warehouse-*,vpn-office-*"
 ```
+
+Processes only AAA groups matching any of the comma-separated wildcard patterns.
+
+### Example 5: Exclude Groups
+
+```powershell
+Convert-CitrixNS2EPA -ConfigFilePath ".\netscaler.conf" -ExcludeGroupFilter "*-test-*,*-dev-*"
+```
+
+Excludes AAA groups matching any of the comma-separated wildcard patterns.
 
 ## Output Files
 

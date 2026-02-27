@@ -21,10 +21,10 @@ function Convert-CitrixNS2EPA {
         Base directory for output files. Defaults to current working directory.
 
     .PARAMETER GroupFilter
-        Wildcard pattern to include only matching AAA groups.
+        Comma-separated list of wildcard patterns to include only matching AAA groups.
 
     .PARAMETER ExcludeGroupFilter
-        Wildcard pattern to exclude matching AAA groups.
+        Comma-separated list of wildcard patterns to exclude matching AAA groups.
 
     .PARAMETER EnableDebugLogging
         Enable verbose debug logging for detailed troubleshooting.
@@ -49,9 +49,14 @@ function Convert-CitrixNS2EPA {
         Processes only AAA groups matching the specified wildcard pattern.
 
     .EXAMPLE
-        Convert-CitrixNS2EPA -ConfigFilePath ".\netscaler.conf" -ExcludeGroupFilter "*-test-*"
+        Convert-CitrixNS2EPA -ConfigFilePath ".\netscaler.conf" -GroupFilter "vpn-warehouse-*,vpn-office-*"
 
-        Processes all AAA groups except those matching the specified wildcard pattern.
+        Processes only AAA groups matching any of the specified comma-separated wildcard patterns.
+
+    .EXAMPLE
+        Convert-CitrixNS2EPA -ConfigFilePath ".\netscaler.conf" -ExcludeGroupFilter "*-test-*,*-dev-*"
+
+        Processes all AAA groups except those matching any of the specified comma-separated wildcard patterns.
 
     .EXAMPLE
         $results = Convert-CitrixNS2EPA -ConfigFilePath ".\netscaler.conf" -PassThru
@@ -80,10 +85,10 @@ function Convert-CitrixNS2EPA {
         [ValidateScript({Test-Path $_ -PathType Container})]
         [string]$OutputBasePath = $PWD,
 
-        [Parameter(HelpMessage = "Wildcard pattern to include only matching AAA groups")]
+        [Parameter(HelpMessage = "Comma-separated list of wildcard patterns to include only matching AAA groups")]
         [string]$GroupFilter,
 
-        [Parameter(HelpMessage = "Wildcard pattern to exclude matching AAA groups")]
+        [Parameter(HelpMessage = "Comma-separated list of wildcard patterns to exclude matching AAA groups")]
         [string]$ExcludeGroupFilter,
 
         [Parameter(HelpMessage = "Enable verbose debug logging")]
@@ -913,13 +918,35 @@ try {
 
     if ($GroupFilter) {
         Write-LogMessage "Applying group filter: $GroupFilter" -Level "INFO" -Component 'Resolve'
-        $groupsToProcess = @($groupsToProcess | Where-Object { $_ -like $GroupFilter })
+        $includePatterns = $GroupFilter.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
+        $groupsToProcess = @($groupsToProcess | Where-Object {
+            $groupName = $_
+            $matched = $false
+            foreach ($pattern in $includePatterns) {
+                if ($groupName -like $pattern) {
+                    $matched = $true
+                    break
+                }
+            }
+            return $matched
+        })
         Write-LogMessage "Groups after include filter: $($groupsToProcess.Count)" -Level "INFO" -Component 'Resolve'
     }
 
     if ($ExcludeGroupFilter) {
         Write-LogMessage "Applying exclude group filter: $ExcludeGroupFilter" -Level "INFO" -Component 'Resolve'
-        $groupsToProcess = @($groupsToProcess | Where-Object { $_ -notlike $ExcludeGroupFilter })
+        $excludePatterns = $ExcludeGroupFilter.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
+        $groupsToProcess = @($groupsToProcess | Where-Object {
+            $groupName = $_
+            $shouldExclude = $false
+            foreach ($pattern in $excludePatterns) {
+                if ($groupName -like $pattern) {
+                    $shouldExclude = $true
+                    break
+                }
+            }
+            return -not $shouldExclude
+        })
         Write-LogMessage "Groups after exclude filter: $($groupsToProcess.Count)" -Level "INFO" -Component 'Resolve'
     }
 
