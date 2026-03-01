@@ -337,7 +337,8 @@ function Parse-AuthorizationPolicy {
     param([string]$Line)
 
     # add authorization policy <name> "<expression>" <action>
-    if ($Line -notmatch '(?i)^add\s+authorization\s+policy\s+(\S+)\s+"([^"]+)"\s+(\S+)') {
+    # Expression may contain escaped quotes (\"...\")
+    if ($Line -notmatch '(?i)^add\s+authorization\s+policy\s+(\S+)\s+"((?:[^"\\]|\\.)*)"\s+(\S+)') {
         return $null
     }
 
@@ -355,6 +356,7 @@ function Parse-AuthorizationPolicy {
         TcpPorts      = $parsed.TcpPorts
         UdpPorts      = $parsed.UdpPorts
         HasPortClause = $parsed.HasPortClause
+        HasNegation   = $parsed.HasNegation
     }
 }
 
@@ -363,8 +365,9 @@ function Parse-RuleExpression {
     .SYNOPSIS
         Parses a Citrix NetScaler policy rule expression string.
     .DESCRIPTION
-        Extracts CLIENT.IP.DST.EQ/IN_SUBNET destinations and
-        CLIENT.TCP.DSTPORT.EQ/CLIENT.UDP.DSTPORT.EQ port clauses.
+        Extracts CLIENT.IP.DST.EQ/IN_SUBNET destinations,
+        HTTP.REQ.HOSTNAME.CONTAINS FQDN destinations (mapped to wildcard),
+        and CLIENT.TCP.DSTPORT.EQ/CLIENT.UDP.DSTPORT.EQ port clauses.
     .OUTPUTS
         Hashtable with Destinations (array), TcpPorts (array),
         UdpPorts (array), HasPortClause (bool).
@@ -387,6 +390,12 @@ function Parse-RuleExpression {
         $destinations += $m.Groups[1].Value.Trim()
     }
 
+    # Extract FQDN destinations: HTTP.REQ.HOSTNAME.CONTAINS(\"domain\") -> *.domain
+    $hostnameMatches = [regex]::Matches($Expression, 'HTTP\.REQ\.HOSTNAME\.CONTAINS\(\\"([^\\"]+)\\"\)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    foreach ($m in $hostnameMatches) {
+        $destinations += '*.' + $m.Groups[1].Value.Trim()
+    }
+
     # Extract TCP ports: CLIENT.TCP.DSTPORT.EQ(<port>)
     $tcpPortMatches = [regex]::Matches($Expression, 'CLIENT\.TCP\.DSTPORT\.EQ\((\d+)\)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
     foreach ($m in $tcpPortMatches) {
@@ -401,11 +410,15 @@ function Parse-RuleExpression {
 
     $hasPortClause = ($tcpPorts.Count -gt 0) -or ($udpPorts.Count -gt 0)
 
+    # Detect .NOT negation on any clause (e.g., IN_SUBNET(...).NOT, DST.EQ(...).NOT)
+    $hasNegation = [regex]::IsMatch($Expression, '\.(EQ|IN_SUBNET)\([^)]+\)\.NOT', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
     return @{
         Destinations  = $destinations
         TcpPorts      = $tcpPorts
         UdpPorts      = $udpPorts
         HasPortClause = $hasPortClause
+        HasNegation   = $hasNegation
     }
 }
 
@@ -794,6 +807,7 @@ try {
     $intranetApps = @{}
     $bindings = @()
     $denyPoliciesSkipped = 0
+    $negatedPoliciesSkipped = 0
     $unrecognizedLines = 0
 
     # Parse line by line
@@ -825,11 +839,20 @@ try {
                     continue
                 }
 
+                if ($parsed.HasNegation) {
+                    Write-LogMessage "Skipping authorization policy '$($parsed.Name)': contains negated (.NOT) expressions which cannot be converted to EPA application segments. Consider Entra Internet Access for public-internet rules." -Level "WARN" -Component 'Parse'
+                    $negatedPoliciesSkipped++
+                    continue
+                }
+
                 if ($authPolicies.ContainsKey($parsed.Name)) {
                     Write-LogMessage "Duplicate authorization policy definition: '$($parsed.Name)'. Using last definition." -Level "WARN" -Component 'Parse'
                 }
                 $authPolicies[$parsed.Name] = $parsed
                 Write-LogMessage "Parsed authorization policy: $($parsed.Name) (destinations: $($parsed.Destinations.Count), tcpPorts: $($parsed.TcpPorts.Count), udpPorts: $($parsed.UdpPorts.Count))" -Level "DEBUG" -Component 'Parse'
+            }
+            elseif ($line -match '(?i)^add\s+authorization\s+policy\s+(\S+)\s+(TRUE|FALSE)\s+(\S+)') {
+                Write-LogMessage "Skipping boolean authorization policy '$($Matches[1])' ($($Matches[2]) $($Matches[3])): no IP/port rules to convert." -Level "WARN" -Component 'Parse'
             }
             else {
                 Write-LogMessage "Failed to parse authorization policy at line $lineNumber : $line" -Level "ERROR" -Component 'Parse'
@@ -876,6 +899,7 @@ try {
     Write-LogMessage "  AAA groups: $($aaaGroups.Count)" -Level "INFO" -Component 'Parse'
     Write-LogMessage "  Authorization policies (ALLOW): $($authPolicies.Count)" -Level "INFO" -Component 'Parse'
     Write-LogMessage "  DENY policies skipped: $denyPoliciesSkipped" -Level "INFO" -Component 'Parse'
+    Write-LogMessage "  Negated (.NOT) policies skipped: $negatedPoliciesSkipped" -Level "INFO" -Component 'Parse'
     Write-LogMessage "  VPN intranet applications: $($intranetApps.Count)" -Level "INFO" -Component 'Parse'
     Write-LogMessage "  Bindings: $($bindings.Count)" -Level "INFO" -Component 'Parse'
     Write-LogMessage "  Unrecognized lines: $unrecognizedLines" -Level "INFO" -Component 'Parse'

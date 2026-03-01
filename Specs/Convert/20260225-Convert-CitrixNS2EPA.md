@@ -3,7 +3,7 @@
 **Date**: February 25, 2026  
 **Author**: Andres Canello  
 **Status**: Draft  
-**Version**: 1.0
+**Version**: 1.1
 
 ---
 
@@ -88,17 +88,28 @@ add authorization policy <policyName> "<ruleExpression>" <action>
 | `CLIENT.IP.DST.IN_SUBNET(<ip>/<mask>)` | Matches destination subnet (CIDR) |
 | `CLIENT.TCP.DSTPORT.EQ(<port>)` | Matches specific TCP destination port |
 | `CLIENT.UDP.DSTPORT.EQ(<port>)` | Matches specific UDP destination port |
+| `<expr>.NOT` | Negates the preceding expression (see §3.9) |
 | `&&` | Logical AND |
 | `\|\|` | Logical OR |
 | `( )` | Grouping parentheses |
 
 The `<action>` is always `ALLOW` or `DENY`. Only `ALLOW` policies are converted. `DENY` policies are logged and skipped.
 
+The expression may contain escaped double-quotes (`\"...\"`) for hostname-based expressions.
+
+Boolean expressions (`TRUE` / `FALSE`) are valid NetScaler syntax for match-all / match-none policies. These contain no IP, subnet, or FQDN rules convertible to EPA and are skipped with a WARN log (see §3.8).
+
+Negated expressions using the `.NOT` suffix (e.g., `CLIENT.IP.DST.IN_SUBNET(10.0.0.0/8).NOT`) define exclusion rules that cannot be represented as positive EPA application segments and are skipped with a WARN log (see §3.9).
+
 **Examples:**
 ```
 add authorization policy web-srv-443 "CLIENT.IP.DST.EQ(172.16.5.20) && CLIENT.TCP.DSTPORT.EQ(443)" ALLOW
 add authorization policy lab-subnet "CLIENT.IP.DST.IN_SUBNET(172.16.10.0/24)" ALLOW
 add authorization policy multi-dest "(CLIENT.IP.DST.IN_SUBNET(172.16.20.0/24) || CLIENT.IP.DST.IN_SUBNET(172.16.21.0/24)) && (CLIENT.TCP.DSTPORT.EQ(22) || CLIENT.TCP.DSTPORT.EQ(3306))" ALLOW
+add authorization policy sap-layer "HTTP.REQ.HOSTNAME.CONTAINS(\"sap-servicelayer.conectcar.com\") && CLIENT.TCP.DSTPORT.EQ(50000)" ALLOW
+add authorization policy besso-aws "(CLIENT.IP.DST.IN_SUBNET(192.168.0.0/16).NOT && CLIENT.IP.DST.IN_SUBNET(172.16.0.0/12).NOT && CLIENT.IP.DST.IN_SUBNET(10.0.0.0/8).NOT) && (CLIENT.TCP.DSTPORT.EQ(5432))" ALLOW
+add authorization policy allow_dns TRUE ALLOW
+add authorization policy deny_any TRUE DENY
 ```
 
 #### 2.2.3 `add vpn intranetApplication`
@@ -158,8 +169,9 @@ bind aaa group vpn-logistics-devs -intranetApplication iT_logistics -devno 40265
 2. **Comment handling**: Strip everything from `#` to end of line before parsing. Lines that become empty after stripping are skipped.
 3. **Whitespace handling**: Trim leading/trailing whitespace. Multiple spaces between tokens are treated as single delimiters.
 4. **Case insensitivity**: Command keywords (`add`, `aaa`, `group`, `bind`, etc.) are case-insensitive. Policy names, group names, and destinations are case-preserved.
-5. **Quoted strings**: Destinations in `add authorization policy` and `add vpn intranetApplication` may be enclosed in double quotes. Quotes are stripped during parsing.
-6. **Unrecognized lines**: Lines not matching any supported command are skipped with a `DEBUG`-level warning (visible only when `-EnableDebugLogging` is specified).
+5. **Quoted strings**: Destinations in `add authorization policy` and `add vpn intranetApplication` may be enclosed in double quotes. Expressions may contain escaped quotes (`\"...\"`) for hostname-based expressions. Quotes are stripped during parsing.
+6. **Boolean expressions**: Authorization policies using unquoted `TRUE` or `FALSE` as the expression (match-all / match-none) are logged as WARN and skipped — they contain no convertible IP/FQDN/port rules.
+7. **Unrecognized lines**: Lines not matching any supported command are skipped with a `DEBUG`-level warning (visible only when `-EnableDebugLogging` is specified).
 
 ---
 
@@ -196,12 +208,17 @@ The rule expression inside `add authorization policy` must be parsed to extract 
 4. **UDP port in expression**: `CLIENT.IP.DST.EQ(172.16.5.30) && (CLIENT.UDP.DSTPORT.EQ(514))`
    → One destination, port `514`, protocol `UDP` (the expression itself indicates UDP)
 
+5. **FQDN via hostname match**: `HTTP.REQ.HOSTNAME.CONTAINS(\"sap-servicelayer.conectcar.com\") && CLIENT.TCP.DSTPORT.EQ(50000)`
+   → One wildcard FQDN destination `*.sap-servicelayer.conectcar.com`, port `50000`, protocol `TCP`
+
 **Parsing algorithm:**
 
 ```
 1. Tokenize: Extract all CLIENT.IP.DST.EQ(<ip>), CLIENT.IP.DST.IN_SUBNET(<cidr>),
+   HTTP.REQ.HOSTNAME.CONTAINS(\"<domain>\"),
    CLIENT.TCP.DSTPORT.EQ(<port>), CLIENT.UDP.DSTPORT.EQ(<port>) tokens
-2. Collect destinations: All IP/subnet tokens → destination list
+2. Collect destinations: All IP/subnet tokens → destination list;
+   all HOSTNAME.CONTAINS tokens → wildcard FQDN destinations (*.<domain>)
 3. Collect ports: All DSTPORT tokens → port list, noting TCP vs UDP per port
 4. If no ports in expression → ports are "1-65535" (all), protocol derived from binding -type
 5. If ports in expression → protocol is derived from TCP.DSTPORT vs UDP.DSTPORT tokens
@@ -339,6 +356,35 @@ Authorization policies that are defined (`add authorization policy`) but never b
 Authorization policies with action `DENY`:
 - **Skipped** entirely (not included in output)
 - Logged as info: `"Skipping DENY policy: '<policyName>'"`
+
+### 3.8 Boolean Policies (TRUE / FALSE)
+
+Authorization policies using an unquoted boolean expression instead of a quoted rule expression:
+```
+add authorization policy allow_dns TRUE ALLOW
+add authorization policy allow_icmp TRUE ALLOW
+add authorization policy deny_any TRUE DENY
+```
+
+- `TRUE` = match all traffic; `FALSE` = match no traffic
+- These contain **no IP, subnet, FQDN, or port rules** and cannot be meaningfully converted to EPA application segments
+- **Skipped** entirely (not included in output)
+- Logged as warning: `"Skipping boolean authorization policy '<policyName>' (TRUE ALLOW): no IP/port rules to convert."`
+
+### 3.9 Negated Policies (.NOT)
+
+Authorization policies that use the `.NOT` suffix to negate destination or port clauses:
+```
+add authorization policy besso-aws "(CLIENT.IP.DST.IN_SUBNET(192.168.0.0/16).NOT && CLIENT.IP.DST.IN_SUBNET(172.16.0.0/12).NOT && CLIENT.IP.DST.IN_SUBNET(10.0.0.0/8).NOT) && (CLIENT.TCP.DSTPORT.EQ(5432))" ALLOW
+```
+
+- `.NOT` inverts the preceding match — e.g., `IN_SUBNET(10.0.0.0/8).NOT` means "destination is **not** in 10.0.0.0/8"
+- These rules typically describe **public-internet access** (everything except private ranges), which is the domain of **Entra Internet Access (EIA)**, not EPA
+- EPA application segments require **positive** destination definitions (specific IPs, CIDRs, or FQDNs); negation cannot be expressed
+- **Skipped** entirely (not included in output)
+- Logged as warning: `"Skipping authorization policy '<policyName>': contains negated (.NOT) expressions which cannot be converted to EPA application segments. Consider Entra Internet Access for public-internet rules."`
+
+**Detection**: The parser checks for the pattern `.<EQ|IN_SUBNET>(<value>).NOT` anywhere in the rule expression. If any negated clause is present, the entire policy is skipped — partial negation within a compound expression cannot be reliably decomposed into positive-only segments.
 
 ---
 
@@ -643,7 +689,7 @@ $authPolicies = @{}
 #     Name = 'wh-mgmt-ssh'
 #     Action = 'ALLOW'
 #     RawExpression = 'CLIENT.IP.DST.EQ(172.16.5.20) && CLIENT.TCP.DSTPORT.EQ(22)'
-#     Destinations = @('172.16.5.20')
+#     Destinations = @('172.16.5.20')      # IPs, CIDRs, and/or *.domain wildcard FQDNs
 #     TcpPorts = @('22')
 #     UdpPorts = @()
 #     HasPortClause = $true
@@ -705,6 +751,7 @@ $unboundPolicies = @()   # list of policy names not referenced in any binding
 ### 8.3 Warning Conditions
 Log warnings for:
 - Policies with `DENY` action (skipped)
+- Boolean policies with `TRUE`/`FALSE` expression (no rules to convert, skipped)
 - ICMP bindings (not supported in EPA, skipped)
 - Unbound policies (included with `Provision=No`)
 - Intranet applications with protocol `ICMP` (skipped)
