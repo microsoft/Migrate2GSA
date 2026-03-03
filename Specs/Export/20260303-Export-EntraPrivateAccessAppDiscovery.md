@@ -381,7 +381,7 @@ The CSV includes all columns required by `Start-EntraPrivateAccessProvisioning` 
 
 **Provisioning-compatible columns (required by Start-EntraPrivateAccessProvisioning):**
 ```
-SegmentId, OriginalAppName, EnterpriseAppName, destinationHost, DestinationType, Protocol, Ports, SegmentGroup, ServerGroups, EntraGroups, EntraUsers, ConnectorGroup, Conflict, ConflictingEnterpriseApp, Provision, isQuickAccess
+SegmentId, OriginalAppName, EnterpriseAppName, destinationHost, DestinationType, Protocol, Ports, EntraGroups, EntraUsers, ConnectorGroup, Conflict, ConflictingEnterpriseApp, Provision, isQuickAccess
 ```
 
 **Additional App Discovery metric columns:**
@@ -400,8 +400,6 @@ DiscoveryAccessType, FirstAccessDateTime, LastAccessDateTime, TransactionCount, 
 | `DestinationType` | Derived | `FQDN` if `fqdn` is non-null; `ipAddress` if `ip` is non-null |
 | `Protocol` | `transportProtocol` | `TCP` or `UDP` (uppercased to match provisioning convention) |
 | `Ports` | `port` | Port number as string |
-| `SegmentGroup` | Empty | Left blank — not applicable for discovery |
-| `ServerGroups` | Empty | Left blank — not applicable for discovery |
 | `EntraGroups` | Placeholder | `Placeholder_Replace_Me` — must be set before provisioning |
 | `EntraUsers` | `userReport` API | Semicolon-separated UPNs of users who accessed this segment during the discovery window. Retrieved via the `userReport` endpoint per segment. Left blank if user resolution fails or returns no users |
 | `ConnectorGroup` | Placeholder | `Placeholder_Replace_Me` — must be set before provisioning |
@@ -463,9 +461,9 @@ DiscoveryAccessType, FirstAccessDateTime, LastAccessDateTime, TransactionCount, 
 
 **Example CSV:**
 ```csv
-SegmentId,OriginalAppName,EnterpriseAppName,destinationHost,DestinationType,Protocol,Ports,SegmentGroup,ServerGroups,EntraGroups,EntraUsers,ConnectorGroup,Conflict,ConflictingEnterpriseApp,Provision,isQuickAccess,DiscoveryAccessType,FirstAccessDateTime,LastAccessDateTime,TransactionCount,UserCount,DeviceCount,TotalBytesSent,TotalBytesReceived,DiscoveredApplicationSegmentId
-SEG-D-000001,Discovered-fed-dc1.fed.canello.net,Placeholder_Review_Me,fed-dc1.fed.canello.net,FQDN,UDP,389,,,Placeholder_Replace_Me,acanello@canello.net,Placeholder_Replace_Me,No,,No,yes,quickAccess,2026-03-02T23:31:09Z,2026-03-03T00:09:34Z,32,1,1,5247,5676,eyJGcWRuIjoiZmVkLWRjMS5mZWQuY2FuZWxsby5uZXQiLCJJcCI6bnVsbCwiUG9ydCI6Mzg5LCJUcmFuc3BvcnRQcm90b2NvbCI6MTd9
-SEG-D-000002,Discovered-10.1.1.10,Placeholder_Review_Me,10.1.1.10,ipAddress,TCP,445,,,Placeholder_Replace_Me,acanello@canello.net,Placeholder_Replace_Me,No,,No,yes,quickAccess,2026-03-03T00:03:26Z,2026-03-03T00:03:26Z,1,1,1,3987,3991,eyJGcWRuIjpudWxsLCJJcCI6IjEwLjEuMS4xMCIsIlBvcnQiOjQ0NSwiVHJhbnNwb3J0UHJvdG9jb2wiOjZ9
+SegmentId,OriginalAppName,EnterpriseAppName,destinationHost,DestinationType,Protocol,Ports,EntraGroups,EntraUsers,ConnectorGroup,Conflict,ConflictingEnterpriseApp,Provision,isQuickAccess,DiscoveryAccessType,FirstAccessDateTime,LastAccessDateTime,TransactionCount,UserCount,DeviceCount,TotalBytesSent,TotalBytesReceived,DiscoveredApplicationSegmentId
+SEG-D-000001,Discovered-fed-dc1.fed.canello.net,Placeholder_Review_Me,fed-dc1.fed.canello.net,FQDN,UDP,389,Placeholder_Replace_Me,acanello@canello.net,Placeholder_Replace_Me,No,,No,yes,quickAccess,2026-03-02T23:31:09Z,2026-03-03T00:09:34Z,32,1,1,5247,5676,eyJGcWRuIjoiZmVkLWRjMS5mZWQuY2FuZWxsby5uZXQiLCJJcCI6bnVsbCwiUG9ydCI6Mzg5LCJUcmFuc3BvcnRQcm90b2NvbCI6MTd9
+SEG-D-000002,Discovered-10.1.1.10,Placeholder_Review_Me,10.1.1.10,ipAddress,TCP,445,Placeholder_Replace_Me,acanello@canello.net,Placeholder_Replace_Me,No,,No,yes,quickAccess,2026-03-03T00:03:26Z,2026-03-03T00:03:26Z,1,1,1,3987,3991,eyJGcWRuIjpudWxsLCJJcCI6IjEwLjEuMS4xMCIsIlBvcnQiOjQ0NSwiVHJhbnNwb3J0UHJvdG9jb2wiOjZ9
 ```
 
 ### 4.6 Post-Export Workflow
@@ -675,8 +673,6 @@ foreach ($segment in $response) {
         DestinationType                 = $destinationType
         Protocol                        = $segment.transportProtocol.ToUpper()
         Ports                           = [string]$segment.port
-        SegmentGroup                    = ""
-        ServerGroups                    = ""
         EntraGroups                     = "Placeholder_Replace_Me"
         EntraUsers                      = $entraUsers
         ConnectorGroup                  = "Placeholder_Replace_Me"
@@ -710,7 +706,7 @@ if ($csvRows.Count -gt 0) {
     [PSCustomObject]@{
         SegmentId = $null; OriginalAppName = $null; EnterpriseAppName = $null
         destinationHost = $null; DestinationType = $null; Protocol = $null
-        Ports = $null; SegmentGroup = $null; ServerGroups = $null
+        Ports = $null
         EntraGroups = $null; EntraUsers = $null; ConnectorGroup = $null
         Conflict = $null; ConflictingEnterpriseApp = $null; Provision = $null
         isQuickAccess = $null; DiscoveryAccessType = $null
