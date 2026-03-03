@@ -33,6 +33,12 @@
     Maximum number of records to return from the API (ordered by userCount descending).
     Must be between 1 and 5000. Default: 500.
 
+.PARAMETER ResolveAppNames
+    Whether to query traffic logs to resolve the application ID and display name
+    for each discovered segment. When enabled, populates OriginalAppId and
+    OriginalAppName from the applicationSnapshot in traffic logs.
+    Default: $true.
+
 .PARAMETER LogPath
     Path for the log file. Defaults to the timestamped backup folder.
 
@@ -66,7 +72,7 @@
     Author: Andres Canello
     Version: 1.0
     Requires: PowerShell 7+, Microsoft.Graph.Authentication module
-    Required scopes: NetworkAccess.Read.All, NetworkAccessPolicy.Read.All
+    Required scopes: NetworkAccess.Read.All, NetworkAccessPolicy.Read.All, Application.Read.All (when ResolveAppNames is enabled)
 #>
 
 function Export-EntraPrivateAccessAppDiscovery {
@@ -86,6 +92,9 @@ function Export-EntraPrivateAccessAppDiscovery {
         [Parameter(HelpMessage = "Maximum number of records to return from the API")]
         [ValidateRange(1, 5000)]
         [int]$Top = 500,
+
+        [Parameter(HelpMessage = "Resolve application names from traffic logs")]
+        [bool]$ResolveAppNames = $true,
 
         [Parameter(HelpMessage = "Path for the log file")]
         [string]$LogPath
@@ -121,6 +130,7 @@ function Export-EntraPrivateAccessAppDiscovery {
     $warningCount = 0
     $skippedRecords = 0
     $failedUserReportCount = 0
+    $failedAppResolveCount = 0
     $startTime = Get-Date
     #endregion
 
@@ -128,7 +138,7 @@ function Export-EntraPrivateAccessAppDiscovery {
     Write-LogMessage "Starting Entra Private Access App Discovery export..." -Level INFO -Component "Export"
     Write-LogMessage "Output folder: $privateAccessFolder" -Level INFO -Component "Export"
     Write-LogMessage "Timestamp: $timestamp" -Level INFO -Component "Export"
-    Write-LogMessage "Parameters: DaysBack=$DaysBack, AccessTypeFilter=$AccessTypeFilter, Top=$Top" -Level INFO -Component "Export"
+    Write-LogMessage "Parameters: DaysBack=$DaysBack, AccessTypeFilter=$AccessTypeFilter, Top=$Top, ResolveAppNames=$ResolveAppNames" -Level INFO -Component "Export"
 
     # Validate required PowerShell modules
     $requiredModules = @('Microsoft.Graph.Authentication')
@@ -139,6 +149,9 @@ function Export-EntraPrivateAccessAppDiscovery {
         'NetworkAccess.Read.All',
         'NetworkAccessPolicy.Read.All'
     )
+    if ($ResolveAppNames) {
+        $requiredScopes += 'Application.Read.All'
+    }
     Test-GraphConnection -RequiredScopes $requiredScopes
 
     # Validate GSA tenant onboarding status
@@ -199,7 +212,8 @@ function Export-EntraPrivateAccessAppDiscovery {
 
         # Create headers-only CSV
         [PSCustomObject]@{
-            SegmentId = $null; OriginalAppName = $null; EnterpriseAppName = $null
+            SegmentId = $null; OriginalAppId = $null; OriginalAppName = $null
+            EnterpriseAppName = $null
             destinationHost = $null; DestinationType = $null; Protocol = $null
             Ports = $null
             EntraGroups = $null; EntraUsers = $null; ConnectorGroup = $null
@@ -271,6 +285,111 @@ function Export-EntraPrivateAccessAppDiscovery {
     }
     #endregion
 
+    #region Resolve Application Names from Traffic Logs
+    $segmentAppIdMap = @{}
+    $appIdNameMap = @{}
+
+    if ($ResolveAppNames) {
+        Write-LogMessage "Resolving application IDs from traffic logs ($totalSegments segments)..." -Level INFO -Component "AppResolve"
+
+        $currentResolveIndex = 0
+        foreach ($segment in $response) {
+            $currentResolveIndex++
+            $segmentId = $segment.discoveredApplicationSegmentId
+
+            Write-Progress -Activity "Exporting App Discovery Data" `
+                -Status "Resolving app for segment $currentResolveIndex of $totalSegments" `
+                -PercentComplete (75 + (($currentResolveIndex / $totalSegments) * 10))
+
+            # Build destination filter based on FQDN or IP
+            $destFilter = $null
+            if (-not [string]::IsNullOrWhiteSpace($segment.fqdn)) {
+                $destFilter = "destinationFQDN eq '$($segment.fqdn)'"
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($segment.ip)) {
+                $destFilter = "destinationIp eq '$($segment.ip)'"
+            }
+
+            if (-not $destFilter) { continue }
+
+            try {
+                $trafficUri = "/beta/networkAccess/logs/traffic" +
+                    "?`$filter=trafficType eq 'private'" +
+                    " and $destFilter" +
+                    " and destinationPort eq $($segment.port)" +
+                    " and createdDateTime ge $startDateTimeStr" +
+                    " and createdDateTime le $endDateTimeStr" +
+                    "&`$select=applicationSnapshot" +
+                    "&`$orderby=createdDateTime desc" +
+                    "&`$top=1"
+
+                $trafficResult = Invoke-InternalGraphRequest -Method GET -OutputType PSObject -Uri $trafficUri -DisablePagination
+
+                $trafficEntry = $null
+                if ($trafficResult.PSObject.Properties.Name -contains 'value') {
+                    $trafficEntry = $trafficResult.value | Select-Object -First 1
+                }
+                elseif ($trafficResult) {
+                    $trafficEntry = $trafficResult
+                }
+
+                if ($trafficEntry -and $trafficEntry.applicationSnapshot -and $trafficEntry.applicationSnapshot.appId) {
+                    $appId = $trafficEntry.applicationSnapshot.appId
+                    $segmentAppIdMap[$segmentId] = $appId
+
+                    # Track unique appIds for batch resolution
+                    if (-not $appIdNameMap.ContainsKey($appId)) {
+                        $appIdNameMap[$appId] = $null
+                    }
+                }
+            }
+            catch {
+                $failedAppResolveCount++
+                Write-LogMessage "Failed to resolve app for segment $currentResolveIndex ($segmentId): $_" -Level WARN -Component "AppResolve"
+            }
+        }
+
+        # Batch resolve unique appIds to display names
+        $uniqueAppIds = @($appIdNameMap.Keys)
+        if ($uniqueAppIds.Count -gt 0) {
+            Write-LogMessage "Resolving display names for $($uniqueAppIds.Count) unique application(s)..." -Level INFO -Component "AppResolve"
+
+            foreach ($appId in $uniqueAppIds) {
+                try {
+                    $spUri = "/beta/servicePrincipals?`$filter=appId eq '$appId'&`$select=appId,displayName&`$top=1"
+                    $spResult = Invoke-InternalGraphRequest -Method GET -OutputType PSObject -Uri $spUri -DisablePagination
+
+                    $sp = $null
+                    if ($spResult.PSObject.Properties.Name -contains 'value') {
+                        $sp = $spResult.value | Select-Object -First 1
+                    }
+
+                    if ($sp -and $sp.displayName) {
+                        $appIdNameMap[$appId] = $sp.displayName
+                    }
+                    else {
+                        $appIdNameMap[$appId] = ""
+                    }
+                }
+                catch {
+                    Write-LogMessage "Failed to resolve display name for appId $appId`: $_" -Level WARN -Component "AppResolve"
+                    $appIdNameMap[$appId] = ""
+                }
+            }
+        }
+
+        $resolvedCount = ($segmentAppIdMap.Values | Where-Object { $_ }).Count
+        if ($failedAppResolveCount -gt 0) {
+            Write-LogMessage "App resolution failed for $failedAppResolveCount of $totalSegments segments." -Level WARN -Component "AppResolve"
+            $warningCount += $failedAppResolveCount
+        }
+        Write-LogMessage "Resolved application IDs for $resolvedCount of $totalSegments segments ($($uniqueAppIds.Count) unique apps)" -Level SUCCESS -Component "AppResolve"
+    }
+    else {
+        Write-LogMessage "App name resolution skipped (ResolveAppNames=$ResolveAppNames)" -Level INFO -Component "AppResolve"
+    }
+    #endregion
+
     #region Transform Records to CSV Rows
     $csvRows = @()
     $recordIndex = 0
@@ -297,8 +416,18 @@ function Export-EntraPrivateAccessAppDiscovery {
             continue
         }
 
-        # Build original app name
+        # Resolve original app ID and name from traffic logs
+        $segmentId = $segment.discoveredApplicationSegmentId
+        $originalAppId = ""
         $originalAppName = "Discovered-$destinationHost"
+
+        if ($segmentAppIdMap.ContainsKey($segmentId)) {
+            $originalAppId = $segmentAppIdMap[$segmentId]
+            $resolvedName = $appIdNameMap[$originalAppId]
+            if (-not [string]::IsNullOrWhiteSpace($resolvedName)) {
+                $originalAppName = $resolvedName
+            }
+        }
 
         # Get users for this segment from the pre-fetched map
         $entraUsers = $segmentUserMap[$segment.discoveredApplicationSegmentId]
@@ -307,6 +436,7 @@ function Export-EntraPrivateAccessAppDiscovery {
         # Build CSV row
         $row = [PSCustomObject]@{
             SegmentId                      = "SEG-D-{0:D6}" -f $recordIndex
+            OriginalAppId                  = $originalAppId
             OriginalAppName                = $originalAppName
             EnterpriseAppName              = "Placeholder_Review_Me"
             destinationHost                = $destinationHost
@@ -344,7 +474,8 @@ function Export-EntraPrivateAccessAppDiscovery {
         else {
             # Write headers-only CSV
             [PSCustomObject]@{
-                SegmentId = $null; OriginalAppName = $null; EnterpriseAppName = $null
+                SegmentId = $null; OriginalAppId = $null; OriginalAppName = $null
+                EnterpriseAppName = $null
                 destinationHost = $null; DestinationType = $null; Protocol = $null
                 Ports = $null
                 EntraGroups = $null; EntraUsers = $null; ConnectorGroup = $null
@@ -473,6 +604,17 @@ function Export-EntraPrivateAccessAppDiscovery {
     Write-LogMessage "    Segments with users resolved: $segmentsWithUsers" -Level SUMMARY -Component "Summary"
     Write-LogMessage "    Segments with user resolution failed: $failedUserReportCount" -Level SUMMARY -Component "Summary"
     Write-LogMessage "    Total unique UPNs collected: $($allUniqueUpns.Count)" -Level SUMMARY -Component "Summary"
+
+    # App resolution stats
+    if ($ResolveAppNames) {
+        $segmentsWithAppId = ($csvRows | Where-Object { -not [string]::IsNullOrWhiteSpace($_.OriginalAppId) }).Count
+        $uniqueAppsResolved = ($appIdNameMap.Values | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
+        Write-LogMessage " " -Level INFO -Component "Summary"
+        Write-LogMessage "  App Name Resolution:" -Level SUMMARY -Component "Summary"
+        Write-LogMessage "    Segments with app ID resolved: $segmentsWithAppId" -Level SUMMARY -Component "Summary"
+        Write-LogMessage "    Segments with app resolution failed: $failedAppResolveCount" -Level SUMMARY -Component "Summary"
+        Write-LogMessage "    Unique applications resolved: $uniqueAppsResolved" -Level SUMMARY -Component "Summary"
+    }
 
     # Top 5 destinations
     Write-LogMessage " " -Level INFO -Component "Summary"
