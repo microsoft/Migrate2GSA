@@ -1,7 +1,7 @@
 # Export Entra Private Access App Discovery - Technical Specifications
 
-**Version:** 1.0  
-**Date:** March 3, 2026  
+**Version:** 1.1  
+**Date:** March 4, 2026  
 **Purpose:** Export Microsoft Entra Private Access App Discovery data to CSV format compatible with `Start-EntraPrivateAccessProvisioning`, enabling discovered segments to be reviewed and provisioned as proper Private Access applications.  
 **Status:** Draft  
 **Target Module:** Migrate2GSA  
@@ -21,6 +21,7 @@ This specification defines how to export App Discovery data from Microsoft Entra
 **Scope:**
 - Exports discovered application segments from the App Discovery report via Graph API
 - Retrieves the list of users who accessed each discovered segment and populates the `EntraUsers` column
+- Resolves the originating application ID and display name for each segment by querying traffic logs (controlled by `-ResolveAppNames`)
 - Supports filtering by `accessType` (`quickAccess`, `appAccess`, or all)
 - Supports configurable date range for the discovery window
 - Maps discovered segment data to provisioning CSV columns
@@ -47,6 +48,7 @@ Export-EntraPrivateAccessAppDiscovery
 | `-DaysBack` | Int | No | `30` | Number of days back from today for the discovery report window |
 | `-AccessTypeFilter` | String | No | `quickAccess` | Filter by access type: `quickAccess`, `appAccess`, or `all` |
 | `-Top` | Int | No | `500` | Maximum number of records to return from the API (ordered by userCount descending) |
+| `-ResolveAppNames` | Bool | No | `$true` | Resolve application ID and display name from traffic logs for each segment. When `$false`, `OriginalAppId` and `OriginalAppName` columns are still present but `OriginalAppId` is blank and `OriginalAppName` falls back to `Discovered-{host}` |
 | `-LogPath` | String | No | Auto-generated | Path for log file (defaults to output folder) |
 
 ### 1.3 Parameter Validation Rules
@@ -72,6 +74,12 @@ Export-EntraPrivateAccessAppDiscovery
 - Passed as `$top` query parameter to the API
 - Results are ordered by `userCount desc` (most-used segments first)
 
+**ResolveAppNames:**
+- Default: `$true`
+- When `$true`: queries traffic logs (`/beta/networkAccess/logs/traffic`) per segment to obtain `applicationSnapshot.appId`, then batch-resolves each unique `appId` to a display name via `/beta/servicePrincipals`
+- When `$false`: skips all traffic log and service principal queries; `OriginalAppId` is empty and `OriginalAppName` defaults to `Discovered-{host}`
+- Adds `Application.Read.All` to the required scopes when enabled
+
 **LogPath:**
 - If not specified, automatically placed in the timestamped backup folder
 - Named: `yyyyMMdd_HHmmss_Export-EPA-Discovery.log`
@@ -80,10 +88,11 @@ Export-EntraPrivateAccessAppDiscovery
 - Authenticated Microsoft Graph session (via `Connect-Entra` or `Connect-MgGraph`)
 - PowerShell module: `Microsoft.Graph.Authentication`
 - Required permission scopes:
-  - `NetworkAccess.Read.All` (for App Discovery segment report and tenant status)
+  - `NetworkAccess.Read.All` (for App Discovery segment report, traffic logs, and tenant status)
   - `NetworkAccessPolicy.Read.All` (for the `userReport` endpoint that retrieves per-segment user lists)
+  - `Application.Read.All` (for resolving `appId` to display name via `servicePrincipals` — only required when `-ResolveAppNames` is `$true`)
 
-**Note:** Both scopes are required and validated upfront via `Test-GraphConnection`. The function will not proceed if either scope is missing. The `userReport` endpoint requires `NetworkAccessPolicy.Read.All` (delegated only — application permissions are not supported for this endpoint).
+**Note:** The first two scopes are always required and validated upfront via `Test-GraphConnection`. `Application.Read.All` is added to the validation when `-ResolveAppNames` is `$true`. The function will not proceed if any required scope is missing. The `userReport` endpoint requires `NetworkAccessPolicy.Read.All` (delegated only — application permissions are not supported for this endpoint).
 
 ---
 
@@ -342,6 +351,48 @@ function Get-IntDiscoveredApplicationSegmentUserReport {
 - Throws on API failure — the caller (`Export-EntraPrivateAccessAppDiscovery`) catches transient per-segment errors
 - Returns `$null` on empty results (segment with no users)
 
+### 2.6 Traffic Log Endpoint (App ID Resolution)
+
+The discovery report does not include the application ID (`appId`) that the traffic was routed through. To resolve this, the function queries the traffic logs for a matching entry per segment. This is controlled by the `-ResolveAppNames` parameter (default: `$true`).
+
+**Endpoint:**
+```
+GET /beta/networkAccess/logs/traffic?$filter=trafficType eq 'private' and destinationFQDN eq '{fqdn}' and destinationPort eq {port} and createdDateTime ge {startDateTime} and createdDateTime le {endDateTime}&$select=applicationSnapshot&$orderby=createdDateTime desc&$top=1
+```
+
+For IP-based segments, use `destinationIp eq '{ip}'` instead of `destinationFQDN eq '{fqdn}'`.
+
+**Required Scope:** `NetworkAccess.Read.All` (already required for the segment report)
+
+**Response Property Used:** `applicationSnapshot.appId` — the GUID of the enterprise application registration the traffic was routed through.
+
+**Usage:**
+- Called once per discovered segment with `$top=1` for efficiency (only one matching traffic log entry is needed to obtain the `appId`)
+- Uses the same date range (`DaysBack`) as the discovery report to keep the time window consistent
+- The `appId` values are collected into a segment-to-appId mapping hashtable
+
+### 2.7 Service Principal Endpoint (App Name Resolution)
+
+After collecting unique `appId` values from the traffic logs, the function resolves each to a display name.
+
+**Endpoint:**
+```
+GET /beta/servicePrincipals?$filter=appId eq '{appId}'&$select=appId,displayName&$top=1
+```
+
+**Required Scope:** `Application.Read.All`
+
+**Response Properties Used:** `displayName` — the display name of the enterprise app.
+
+**Usage:**
+- Called once per unique `appId` (not per segment — multiple segments may share the same app)
+- The resolved display names are written to the `OriginalAppName` column
+- The `appId` GUID is written to the `OriginalAppId` column
+
+**Error Handling:**
+- If the traffic log query fails for a segment, log a warning and leave `OriginalAppId` empty; `OriginalAppName` falls back to `Discovered-{host}`
+- If the service principal query fails for an `appId`, log a warning and leave `OriginalAppName` as `Discovered-{host}` but still populate `OriginalAppId`
+
 ---
 
 ## 3. Output Structure and Naming Convention
@@ -381,7 +432,7 @@ The CSV includes all columns required by `Start-EntraPrivateAccessProvisioning` 
 
 **Provisioning-compatible columns (required by Start-EntraPrivateAccessProvisioning):**
 ```
-SegmentId, OriginalAppName, EnterpriseAppName, destinationHost, DestinationType, Protocol, Ports, EntraGroups, EntraUsers, ConnectorGroup, Conflict, ConflictingEnterpriseApp, Provision, isQuickAccess
+SegmentId, OriginalAppId, OriginalAppName, EnterpriseAppName, destinationHost, DestinationType, Protocol, Ports, EntraGroups, EntraUsers, ConnectorGroup, Conflict, ConflictingEnterpriseApp, Provision, isQuickAccess
 ```
 
 **Additional App Discovery metric columns:**
@@ -394,7 +445,8 @@ DiscoveryAccessType, FirstAccessDateTime, LastAccessDateTime, TransactionCount, 
 | Column | Source | Description |
 |--------|--------|-------------|
 | `SegmentId` | Auto-generated | Sequential ID: `SEG-D-000001`, `SEG-D-000002`, etc. The `D` prefix distinguishes discovery-sourced segments from other sources |
-| `OriginalAppName` | Generated | `Discovered-{fqdn}` or `Discovered-{ip}` — a descriptive name from the discovered host |
+| `OriginalAppId` | Traffic logs | Application ID (GUID) from `applicationSnapshot.appId` in traffic logs. Populated when `-ResolveAppNames` is `$true` and a matching traffic log entry is found. Empty otherwise |
+| `OriginalAppName` | Traffic logs / Generated | When app is resolved: enterprise app display name from `servicePrincipals` (e.g., `SRV1 SMB`, `DC RDP`). Fallback: `Discovered-{fqdn}` or `Discovered-{ip}` |
 | `EnterpriseAppName` | Placeholder | `Placeholder_Review_Me` — must be manually replaced with the desired application name before provisioning |
 | `destinationHost` | `fqdn` or `ip` | The discovered FQDN (if available) or IP address |
 | `DestinationType` | Derived | `FQDN` if `fqdn` is non-null; `ipAddress` if `ip` is non-null |
@@ -449,9 +501,13 @@ DiscoveryAccessType, FirstAccessDateTime, LastAccessDateTime, TransactionCount, 
 - Join with semicolons: `user1@contoso.com;user2@contoso.com`
 - If the API call fails or returns no users, leave blank
 
+**OriginalAppId:**
+- When `-ResolveAppNames` is `$true`: resolved from `applicationSnapshot.appId` in traffic logs
+- When `-ResolveAppNames` is `$false` or no matching traffic log entry: empty string
+
 **OriginalAppName:**
-- For FQDN segments: `Discovered-{fqdn}` (e.g., `Discovered-intranet.contoso.com`)
-- For IP segments: `Discovered-{ip}` (e.g., `Discovered-10.1.1.10`)
+- When `-ResolveAppNames` is `$true` and app resolved: display name from `servicePrincipals` (e.g., `SRV1 SMB`, `DC RDP`, `QA3`)
+- Fallback (no match or `-ResolveAppNames $false`): `Discovered-{fqdn}` or `Discovered-{ip}`
 
 ### 4.5 Row Structure
 
@@ -461,9 +517,9 @@ DiscoveryAccessType, FirstAccessDateTime, LastAccessDateTime, TransactionCount, 
 
 **Example CSV:**
 ```csv
-SegmentId,OriginalAppName,EnterpriseAppName,destinationHost,DestinationType,Protocol,Ports,EntraGroups,EntraUsers,ConnectorGroup,Conflict,ConflictingEnterpriseApp,Provision,isQuickAccess,DiscoveryAccessType,FirstAccessDateTime,LastAccessDateTime,TransactionCount,UserCount,DeviceCount,TotalBytesSent,TotalBytesReceived,DiscoveredApplicationSegmentId
-SEG-D-000001,Discovered-fed-dc1.fed.canello.net,Placeholder_Review_Me,fed-dc1.fed.canello.net,FQDN,UDP,389,Placeholder_Replace_Me,acanello@canello.net,Placeholder_Replace_Me,No,,No,yes,quickAccess,2026-03-02T23:31:09Z,2026-03-03T00:09:34Z,32,1,1,5247,5676,eyJGcWRuIjoiZmVkLWRjMS5mZWQuY2FuZWxsby5uZXQiLCJJcCI6bnVsbCwiUG9ydCI6Mzg5LCJUcmFuc3BvcnRQcm90b2NvbCI6MTd9
-SEG-D-000002,Discovered-10.1.1.10,Placeholder_Review_Me,10.1.1.10,ipAddress,TCP,445,Placeholder_Replace_Me,acanello@canello.net,Placeholder_Replace_Me,No,,No,yes,quickAccess,2026-03-03T00:03:26Z,2026-03-03T00:03:26Z,1,1,1,3987,3991,eyJGcWRuIjpudWxsLCJJcCI6IjEwLjEuMS4xMCIsIlBvcnQiOjQ0NSwiVHJhbnNwb3J0UHJvdG9jb2wiOjZ9
+SegmentId,OriginalAppId,OriginalAppName,EnterpriseAppName,destinationHost,DestinationType,Protocol,Ports,EntraGroups,EntraUsers,ConnectorGroup,Conflict,ConflictingEnterpriseApp,Provision,isQuickAccess,DiscoveryAccessType,FirstAccessDateTime,LastAccessDateTime,TransactionCount,UserCount,DeviceCount,TotalBytesSent,TotalBytesReceived,DiscoveredApplicationSegmentId
+SEG-D-000001,7e4bebb9-fbdd-4166-8a02-0bc2687d6b89,QA3,Placeholder_Review_Me,fed-dc1.fed.canello.net,FQDN,UDP,389,Placeholder_Replace_Me,acanello@canello.net,Placeholder_Replace_Me,No,,No,yes,quickAccess,2026-03-02T23:31:09Z,2026-03-03T00:09:34Z,32,1,1,5247,5676,eyJGcWRuIjoiZmVkLWRjMS5mZWQuY2FuZWxsby5uZXQiLCJJcCI6bnVsbCwiUG9ydCI6Mzg5LCJUcmFuc3BvcnRQcm90b2NvbCI6MTd9
+SEG-D-000002,,Discovered-10.1.1.10,Placeholder_Review_Me,10.1.1.10,ipAddress,TCP,445,Placeholder_Replace_Me,acanello@canello.net,Placeholder_Replace_Me,No,,No,yes,quickAccess,2026-03-03T00:03:26Z,2026-03-03T00:03:26Z,1,1,1,3987,3991,eyJGcWRuIjpudWxsLCJJcCI6IjEwLjEuMS4xMCIsIlBvcnQiOjQ0NSwiVHJhbnNwb3J0UHJvdG9jb2wiOjZ9
 ```
 
 ### 4.6 Post-Export Workflow
@@ -518,6 +574,9 @@ $requiredScopes = @(
     'NetworkAccess.Read.All',
     'NetworkAccessPolicy.Read.All'
 )
+if ($ResolveAppNames) {
+    $requiredScopes += 'Application.Read.All'
+}
 Test-GraphConnection -RequiredScopes $requiredScopes
 ```
 
@@ -654,8 +713,18 @@ foreach ($segment in $response) {
         continue
     }
     
-    # Build original app name
+    # Resolve original app ID and name from traffic logs
+    $segmentId = $segment.discoveredApplicationSegmentId
+    $originalAppId = ""
     $originalAppName = "Discovered-$destinationHost"
+    
+    if ($segmentAppIdMap.ContainsKey($segmentId)) {
+        $originalAppId = $segmentAppIdMap[$segmentId]
+        $resolvedName = $appIdNameMap[$originalAppId]
+        if (-not [string]::IsNullOrWhiteSpace($resolvedName)) {
+            $originalAppName = $resolvedName
+        }
+    }
     
     # Determine isQuickAccess
     $isQuickAccess = if ($segment.accessType -eq 'quickAccess') { 'yes' } else { 'no' }
@@ -667,6 +736,7 @@ foreach ($segment in $response) {
     # Build CSV row
     $row = [PSCustomObject]@{
         SegmentId                       = "SEG-D-{0:D6}" -f $recordIndex
+        OriginalAppId                   = $originalAppId
         OriginalAppName                 = $originalAppName
         EnterpriseAppName               = "Placeholder_Review_Me"
         destinationHost                 = $destinationHost
@@ -704,7 +774,8 @@ if ($csvRows.Count -gt 0) {
 } else {
     # Write headers-only CSV
     [PSCustomObject]@{
-        SegmentId = $null; OriginalAppName = $null; EnterpriseAppName = $null
+        SegmentId = $null; OriginalAppId = $null; OriginalAppName = $null
+        EnterpriseAppName = $null
         destinationHost = $null; DestinationType = $null; Protocol = $null
         Ports = $null
         EntraGroups = $null; EntraUsers = $null; ConnectorGroup = $null
@@ -789,6 +860,11 @@ Entra Private Access App Discovery:
     Segments with user resolution failed: 0
     Total unique UPNs collected: 1
 
+  App Name Resolution:
+    Segments with app ID resolved: 8
+    Segments with app resolution failed: 0
+    Unique applications resolved: 4
+
   Top 5 Destinations by User Count:
     1. fed-dc1.fed.canello.net:389/udp (1 users, 32 txns)
     2. intranet.fed.canello.net:80/tcp (1 users, 4 txns)
@@ -863,13 +939,15 @@ Start-EntraPrivateAccessProvisioning `
 **API Call Pattern:**
 - The discovery segment report is retrieved via `Get-IntDiscoveredApplicationSegmentReport` (single API call with `$top` limiting results)
 - For each discovered segment, `Get-IntDiscoveredApplicationSegmentUserReport` makes one API call to retrieve user UPNs
-- Total API calls: 1 (segment report) + N (user reports, one per segment)
+- Total API calls: 1 (segment report) + N (user reports) + N (traffic log queries, when `-ResolveAppNames`) + M (service principal queries, one per unique `appId`)
 - Pagination handling via `Invoke-InternalGraphRequest` (used internally by both helpers) if response exceeds `$top`
+- Traffic log queries use `$top=1` and `-DisablePagination` for efficiency
 
 **Expected Performance:**
 - Segment report: < 5 seconds
 - User resolution: ~1-2 seconds per segment (N segments = N API calls)
-- For 50 segments: ~60-120 seconds total
+- App ID resolution: ~1-2 seconds per segment (N traffic log queries) + ~1 second per unique app (M service principal queries)
+- For 50 segments with 10 unique apps: ~120-200 seconds total
 - Progress indicator shown during user resolution phase
 - If `NetworkAccessPolicy.Read.All` scope is missing, `Test-GraphConnection` will fail the export upfront before any API calls are made
 
@@ -911,6 +989,9 @@ Start-EntraPrivateAccessProvisioning `
 - Very large result sets (> 1000 segments — many userReport calls)
 - Segments with port 0 or unusual protocols
 - Transient API error on individual `userReport` call (leave EntraUsers blank for that segment)
+- Traffic log returns no matching entry for a segment (OriginalAppId empty, OriginalAppName falls back)
+- Service principal not found for a resolved appId (OriginalAppId populated, OriginalAppName falls back)
+- `-ResolveAppNames $false` (columns present but OriginalAppId blank, OriginalAppName = Discovered-{host})
 - Segment with many users (> 50 — test pagination on userReport)
 - Users deleted between access time and export time (UPN may be stale)
 
@@ -950,6 +1031,8 @@ Both new helpers call `Invoke-InternalGraphRequest` internally — the export fu
 - [ ] Generate sequential `SegmentId` values with `SEG-D-` prefix
 - [ ] Correctly derive `destinationHost`, `DestinationType`, `Protocol`, `isQuickAccess`
 - [ ] Populate `EntraUsers` from `userReport` API per segment (semicolon-separated UPNs)
+- [ ] Resolve `OriginalAppId` from traffic logs and `OriginalAppName` from service principals (when `-ResolveAppNames`)
+- [ ] Gracefully handle traffic log and service principal resolution failures without failing the export
 - [ ] Gracefully handle `userReport` failures (missing scope, API errors) without failing the export
 - [ ] Set appropriate placeholder values for `EnterpriseAppName`, `ConnectorGroup`, `EntraGroups`
 - [ ] Create timestamped backup folder structure
@@ -999,13 +1082,23 @@ Both new helpers call `Invoke-InternalGraphRequest` internally — the export fu
 4. Handle transient per-segment `userReport` failures gracefully (log warning, leave `EntraUsers` blank for that segment)
 5. Show progress indicator during user resolution
 
+### Phase 3.5: App Name Resolution (ResolveAppNames)
+1. For each segment, query `/beta/networkAccess/logs/traffic` with FQDN/IP + port + date range + `$top=1` to obtain `applicationSnapshot.appId`
+2. Build segment-to-appId mapping hashtable
+3. Collect unique `appId` values and batch-resolve via `/beta/servicePrincipals` to get display names
+4. Build appId-to-displayName mapping hashtable
+5. Handle transient per-segment traffic log failures gracefully (log warning, leave `OriginalAppId` empty)
+6. Handle service principal resolution failures gracefully (log warning, keep `OriginalAppId` but leave `OriginalAppName` as fallback)
+7. Show progress indicator during resolution
+
 ### Phase 4: Data Transformation
 1. Transform API response records to CSV rows
 2. Map `fqdn`/`ip` → `destinationHost` + `DestinationType`
 3. Generate sequential `SegmentId` values
-4. Populate `EntraUsers` from segment-to-users map
-5. Set placeholder values for provisioning columns
-6. Include App Discovery metric columns
+4. Populate `OriginalAppId` and `OriginalAppName` from app resolution maps (or fallback values)
+5. Populate `EntraUsers` from segment-to-users map
+6. Set placeholder values for provisioning columns
+7. Include App Discovery metric columns
 
 ### Phase 5: Output and Reporting
 1. Write CSV using `Export-Csv`
@@ -1031,6 +1124,20 @@ GET /beta/networkaccess/reports/getDiscoveredApplicationSegmentReport(startDateT
 ```
 **Required Scope:** `NetworkAccess.Read.All`  
 **OData Type:** `microsoft.graph.networkaccess.discoveredApplicationSegmentReport`
+
+**Traffic Log (app ID resolution, per segment):**
+```
+GET /beta/networkAccess/logs/traffic?$filter=trafficType eq 'private' and destinationFQDN eq '{fqdn}' and destinationPort eq {port} and createdDateTime ge {startDateTime} and createdDateTime le {endDateTime}&$select=applicationSnapshot&$orderby=createdDateTime desc&$top=1
+```
+**Required Scope:** `NetworkAccess.Read.All`  
+**Key Property:** `applicationSnapshot.appId`
+
+**Service Principal (app name resolution, per unique appId):**
+```
+GET /beta/servicePrincipals?$filter=appId eq '{appId}'&$select=appId,displayName&$top=1
+```
+**Required Scope:** `Application.Read.All`  
+**Key Property:** `displayName`
 
 **User Report (per segment):**
 ```
