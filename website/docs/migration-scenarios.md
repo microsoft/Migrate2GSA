@@ -1,5 +1,5 @@
 ---
-sidebar_position: 20
+sidebar_position: 5
 title: Migration Scenarios
 description: Quick reference guide for finding the right migration workflow based on your source platform and target configuration.
 ---
@@ -199,7 +199,7 @@ graph TD
 
 If you're planning a migration project or need assistance:
 - Check the platform-specific migration guides linked in the table above
-- Review the [troubleshooting sections](./migration-workflow.md#troubleshooting) in each guide
+- Review the troubleshooting sections in each guide
 - Contact the team at **migrate2gsateam@microsoft.com**
 
 :::info
