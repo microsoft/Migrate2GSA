@@ -12,22 +12,22 @@ Entra Internet Access uses a four-layer architecture where each layer builds upo
 
 <div style={{margin: '2rem 0', overflowX: 'auto'}}>
   <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', minWidth: '600px'}}>
-    <div style={{flex: '1', padding: '0.75rem', backgroundColor: '#e3f2fd', borderRadius: '8px', border: '2px solid #1976d2', textAlign: 'center', minWidth: '120px'}}>
+    <div className="eia-component-box eia-box-rules">
       <strong>1. Rules</strong><br/>
       <small>Filter criteria</small>
     </div>
-    <div style={{fontSize: '1.5rem', color: '#666', flexShrink: 0}}>→</div>
-    <div style={{flex: '1', padding: '0.75rem', backgroundColor: '#fff3e0', borderRadius: '8px', border: '2px solid #f57c00', textAlign: 'center', minWidth: '120px'}}>
+    <div className="eia-component-arrow">→</div>
+    <div className="eia-component-box eia-box-policies">
       <strong>2. Policies</strong><br/>
       <small>Group rules</small>
     </div>
-    <div style={{fontSize: '1.5rem', color: '#666', flexShrink: 0}}>→</div>
-    <div style={{flex: '1', padding: '0.75rem', backgroundColor: '#f3e5f5', borderRadius: '8px', border: '2px solid #7b1fa2', textAlign: 'center', minWidth: '140px'}}>
+    <div className="eia-component-arrow">→</div>
+    <div className="eia-component-box eia-box-profiles">
       <strong>3. Security Profiles</strong><br/>
       <small>Link policies</small>
     </div>
-    <div style={{fontSize: '1.5rem', color: '#666', flexShrink: 0}}>→</div>
-    <div style={{flex: '1', padding: '0.75rem', backgroundColor: '#e8f5e9', borderRadius: '8px', border: '2px solid #388e3c', textAlign: 'center', minWidth: '150px'}}>
+    <div className="eia-component-arrow">→</div>
+    <div className="eia-component-box eia-box-ca">
       <strong>4. Conditional Access</strong><br/>
       <small>Assign to users</small>
     </div>

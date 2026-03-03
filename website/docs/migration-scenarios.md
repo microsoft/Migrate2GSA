@@ -35,7 +35,7 @@ New to Global Secure Access? Start with the [Understanding GSA](./UnderstandingG
 
 {/* EIA Migrations */}
 <tr>
-<td colspan="5" style={{backgroundColor: 'var(--ifm-color-primary-lightest)', fontWeight: 'bold', padding: '0.75rem'}}>
+<td colspan="5" className="table-section-header table-section-eia">
 🌐 Entra Internet Access (EIA) Migrations
 </td>
 </tr>
@@ -82,7 +82,7 @@ New to Global Secure Access? Start with the [Understanding GSA](./UnderstandingG
 
 {/* EPA Migrations */}
 <tr>
-<td colspan="5" style={{backgroundColor: 'var(--ifm-color-success-lightest)', fontWeight: 'bold', padding: '0.75rem'}}>
+<td colspan="5" className="table-section-header table-section-epa">
 🔐 Entra Private Access (EPA) Migrations
 </td>
 </tr>
@@ -113,7 +113,7 @@ New to Global Secure Access? Start with the [Understanding GSA](./UnderstandingG
 
 {/* Greenfield Deployments */}
 <tr>
-<td colspan="5" style={{backgroundColor: 'var(--ifm-color-warning-lightest)', fontWeight: 'bold', padding: '0.75rem'}}>
+<td colspan="5" className="table-section-header table-section-greenfield">
 🆕 Greenfield Deployments
 </td>
 </tr>
@@ -136,7 +136,7 @@ New to Global Secure Access? Start with the [Understanding GSA](./UnderstandingG
 
 {/* GSA to GSA Migrations */}
 <tr>
-<td colspan="5" style={{backgroundColor: 'var(--ifm-color-info-lightest)', fontWeight: 'bold', padding: '0.75rem'}}>
+<td colspan="5" className="table-section-header table-section-gsa">
 🔄 Global Secure Access Backup & Migration
 </td>
 </tr>

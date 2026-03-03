@@ -12,22 +12,22 @@ Entra Private Access uses a four-layer architecture to provide secure remote acc
 
 <div style={{margin: '2rem 0', overflowX: 'auto'}}>
   <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', minWidth: '600px'}}>
-    <div style={{flex: '1', padding: '0.75rem', backgroundColor: '#e3f2fd', borderRadius: '8px', border: '2px solid #1976d2', textAlign: 'center', minWidth: '130px'}}>
+    <div className="eia-component-box eia-box-rules" style={{minWidth: '130px'}}>
       <strong>1. Segments</strong><br/>
       <small>Destination hosts</small>
     </div>
-    <div style={{fontSize: '1.5rem', color: '#666', flexShrink: 0}}>→</div>
-    <div style={{flex: '1', padding: '0.75rem', backgroundColor: '#fff3e0', borderRadius: '8px', border: '2px solid #f57c00', textAlign: 'center', minWidth: '150px'}}>
+    <div className="eia-component-arrow">→</div>
+    <div className="eia-component-box eia-box-policies" style={{minWidth: '150px'}}>
       <strong>2. Applications</strong><br/>
       <small>Group segments</small>
     </div>
-    <div style={{fontSize: '1.5rem', color: '#666', flexShrink: 0}}>→</div>
-    <div style={{flex: '1', padding: '0.75rem', backgroundColor: '#f3e5f5', borderRadius: '8px', border: '2px solid #7b1fa2', textAlign: 'center', minWidth: '140px'}}>
+    <div className="eia-component-arrow">→</div>
+    <div className="eia-component-box eia-box-profiles">
       <strong>3. Connector Groups</strong><br/>
       <small>On-prem gateway</small>
     </div>
-    <div style={{fontSize: '1.5rem', color: '#666', flexShrink: 0}}>→</div>
-    <div style={{flex: '1', padding: '0.75rem', backgroundColor: '#e8f5e9', borderRadius: '8px', border: '2px solid #388e3c', textAlign: 'center', minWidth: '150px'}}>
+    <div className="eia-component-arrow">→</div>
+    <div className="eia-component-box eia-box-ca">
       <strong>4. Assignments</strong><br/>
       <small>Users & groups</small>
     </div>

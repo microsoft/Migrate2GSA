@@ -57,6 +57,105 @@ html[data-theme="dark"] .navbar--github-link:before {
     no-repeat;
 }
 
+/* EIA Configuration Model - four core component boxes */
+.eia-component-box {
+  flex: 1;
+  padding: 0.75rem;
+  border-radius: 8px;
+  text-align: center;
+  min-width: 120px;
+}
+
+.eia-box-rules {
+  background-color: #e3f2fd;
+  border: 2px solid #1976d2;
+}
+
+.eia-box-policies {
+  background-color: #fff3e0;
+  border: 2px solid #f57c00;
+}
+
+.eia-box-profiles {
+  background-color: #f3e5f5;
+  border: 2px solid #7b1fa2;
+  min-width: 140px;
+}
+
+.eia-box-ca {
+  background-color: #e8f5e9;
+  border: 2px solid #388e3c;
+  min-width: 150px;
+}
+
+.eia-component-arrow {
+  font-size: 1.5rem;
+  color: #666;
+  flex-shrink: 0;
+}
+
+[data-theme='dark'] .eia-box-rules {
+  background-color: #0d2137;
+  border-color: #42a5f5;
+}
+
+[data-theme='dark'] .eia-box-policies {
+  background-color: #2e1a00;
+  border-color: #ffb74d;
+}
+
+[data-theme='dark'] .eia-box-profiles {
+  background-color: #2a0e35;
+  border-color: #ba68c8;
+}
+
+[data-theme='dark'] .eia-box-ca {
+  background-color: #0e2e10;
+  border-color: #66bb6a;
+}
+
+[data-theme='dark'] .eia-component-arrow {
+  color: #aaa;
+}
+
+/* Migration scenarios table section headers */
+.table-section-header {
+  font-weight: bold;
+  padding: 0.75rem;
+}
+
+.table-section-eia {
+  background-color: #d4edda;
+}
+
+.table-section-epa {
+  background-color: #d1ecf1;
+}
+
+.table-section-greenfield {
+  background-color: #fff3cd;
+}
+
+.table-section-gsa {
+  background-color: #cce5ff;
+}
+
+[data-theme='dark'] .table-section-eia {
+  background-color: #1a3a2a;
+}
+
+[data-theme='dark'] .table-section-epa {
+  background-color: #1a2e3a;
+}
+
+[data-theme='dark'] .table-section-greenfield {
+  background-color: #3a3520;
+}
+
+[data-theme='dark'] .table-section-gsa {
+  background-color: #1a2a3a;
+}
+
 .sidebar-divider {
   border-top: 1px solid var(--ifm-color-gray-200);
   display: block;
