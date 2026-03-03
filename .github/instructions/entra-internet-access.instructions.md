@@ -61,6 +61,8 @@ Conditional Access Policy
   - **action**: `bypass` or `inspect` (per-rule, unlike filtering policies)
   - **priority**: numeric, lower = evaluated first
   - **matchingConditions.destinations**: FQDNs and/or web categories
+    - FQDN destinations use `tlsInspectionFqdnDestination` type with a `values[]` string array (unlike filtering rules which use `fqdn` type with a singular `value`)
+    - Web category destinations use `webCategory` type with a `values[]` string array
   - **settings.status**: `enabled` or `disabled`
 - A system-managed bypass rule is auto-created for system bypass categories.
 - Created at: `POST /beta/networkAccess/tlsInspectionPolicies`
@@ -140,7 +142,7 @@ One row per security profile.
 |--------|--------|-------------|
 | SecurityProfileName | string | Profile name |
 | Priority | integer | Profile priority (lower = higher precedence) |
-| SecurityProfileLinks | `PolicyName:Priority;...` | Semicolon-separated policy links with priority |
+| SecurityProfileLinks | `PolicyName:Priority;...` | Semicolon-separated policy links. Filtering policies use `PolicyName:Priority`; non-filtering links (TLS inspection, threat intelligence, cloud firewall) use `PolicyName` without priority |
 | CADisplayName | string | Conditional Access policy display name (optional) |
 | EntraUsers | semicolon-separated UPNs | Users to assign via CA (optional) |
 | EntraGroups | semicolon-separated names | Groups to assign via CA (optional) |
@@ -161,6 +163,7 @@ One row per security profile.
 | Cloud Firewall Policy Link | `#microsoft.graph.networkaccess.cloudFirewallPolicyLink` |
 | FQDN Filtering Rule | `#microsoft.graph.networkaccess.fqdnFilteringRule` |
 | Web Category Filtering Rule | `#microsoft.graph.networkaccess.webCategoryFilteringRule` |
-| FQDN destination | `#microsoft.graph.networkaccess.fqdn` |
+| FQDN destination (filtering) | `#microsoft.graph.networkaccess.fqdn` |
+| FQDN destination (TLS inspection) | `#microsoft.graph.networkaccess.tlsInspectionFqdnDestination` |
 | URL destination | `#microsoft.graph.networkaccess.url` |
 | Web Category destination | `#microsoft.graph.networkaccess.webCategory` |

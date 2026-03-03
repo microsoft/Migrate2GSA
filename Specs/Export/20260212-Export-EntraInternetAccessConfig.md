@@ -46,7 +46,7 @@ Export-EntraInternetAccessConfig
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `-OutputPath` | String | No | Current directory | Directory where timestamped backup folder will be created |
-| `-IncludeConditionalAccessPolicies` | Switch | No | False | Include Conditional Access policies in the export (affects Security Profiles CSV creation) |
+| `-IncludeConditionalAccessPolicies` | Switch | No | False | Resolve CA policy user/group assignments (EntraUsers/EntraGroups). CADisplayName is always exported. Also forces Security Profiles CSV creation |
 | `-LogPath` | String | No | Auto-generated | Path for log file (defaults to output folder) |
 
 ### 1.3 Parameter Validation Rules
@@ -57,8 +57,9 @@ Export-EntraInternetAccessConfig
 - Validate write permissions before starting export
 
 **IncludeConditionalAccessPolicies:**
-- When specified: Export security profiles WITH Conditional Access policy assignments
-- When omitted: Export security profiles WITHOUT Conditional Access information (EntraUsers/EntraGroups/CADisplayName left empty)
+- CADisplayName is always exported (obtained from the security profile's ConditionalAccessPolicies expansion, no extra permissions needed)
+- When specified: Resolve CA policy user/group assignments (EntraUsers/EntraGroups) using Policy.Read.All, User.Read.All, Directory.Read.All scopes
+- When omitted: EntraUsers and EntraGroups left empty
 - Does not affect whether Security Profiles CSV is created (see section 2.3)
 
 **LogPath:**
@@ -69,8 +70,8 @@ Export-EntraInternetAccessConfig
 - Authenticated Microsoft Graph session (via `Connect-Entra` or `Connect-MgGraph`)
 - PowerShell module: `Microsoft.Graph.Authentication`
 - Required permission scopes:
-  - `NetworkAccessPolicy.Read.All` (for EIA policies and security profiles)
-  - `Policy.Read.All` (for Conditional Access policies, only if `-IncludeConditionalAccessPolicies` specified)
+  - `NetworkAccessPolicy.Read.All` (for EIA policies, security profiles, and CA policy names)
+  - `Policy.Read.All` (for CA policy assignments, only if `-IncludeConditionalAccessPolicies` specified)
   - `User.Read.All` and `Directory.Read.All` (for user/group assignments, only if `-IncludeConditionalAccessPolicies` specified)
 
 **Note:** These are read-only scopes since this function only exports data. The provisioning function requires ReadWrite scopes.
@@ -121,8 +122,8 @@ GSA-backup_20260212_143022/
 **Example Scenarios:**
 | Security Profiles Exist | `-IncludeConditionalAccessPolicies` | SecurityProfiles CSV Created? |
 |-------------------------|-------------------------------------|-------------------------------|
-| Yes | Not specified | Yes (without CA info) |
-| Yes | Specified | Yes (with CA info) |
+| Yes | Not specified | Yes (with CADisplayName, without user/group assignments) |
+| Yes | Specified | Yes (with CADisplayName and user/group assignments) |
 | No | Not specified | No |
 | No | Specified | Yes (headers only) |
 
@@ -249,16 +250,18 @@ SecurityProfileName,Priority,SecurityProfileLinks,CADisplayName,EntraUsers,Entra
 - If policy links cannot be resolved, log error and skip security profile
 
 **Conditional Access Export:**
+- **CADisplayName is always exported** (obtained from the security profile's `ConditionalAccessPolicies` navigation property via `$expand`, no extra permissions needed beyond `NetworkAccessPolicy.Read.All`).
+
 - **When `-IncludeConditionalAccessPolicies` is NOT specified:**
-  - Leave `CADisplayName`, `EntraUsers`, and `EntraGroups` empty
-  - Only export security profile metadata and policy links
+  - `CADisplayName` populated from security profile expansion
+  - `EntraUsers` and `EntraGroups` left empty
   
 - **When `-IncludeConditionalAccessPolicies` IS specified:**
-  - Export linked CA policy display name in `CADisplayName`
+  - `CADisplayName` populated from security profile expansion
+  - Retrieve full CA policy via `Policy.Read.All` to resolve assignments
   - Export user assignments in `EntraUsers` (UPN format, semicolon-separated)
   - Export group assignments in `EntraGroups` (display names, semicolon-separated)
   - If no CA policy is linked to the security profile, leave CA fields empty
-  - Only export CA policies that reference GSA security profiles (not all CA policies)
 
 **Missing Data:**
 - If security profile has no description, leave blank (not exported in this CSV)
@@ -294,13 +297,13 @@ Profile_IT_NoCA,300,Policy_Web_Admin:50;Policy_TLS_Admin:75,,,,no
 Profile_Dev_Tools,400,Dev_Tools-Allow:80,CA_Dev_Access,dev.team@contoso.com,Developers_Group,no
 ```
 
-**Example Security Profiles CSV (without CA policies - IncludeConditionalAccessPolicies not specified):**
+**Example Security Profiles CSV (without -IncludeConditionalAccessPolicies — CADisplayName still populated):**
 ```csv
 SecurityProfileName,Priority,SecurityProfileLinks,CADisplayName,EntraUsers,EntraGroups,Provision
-Profile_Finance_Strict,100,Policy_Web_Finance:100;Policy_TLS_Finance:200,,,,no
-Profile_Marketing_Standard,200,Policy_Web_Marketing:150,,,,no
+Profile_Finance_Strict,100,Policy_Web_Finance:100;Policy_TLS_Finance:200,CA_Finance_Access,,,no
+Profile_Marketing_Standard,200,Policy_Web_Marketing:150,CA_Marketing_Access,,,no
 Profile_IT_NoCA,300,Policy_Web_Admin:50;Policy_TLS_Admin:75,,,,no
-Profile_Dev_Tools,400,Dev_Tools-Allow:80,,,,no
+Profile_Dev_Tools,400,Dev_Tools-Allow:80,CA_Dev_Access,,,no
 ```
 
 ---

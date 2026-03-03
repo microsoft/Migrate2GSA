@@ -11,7 +11,7 @@ function Get-TlsInspectionRuleDestinations {
         TLS inspection rules have a different structure than filtering rules:
         - Destinations are nested in matchingConditions.destinations
         - Web categories come as values[] array (already strings)
-        - FQDNs use similar object structure to filtering rules
+        - FQDNs use tlsInspectionFqdnDestination type with values[] array (not singular value like filtering rules)
         - matchingConditions can be null for system rules that match all traffic
     
     .PARAMETER Rule
@@ -100,12 +100,24 @@ function Get-TlsInspectionRuleDestinations {
                 }
             }
             # FQDN destinations
+            # TLS inspection uses tlsInspectionFqdnDestination with values[] array,
+            # unlike filtering rules which use fqdn with a singular value property
             elseif ($odataType -like '*fqdn*' -or $odataType -like '*Fqdn*') {
-                if ($dest.PSObject.Properties['value'] -and -not [string]::IsNullOrWhiteSpace($dest.value)) {
+                if ($dest.PSObject.Properties['values'] -and $dest.values) {
+                    # TLS inspection FQDN destinations use values[] array (e.g., tlsInspectionFqdnDestination)
+                    $fqdnValues = @($dest.values)
+                    foreach ($fqdn in $fqdnValues) {
+                        if (-not [string]::IsNullOrWhiteSpace($fqdn)) {
+                            $destinations += $fqdn
+                        }
+                    }
+                }
+                elseif ($dest.PSObject.Properties['value'] -and -not [string]::IsNullOrWhiteSpace($dest.value)) {
+                    # Fallback for singular value property (standard fqdn destination type)
                     $destinations += $dest.value
                 }
                 else {
-                    Write-LogMessage "FQDN destination in TLS rule '$($Rule.name)' missing 'value' property or is empty" -Level WARN -Component "DestinationExtraction"
+                    Write-LogMessage "FQDN destination in TLS rule '$($Rule.name)' missing 'value'/'values' property or is empty" -Level WARN -Component "DestinationExtraction"
                 }
             }
             # Unknown destination type

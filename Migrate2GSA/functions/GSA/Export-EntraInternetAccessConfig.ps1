@@ -22,8 +22,9 @@
     Defaults to the current directory.
 
 .PARAMETER IncludeConditionalAccessPolicies
-    When specified, exports Conditional Access policies linked to security profiles,
-    including user and group assignments. Also forces creation of Security Profiles CSV
+    When specified, resolves Conditional Access policy user and group assignments
+    (EntraUsers, EntraGroups). The CA policy display name (CADisplayName) is always
+    exported regardless of this switch. Also forces creation of Security Profiles CSV
     even if no security profiles exist.
 
 .PARAMETER LogPath
@@ -54,8 +55,8 @@
     Version: 1.0
     Requires: PowerShell 7+, Microsoft.Graph.Authentication module
     Required scopes: 
-        - NetworkAccessPolicy.Read.All (for EIA policies and security profiles)
-        - Policy.Read.All (for Conditional Access policies, if -IncludeConditionalAccessPolicies)
+        - NetworkAccessPolicy.Read.All (for EIA policies, security profiles, and CA policy names)
+        - Policy.Read.All (for CA policy assignments, if -IncludeConditionalAccessPolicies)
         - User.Read.All (for user resolution, if -IncludeConditionalAccessPolicies)
         - Directory.Read.All (for group resolution, if -IncludeConditionalAccessPolicies)
 #>
@@ -141,6 +142,17 @@ function Export-EntraInternetAccessConfig {
         throw "Tenant onboarding validation failed. Status: $($tenantStatus.onboardingStatus)"
     }
     Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.onboardingStatus)" -Level SUCCESS -Component "Validation"
+
+    # Validate Internet Access feature is enabled
+    Write-LogMessage "Validating Internet Access feature is enabled..." -Level INFO -Component "Validation"
+    $iaProfile = Get-IntNetworkAccessForwardingProfile -ProfileType 'internet'
+    $graphApiCalls++
+    if (-not $iaProfile -or $iaProfile.state -ne 'enabled') {
+        $currentState = if ($iaProfile) { $iaProfile.state } else { 'not found' }
+        Write-LogMessage "Internet Access is not enabled on this tenant. Current state: $currentState" -Level ERROR -Component "Validation"
+        throw "Internet Access feature validation failed. Please enable Internet Access before exporting."
+    }
+    Write-LogMessage "Internet Access feature validated: enabled" -Level SUCCESS -Component "Validation"
     #endregion
 
     #region Export Web Content Filtering Policies
@@ -380,9 +392,10 @@ function Export-EntraInternetAccessConfig {
 
                 Write-LogMessage "Processing Security Profile $currentProfileIndex/$($securityProfiles.Count): $($secProfile.name) (ID: $($secProfile.id))" -Level INFO -Component "SecurityProfiles"
 
-                # Get policy links using helper function (handles expansion)
-                $securityProfileLinksString = Get-SecurityProfilePolicyLinks -ProfileId $secProfile.id
+                # Get policy links and CA display name using helper function (handles expansion)
+                $profileData = Get-SecurityProfilePolicyLinks -ProfileId $secProfile.id
                 $graphApiCalls++
+                $securityProfileLinksString = $profileData.LinksString
 
                 # Skip if no valid policy links
                 if ([string]::IsNullOrWhiteSpace($securityProfileLinksString)) {
@@ -392,18 +405,23 @@ function Export-EntraInternetAccessConfig {
                     continue
                 }
 
-                # Initialize CA fields
-                $caDisplayName = ""
+                # CA display name is always available from the profile expansion (no extra permissions needed)
+                $caDisplayName = $profileData.CADisplayName
                 $entraUsers = ""
                 $entraGroups = ""
 
-                # Populate CA fields if requested
-                if ($IncludeConditionalAccessPolicies) {
-                    Write-LogMessage "  Looking for Conditional Access policy linked to profile '$($secProfile.name)'" -Level INFO -Component "ConditionalAccess"
+                if (-not [string]::IsNullOrWhiteSpace($caDisplayName)) {
+                    Write-LogMessage "  Linked CA policy: $caDisplayName" -Level INFO -Component "ConditionalAccess"
+                    $profilesWithCA++
+                }
+
+                # Resolve CA user/group assignments only if requested (requires extra scopes)
+                if ($IncludeConditionalAccessPolicies -and -not [string]::IsNullOrWhiteSpace($caDisplayName)) {
+                    Write-LogMessage "  Resolving user/group assignments for CA policy '$caDisplayName'" -Level INFO -Component "ConditionalAccess"
                     
                     try {
-                        # Retrieve all CA policies
-                        $allCaPolicies = Invoke-InternalGraphRequest -Method GET -Uri "/beta/identity/conditionalAccess/policies"
+                        # Retrieve all CA policies to get assignments
+                        $allCaPolicies = Get-IntConditionalAccessPolicy
                         $graphApiCalls++
 
                         # Find CA policy linked to this security profile
@@ -414,10 +432,6 @@ function Export-EntraInternetAccessConfig {
                         } | Select-Object -First 1
 
                         if ($linkedCaPolicy) {
-                            $caDisplayName = $linkedCaPolicy.displayName
-                            Write-LogMessage "    Found linked CA policy: $caDisplayName" -Level INFO -Component "ConditionalAccess"
-                            $profilesWithCA++
-
                             # Extract user assignments
                             $userUpns = @()
                             if ($linkedCaPolicy.conditions.users.includeUsers -and 
@@ -496,12 +510,9 @@ function Export-EntraInternetAccessConfig {
                                 $warningCount++
                             }
                         }
-                        else {
-                            Write-LogMessage "    No Conditional Access policy linked to profile '$($secProfile.name)'" -Level INFO -Component "ConditionalAccess"
-                        }
                     }
                     catch {
-                        Write-LogMessage "  Error retrieving CA policy for profile '$($secProfile.name)': $_" -Level ERROR -Component "ConditionalAccess"
+                        Write-LogMessage "  Error retrieving CA policy assignments for profile '$($secProfile.name)': $_" -Level ERROR -Component "ConditionalAccess"
                         $errorCount++
                     }
                 }
@@ -630,29 +641,4 @@ function Export-EntraInternetAccessConfig {
     Write-LogMessage "  - $(Split-Path -Path $LogPath -Leaf) ($logSizeKB KB)" -Level SUMMARY -Component "Summary"
     #endregion
 
-    # Display completion message to console
-    Write-Host "`nExport completed successfully!" -ForegroundColor Green
-    Write-Host "`nBackup folder: $backupFolder" -ForegroundColor Cyan
-    Write-Host "`nEntra Internet Access (EIA):"
-    Write-Host "  Exported: $totalFilteringPolicies Web Content Filtering Policies ($totalFilteringRules rules)"
-    Write-Host "  Exported: $totalTlsPolicies TLS Inspection Policies ($totalTlsRules rules)"
-    if ($shouldCreateSecurityProfilesCsv) {
-        Write-Host "  Exported: $($securityProfileRows.Count) Security Profiles with policy links"
-        if ($IncludeConditionalAccessPolicies) {
-            Write-Host "  Exported: $profilesWithCA linked Conditional Access policies"
-        }
-    }
-    if ($warningCount -gt 0) {
-        Write-Host "  Warnings: $warningCount (see log file for details)" -ForegroundColor Yellow
-    }
-    if ($errorCount -gt 0) {
-        Write-Host "  Errors: $errorCount" -ForegroundColor Red
-    }
-    Write-Host "`nFiles created in InternetAccess\:"
-    Write-Host "  - $policiesCsvFileName ($policiesCsvSizeKBFinal KB)"
-    if ($shouldCreateSecurityProfilesCsv) {
-        Write-Host "  - $securityProfilesCsvFileName ($securityProfilesCsvSizeKBFinal KB)"
-    }
-    Write-Host "  - $(Split-Path -Path $LogPath -Leaf) ($logSizeKB KB)"
-    Write-Host "`nTotal duration: $durationSeconds seconds" -ForegroundColor Gray
 }

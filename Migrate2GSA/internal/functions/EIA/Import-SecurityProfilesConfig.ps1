@@ -190,13 +190,21 @@ function Import-SecurityProfilesConfig {
                 
                 foreach ($link in $links) {
                     if ($link -match '^(.+):(\d+)$') {
+                        # Filtering policy link with priority: "PolicyName:Priority"
                         $parsedLinks += @{
                             PolicyName = $Matches[1].Trim()
                             Priority   = [int]$Matches[2]
                         }
                     }
+                    elseif ($link -notmatch ':' -and -not [string]::IsNullOrWhiteSpace($link)) {
+                        # Non-filtering policy link without priority (TLS inspection, threat intelligence, cloud firewall)
+                        $parsedLinks += @{
+                            PolicyName = $link.Trim()
+                            Priority   = $null
+                        }
+                    }
                     else {
-                        Write-LogMessage "Invalid policy link format: '$link' in profile '$($row.SecurityProfileName)'. Expected format: 'PolicyName:Priority'" -Level WARN -Component "Config"
+                        Write-LogMessage "Invalid policy link format: '$link' in profile '$($row.SecurityProfileName)'. Expected format: 'PolicyName:Priority' or 'PolicyName'" -Level WARN -Component "Config"
                     }
                 }
                 
