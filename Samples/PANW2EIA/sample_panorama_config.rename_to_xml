@@ -1,0 +1,351 @@
+<?xml version="1.0"?>
+<config version="10.2.0" urldb="paloaltonetworks">
+  <mgt-config>
+    <users>
+      <entry name="admin"/>
+    </users>
+  </mgt-config>
+
+  <shared>
+    <!-- Shared Profiles (includes custom-url-category and url-filtering) -->
+    <profiles>
+      <!-- Custom URL Categories nested under profiles (matches real Panorama XML structure) -->
+      <custom-url-category>
+        <entry name="Malicious-URLs">
+          <description>Known malicious URLs for blocking</description>
+          <type>URL List</type>
+          <list>
+            <member>*.malware-site.com</member>
+            <member>*.phishing-domain.net</member>
+            <member>bad-actor.org/exploit</member>
+            <member>192.168.100.50</member>
+            <member>10.0.0.1</member>
+            <member>https://evil.example.com/payload</member>
+            <member>*.malware-site.com</member>
+          </list>
+        </entry>
+        <entry name="Internal-Sites">
+          <description>Internal corporate sites for allow listing</description>
+          <type>URL List</type>
+          <list>
+            <member>*.corp.contoso.com</member>
+            <member>intranet.contoso.com</member>
+            <member>hr.contoso.com/benefits</member>
+            <member>*.internal.contoso.com</member>
+          </list>
+        </entry>
+        <entry name="Cloud-Storage-Allow">
+          <description>Approved cloud storage domains</description>
+          <type>URL List</type>
+          <list>
+            <member>*.sharepoint.com</member>
+            <member>*.onedrive.com</member>
+            <member>*.box.com</member>
+          </list>
+        </entry>
+        <entry name="Empty-Category">
+          <description>Category with no members</description>
+          <type>URL List</type>
+          <list/>
+        </entry>
+        <entry name="Predefined-Group-Cat">
+          <description>Category Match type - should be skipped</description>
+          <type>Category Match</type>
+        </entry>
+      </custom-url-category>
+
+      <!-- URL Filtering Profiles -->
+      <url-filtering>
+        <entry name="Corporate-URL-Filter">
+          <description>Main corporate URL filtering profile</description>
+          <allow>
+            <member>business-and-economy</member>
+            <member>computer-and-internet-info</member>
+            <member>financial-services</member>
+            <member>Internal-Sites</member>
+          </allow>
+          <block>
+            <member>adult</member>
+            <member>malware</member>
+            <member>phishing</member>
+            <member>hacking</member>
+            <member>Malicious-URLs</member>
+          </block>
+          <alert>
+            <member>social-networking</member>
+            <member>streaming-media</member>
+          </alert>
+          <continue>
+            <member>gambling</member>
+          </continue>
+          <override>
+            <member>games</member>
+          </override>
+        </entry>
+        <entry name="Strict-URL-Filter">
+          <description>Strict filtering for high-security zones</description>
+          <block>
+            <member>adult</member>
+            <member>malware</member>
+            <member>phishing</member>
+            <member>hacking</member>
+            <member>gambling</member>
+            <member>social-networking</member>
+            <member>peer-to-peer</member>
+            <member>unknown-category</member>
+          </block>
+          <allow>
+            <member>business-and-economy</member>
+          </allow>
+        </entry>
+        <entry name="Guest-URL-Filter">
+          <description>Guest network URL filtering</description>
+          <block>
+            <member>adult</member>
+            <member>malware</member>
+            <member>phishing</member>
+            <member>hacking</member>
+            <member>gambling</member>
+            <member>abused-drugs</member>
+            <member>weapons</member>
+            <member>Cloud-Storage-Allow</member>
+          </block>
+          <alert>
+            <member>social-networking</member>
+            <member>streaming-media</member>
+            <member>shopping</member>
+          </alert>
+        </entry>
+      </url-filtering>
+    </profiles>
+
+    <!-- Shared Profile Groups -->
+    <profile-group>
+      <entry name="Default-Profile-Group">
+        <url-filtering>
+          <member>Corporate-URL-Filter</member>
+        </url-filtering>
+      </entry>
+      <entry name="Strict-Profile-Group">
+        <url-filtering>
+          <member>Strict-URL-Filter</member>
+        </url-filtering>
+      </entry>
+      <entry name="Guest-Profile-Group">
+        <url-filtering>
+          <member>Guest-URL-Filter</member>
+        </url-filtering>
+      </entry>
+    </profile-group>
+  </shared>
+
+  <devices>
+    <entry name="localhost.localdomain">
+      <device-group>
+        <entry name="DG-Corporate">
+          <!-- Device-group profiles section (matches real Panorama structure) -->
+          <profiles>
+            <!-- DG-level custom URL category (overrides shared if same name) -->
+            <custom-url-category>
+              <entry name="DG-Blocked-Sites">
+                <description>Device-group specific blocked sites</description>
+                <type>URL List</type>
+                <list>
+                  <member>*.blocked-gambling.com</member>
+                  <member>*.adult-content.net</member>
+                  <member>piracy-site.org/downloads</member>
+                </list>
+              </entry>
+            </custom-url-category>
+          </profiles>
+
+          <!-- Pre-rulebase security rules (processed first) -->
+          <pre-rulebase>
+            <security>
+              <rules>
+                <!-- Rule 1: Allow with profile group reference, any user -->
+                <entry name="Allow-Web-Access">
+                  <action>allow</action>
+                  <disabled>no</disabled>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <description>General web access with URL filtering</description>
+                  <profile-setting>
+                    <group>
+                      <member>Default-Profile-Group</member>
+                    </group>
+                  </profile-setting>
+                </entry>
+
+                <!-- Rule 2: Allow with direct profile reference, specific users -->
+                <entry name="Finance-Web-Access">
+                  <action>allow</action>
+                  <disabled>no</disabled>
+                  <source-user>
+                    <member>john.doe@contoso.com</member>
+                    <member>jane.smith@contoso.com</member>
+                    <member>Finance-Team</member>
+                  </source-user>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <description>Finance team web access</description>
+                  <profile-setting>
+                    <profiles>
+                      <url-filtering>
+                        <member>Corporate-URL-Filter</member>
+                      </url-filtering>
+                    </profiles>
+                  </profile-setting>
+                </entry>
+
+                <!-- Rule 3: Deny rule - should be skipped -->
+                <entry name="Block-All-Malware">
+                  <action>deny</action>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <description>Block all malware traffic</description>
+                </entry>
+
+                <!-- Rule 4: Disabled rule - should be skipped -->
+                <entry name="Old-Policy-Disabled">
+                  <action>allow</action>
+                  <disabled>yes</disabled>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <description>Old policy no longer active</description>
+                  <profile-setting>
+                    <group>
+                      <member>Default-Profile-Group</member>
+                    </group>
+                  </profile-setting>
+                </entry>
+
+                <!-- Rule 5: Allow with applications (flagged for review) -->
+                <entry name="Allow-SaaS-Apps">
+                  <action>allow</action>
+                  <source-user>
+                    <member>IT-Admins</member>
+                  </source-user>
+                  <application>
+                    <member>office365-enterprise-access</member>
+                    <member>salesforce</member>
+                    <member>slack</member>
+                  </application>
+                  <description>SaaS application access for IT</description>
+                  <profile-setting>
+                    <profiles>
+                      <url-filtering>
+                        <member>Corporate-URL-Filter</member>
+                      </url-filtering>
+                    </profiles>
+                  </profile-setting>
+                </entry>
+              </rules>
+            </security>
+          </pre-rulebase>
+
+          <!-- Post-rulebase security rules (processed after pre-rulebase) -->
+          <post-rulebase>
+            <security>
+              <rules>
+                <!-- Rule 6: Strict filtering with profile group and domain\user format -->
+                <entry name="Strict-Browsing">
+                  <action>allow</action>
+                  <source-user>
+                    <member>CORP\contractors</member>
+                    <member>Interns</member>
+                  </source-user>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <description>Strict browsing for contractors and interns</description>
+                  <profile-setting>
+                    <group>
+                      <member>Strict-Profile-Group</member>
+                    </group>
+                  </profile-setting>
+                </entry>
+
+                <!-- Rule 7: Allow with no profile setting - should be skipped -->
+                <entry name="Allow-DNS">
+                  <action>allow</action>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <application>
+                    <member>dns</member>
+                  </application>
+                  <description>Allow DNS traffic</description>
+                </entry>
+
+                <!-- Rule 8: Drop rule - should be skipped -->
+                <entry name="Drop-Unknown">
+                  <action>drop</action>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <description>Drop unknown traffic</description>
+                </entry>
+
+                <!-- Rule 9: Rule with unknown/pre-logon source users -->
+                <entry name="Default-Web-Access">
+                  <action>allow</action>
+                  <source-user>
+                    <member>unknown</member>
+                    <member>pre-logon</member>
+                    <member>Marketing</member>
+                  </source-user>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <description>Default web access policy</description>
+                  <profile-setting>
+                    <profiles>
+                      <url-filtering>
+                        <member>Corporate-URL-Filter</member>
+                      </url-filtering>
+                    </profiles>
+                  </profile-setting>
+                </entry>
+
+                <!-- Rule 10: Guest WiFi with guest profile group -->
+                <entry name="Guest-WiFi-Access">
+                  <action>allow</action>
+                  <source-user>
+                    <member>any</member>
+                  </source-user>
+                  <application>
+                    <member>web-browsing</member>
+                    <member>ssl</member>
+                  </application>
+                  <description>Guest WiFi internet access</description>
+                  <profile-setting>
+                    <group>
+                      <member>Guest-Profile-Group</member>
+                    </group>
+                  </profile-setting>
+                </entry>
+              </rules>
+            </security>
+          </post-rulebase>
+        </entry>
+      </device-group>
+    </entry>
+  </devices>
+</config>

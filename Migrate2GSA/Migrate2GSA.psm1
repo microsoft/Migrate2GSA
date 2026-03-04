@@ -21,6 +21,7 @@ Export-ModuleMember -Function @(
     'Convert-NPA2EPA',
     'Convert-NSWG2EIA',
     'Convert-ForcepointWS2EIA',
+    'Convert-PANW2EIA',
     'Start-EntraPrivateAccessProvisioning',
     'Start-EntraInternetAccessProvisioning',
     'Export-EntraPrivateAccessConfig',
