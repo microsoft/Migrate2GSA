@@ -1,0 +1,10 @@
+{
+  "label": "Defender for Endpoint",
+  "position": 11,
+  "collapsible": true,
+  "collapsed": true,
+  "link": {
+    "type": "generated-index",
+    "description": "Migrate from Microsoft Defender for Endpoint Web Filtering."
+  }
+}

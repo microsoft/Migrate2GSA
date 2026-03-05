@@ -1,0 +1,10 @@
+{
+  "label": "Working with CSV Files",
+  "position": 25,
+  "collapsible": true,
+  "collapsed": false,
+  "link": {
+    "type": "generated-index",
+    "description": "Learn how to create, review, and validate CSV configuration files for both migration and greenfield scenarios."
+  }
+}

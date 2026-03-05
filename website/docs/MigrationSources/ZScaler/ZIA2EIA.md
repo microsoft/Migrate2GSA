@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 60
 title: ZIA to Entra Internet Access (EIA) Configuration Transformer
 ---
 
