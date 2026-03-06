@@ -16,7 +16,7 @@ Filtering Policy (action: block/allow)
   └── policyRules[]
         ├── fqdnFilteringRule (destinations: fqdn[])
         ├── webCategoryFilteringRule (destinations: webCategory[])
-        └── urlFilteringRule (destinations: url[])  ← uses fqdnFilteringRule @odata.type with ruleType "url"
+        └── urlDestinationFilteringRule (destinations: url[])  ← dedicated @odata.type with ruleType "url"
 
 TLS Inspection Policy (defaultAction: bypass/inspect)
   └── policyRules[] (tlsInspectionRule)
@@ -50,7 +50,7 @@ Conditional Access Policy
 - A policy contains one or more **policy rules** of different types:
   - **fqdnFilteringRule**: matches FQDNs (supports wildcards like `*.example.com`)
   - **webCategoryFilteringRule**: matches predefined web categories (e.g., `Gambling`, `SocialNetworking`, `Chat`)
-  - **urlFilteringRule**: matches full URLs (uses `fqdnFilteringRule` OData type with `ruleType: url`)
+  - **urlFilteringRule**: matches full URLs (uses dedicated `urlDestinationFilteringRule` OData type with `ruleType: url`)
 - Rules have a name and a list of destinations.
 - Policies are created at: `POST /beta/networkAccess/filteringPolicies`
 - Rules are added to a policy at: `POST /beta/networkAccess/filteringPolicies/{policyId}/policyRules`

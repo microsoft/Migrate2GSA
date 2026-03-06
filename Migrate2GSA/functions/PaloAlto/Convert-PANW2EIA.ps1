@@ -50,7 +50,7 @@ function Convert-PANW2EIA {
         Converts Panorama configuration with detailed debug logging enabled.
 
     .NOTES
-        Author: Andres Canello
+        Author: Wendy Badilla
         Version: 1.0
         Date: 2026-03-02
 

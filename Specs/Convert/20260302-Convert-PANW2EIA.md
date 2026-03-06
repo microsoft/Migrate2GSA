@@ -6,7 +6,7 @@
 - **Status:** Draft
 - **Target Module:** Migrate2GSA
 - **Function Name:** Convert-PANW2EIA
-- **Author:** Andres Canello
+- **Author:** Wendy Badilla
 ---
 
 ## Overview
