@@ -79,6 +79,7 @@ FunctionsToExport = @(
     'Export-EntraPrivateAccessAppDiscovery',
     'Export-EntraInternetAccessConfig',
     'Export-CiscoUmbrellaConfig',
+    'Convert-CiscoUmbrella2EIA',
     'Export-MDEWebFilteringConfig'
 )
 
