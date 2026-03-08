@@ -67,11 +67,11 @@ Unlike migrations from third-party platforms, GSA export captures existing Globa
 
 | Feature / Object | Export | Transform | Provision | Notes |
 |---------|--------|-----------|-----------|-------|
-| **DNS Policies** | Supported | Not implemented | Not implemented | Exported from HAR file captured from Umbrella dashboard |
+| **DNS Policies** | Supported | Supported | Supported | Exported from HAR file. Category and destination list rules converted to EIA web content filtering policies. |
+| **Web Policies** | Supported | Supported | Supported | Includes proxy rulesets. Application, destination list, and category rules converted. Warn/isolate actions converted to Block with review flag. |
+| **Destination Lists** | Supported | Supported | Supported | Custom allow/block lists resolved to FQDN rules with dual-entry pattern. |
+| **Category Settings** | Supported | Supported | Supported | Umbrella categories mapped to GSA web categories via provided mapping file. |
+| **Application Settings** | Supported | Supported | Supported | Application controls converted to FQDN-based rules via provided app mapping file. |
 | **Firewall Rules** | Supported | Not implemented | Not implemented | Exported from HAR file |
-| **Web Policies** | Supported | Not implemented | Not implemented | Includes proxy rulesets and ruleset settings |
-| **Destination Lists** | Supported | Not implemented | Not implemented | Custom allow/block lists with entries |
-| **Category Settings** | Supported | Not implemented | Not implemented | Full category arrays extracted from detail views |
-| **Application Settings** | Supported | Not implemented | Not implemented | Includes system-inherited settings |
 | **Security Settings** | Supported | Not implemented | Not implemented | MSP-inherited records tagged |
 | **Selective Decryption Lists** | Supported | Not implemented | Not implemented | SSL/TLS inspection bypass settings |

@@ -67,7 +67,7 @@ New to Global Secure Access? Start with the [Understanding GSA](./UnderstandingG
 <tr>
 <td><strong>Cisco Umbrella → EIA</strong></td>
 <td><a href="./MigrationSources/CiscoUmbrella/UmbrellaExport">✅ Export Umbrella</a></td>
-<td>⚠️ Coming Soon</td>
+<td><a href="./MigrationSources/CiscoUmbrella/ConvertCiscoUmbrella2EIA">✅ Convert Umbrella2EIA</a></td>
 <td><a href="./WorkingWithCSVs/eia-csv-configuration#validation-checklist">📝 Review & Validate</a></td>
 <td><a href="./Provision/EntraInternetAccessProvisioning">✅ Provision EIA</a></td>
 </tr>
