@@ -34,7 +34,7 @@ This function follows the same architectural patterns as `Convert-ZIA2EIA.ps1`:
 
 ## Palo Alto Panorama XML Structure
 
-### Configuration Hierarchy
+### Configuration Hierarchy 
 
 Panorama XML exports use a **shared + device-group** model:
 
