@@ -1,72 +1,90 @@
 PANWCategory,GSACategory,MappingNotes
-adult,AdultContent,Direct mapping
-abused-drugs,Drugs,Mapped to broader drug category
-alcohol-and-tobacco,AlcoholAndTobacco,Direct mapping
-auctions,Uncategorized,No direct mapping
-business-and-economy,Business,Direct mapping
-command-and-control,CommandAndControl,Direct mapping
-computer-and-internet-info,ComputersAndTechnology,Direct mapping
-content-delivery-networks,ContentDeliveryNetworks,Direct mapping
-copyright-infringement,CopyrightInfringement,Direct mapping
-cryptocurrency,Cryptocurrency,Direct mapping
-dating,Dating,Direct mapping
-dynamic-dns,DynamicDNS,Direct mapping
-educational-institutions,Education,Direct mapping
-entertainment-and-arts,EntertainmentAndArts,Direct mapping
-extremism,HateAndIntolerance,Mapped to broader hate category
-financial-services,Finance,Direct mapping
-gambling,Gambling,Direct mapping
-games,Games,Direct mapping
-government,Government,Direct mapping
-grayware,Grayware,Direct mapping
-hacking,Hacking,Direct mapping
-health-and-medicine,HealthAndMedicine,Direct mapping
-home-and-garden,HomeAndGarden,Mapped to lifestyle
-hunting-and-fishing,Sports,Mapped to broader sport category
-insufficient-content,Uncategorized,Mapped to uncategorized
-internet-communications-and-telephony,WebBasedEmail,Mapped to communications
-internet-portals,SearchEnginesAndPortals,Mapped to portals
-job-search,JobSearch,Direct mapping
-legal,Legal,Direct mapping
-low-risk,Uncategorized,No direct mapping
-malware,Malware,Direct mapping
-medium-risk,Uncategorized,No direct mapping
-military,Government,Mapped to broader government category
-motor-vehicles,MotorVehicles,Direct mapping
-music,StreamingMediaAndDownloads,Mapped to streaming
-newly-registered-domain,NewlyRegisteredDomains,Direct mapping
-news,News,Direct mapping
-not-resolved,Uncategorized,No direct mapping
-nudity,Nudity,Direct mapping
-online-storage-and-backup,SharePointOnlineAndOneDriveForBusiness,Mapped to storage
-parked-domains,ParkedDomains,Direct mapping
-peer-to-peer,,Unmapped - no GSA equivalent
-personal-sites-and-blogs,PersonalSitesAndBlogs,Direct mapping
-philosophy-and-political-advocacy,PoliticalAdvocacy,Direct mapping
-phishing,Phishing,Direct mapping
-private-ip-addresses,PrivateIPAddresses,Direct mapping
-proxy-avoidance-and-anonymizers,ProxyAvoidanceAndAnonymizers,Direct mapping
-questionable,Questionable,Direct mapping
-real-estate,RealEstate,Direct mapping
-recreation-and-hobbies,LeisureAndRecreation,Direct mapping
-reference-and-research,ReferenceAndResearch,Direct mapping
-religion,Religion,Direct mapping
-search-engines,SearchEnginesAndPortals,Direct mapping
-sex-education,SexEducation,Direct mapping
-shareware-and-freeware,Freeware,Direct mapping
-shopping,Shopping,Direct mapping
-social-networking,SocialNetworking,Direct mapping
-society,Society,Direct mapping
-sports,Sports,Direct mapping
-stock-advice-and-tools,Finance,Mapped to broader finance category
-streaming-media,StreamingMediaAndDownloads,Direct mapping
-swimsuits-and-intimate-apparel,IntimateFashionAndSwimwear,Direct mapping
-training-and-tools,ProfessionalNetworking,Mapped to professional
-translation,Translation,Direct mapping
-travel,Travel,Direct mapping
-unknown,Unmapped,No direct mapping - requires review
-unknown-category,,Not in PAN-DB standard list
-weapons,Weapons,Direct mapping
-web-advertisements,Advertisements,Direct mapping
-web-based-email,WebBasedEmail,Direct mapping
-web-hosting,WebHosting,Direct mapping
+abortion,General,Partial - no direct GSA equivalent
+abused-drugs,IllegalDrug,Exact match
+adult,PornographyAndSexuallyExplicit,Exact match
+alcohol-and-tobacco,AlcoholAndTobacco,Exact match
+artificial-intelligence,ArtificialIntelligence,Exact match - PANW parent AI category
+ai-code-assistant,ArtificialIntelligence,Partial - PANW AI subcategory mapped to single GSA AI category
+ai-conversational-assistant,ArtificialIntelligence,Partial - PANW AI subcategory mapped to single GSA AI category
+ai-data-and-workflow-optimizer,ArtificialIntelligence,Partial - PANW AI subcategory mapped to single GSA AI category
+ai-meeting-assistant,ArtificialIntelligence,Partial - PANW AI subcategory mapped to single GSA AI category
+ai-media-service,ArtificialIntelligence,Partial - PANW AI subcategory mapped to single GSA AI category
+ai-platform-service,ArtificialIntelligence,Partial - PANW AI subcategory mapped to single GSA AI category
+ai-website-generator,ArtificialIntelligence,Partial - PANW AI subcategory mapped to single GSA AI category
+ai-writing-assistant,ArtificialIntelligence,Partial - PANW AI subcategory mapped to single GSA AI category
+auctions,Shopping,Partial - GSA Shopping includes auctions
+browser-runtime-attack,CriminalActivity,Partial - system-defined PANW threat category
+business-and-economy,Business,Exact match
+command-and-control,CriminalActivity,Partial - C2 traffic is criminal activity
+compromised-website,CriminalActivity,Partial - compromised sites relate to criminal activity
+computer-and-internet-info,ComputersAndTechnology,Exact match
+content-delivery-networks,ComputersAndTechnology,Partial - CDNs are technology infrastructure
+copyright-infringement,IllegalSoftware,Partial - copyright infringement relates to illegal software
+cryptocurrency,CryptocurrencyMining,Partial - GSA focuses on mining; PANW covers broader crypto
+dating,DatingAndPersonals,Exact match
+dynamic-dns,ComputersAndTechnology,Partial - dynamic DNS is technology infrastructure
+educational-institutions,Education,Exact match
+encrypted-dns,ComputersAndTechnology,Partial - encrypted DNS is technology infrastructure
+entertainment-and-arts,Entertainment,Exact match
+extremism,HateAndIntolerance,Partial - PANW extremism covers terrorism and discrimination
+file-converter,DownloadSites,Partial - file converters relate to downloads
+financial-services,Finance,Exact match
+gambling,Gambling,Exact match
+games,Games,Exact match
+government,Government,Exact match
+grayware,CriminalActivity,Partial - grayware exhibits criminal-adjacent behavior
+hacking,Hacking,Exact match
+health-and-medicine,HealthAndMedicine,Exact match
+home-and-garden,LeisureAndRecreation,Partial - home and garden is leisure content
+hunting-and-fishing,LeisureAndRecreation,Partial - hunting and fishing is leisure content
+insufficient-content,Uncategorized,Partial - system-defined; mapped to uncategorized
+internet-communications-and-telephony,Chat,Partial - PANW combines chat/IM/telephony into one
+internet-portals,SearchEnginesAndPortals,Exact match
+job-search,JobSearch,Exact match
+legal,PoliticsAndLaw,Partial - GSA combines politics and law
+low-risk,Uncategorized,Partial - PANW risk rating; no direct GSA equivalent
+malware,CriminalActivity,Partial - malware hosting is criminal activity
+medium-risk,Uncategorized,Partial - PANW risk rating; no direct GSA equivalent
+high-risk,Uncategorized,Partial - PANW risk rating; no direct GSA equivalent
+military,Government,Partial - military maps to broader government
+motor-vehicles,Transportation,Partial - motor vehicles relate to transportation
+music,Entertainment,Partial - music is entertainment content
+newly-registered-domain,NewlyRegisteredDomains,Exact match
+news,News,Exact match
+not-resolved,Uncategorized,Partial - system-defined; mapped to uncategorized
+nudity,Nudity,Exact match
+online-storage-and-backup,WebRepositoryAndStorage,Exact match
+parked,ParkedDomains,Exact match
+peer-to-peer,PeerToPeer,Exact match
+personal-sites-and-blogs,PersonalSites,Exact match
+philosophy-and-political-advocacy,PoliticsAndLaw,Exact match
+phishing,CriminalActivity,Partial - phishing is criminal activity
+private-ip-addresses,PrivateIPAddresses,Exact match
+proxy-avoidance-and-anonymizers,RemoteAccess,Partial - anonymizers relate to remote access tools
+questionable,Tasteless,Partial - questionable content is tasteless
+ransomware,CriminalActivity,Partial - ransomware is criminal activity
+real-estate,RealEstate,Exact match
+real-time-detection,CriminalActivity,Partial - system-defined; detected threats are criminal
+recreation-and-hobbies,LeisureAndRecreation,Exact match
+reference-and-research,Education,Partial - reference materials relate to education
+religion,Religion,Exact match
+remote-access,RemoteAccess,Exact match
+scanning-activity,CriminalActivity,Partial - system-defined; scanning is criminal reconnaissance
+search-engines,SearchEnginesAndPortals,Exact match
+sex-education,SexEducation,Exact match
+shareware-and-freeware,DownloadSites,Exact match
+shopping,Shopping,Exact match
+social-networking,SocialNetworking,Exact match
+society,General,Partial - society content maps to general
+sports,Sports,Exact match
+stock-advice-and-tools,Finance,Partial - stock tools relate to finance
+streaming-media,StreamingMediaAndDownloads,Exact match
+swimsuits-and-intimate-apparel,LingerieAndSwimsuits,Exact match
+training-and-tools,Education,Partial - training relates to education
+translation,Translators,Exact match
+travel,Travel,Exact match
+unknown,Uncategorized,Partial - unknown maps to uncategorized
+weapons,Weapons,Exact match
+web-advertisements,AdvertisementsAndPopUps,Exact match
+web-based-email,WebBasedEmail,Exact match
+web-hosting,ComputersAndTechnology,Partial - web hosting is technology

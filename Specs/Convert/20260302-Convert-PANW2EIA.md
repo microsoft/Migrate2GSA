@@ -274,17 +274,17 @@ Provides mapping between PAN-DB predefined web categories and Microsoft GSA (Glo
 #### Sample Data
 ```csv
 PANWCategory,GSACategory,MappingNotes
-adult,AdultContent,Direct mapping
-abused-drugs,Drugs,Mapped to broader drug category
-alcohol-and-tobacco,AlcoholAndTobacco,Direct mapping
-copyright-infringement,CopyrightInfringement,Direct mapping
-gambling,Gambling,Direct mapping
-hacking,Hacking,Direct mapping
-malware,Malware,Direct mapping
-phishing,Phishing,Direct mapping
-social-networking,SocialNetworking,Direct mapping
-weapons,Weapons,Direct mapping
-unknown,Unmapped,No direct mapping - requires review
+adult,PornographyAndSexuallyExplicit,Exact match
+abused-drugs,IllegalDrug,Exact match
+alcohol-and-tobacco,AlcoholAndTobacco,Exact match
+copyright-infringement,IllegalSoftware,Partial - copyright infringement relates to illegal software
+gambling,Gambling,Exact match
+hacking,Hacking,Exact match
+malware,CriminalActivity,Partial - malware hosting is criminal activity
+phishing,CriminalActivity,Partial - phishing is criminal activity
+social-networking,SocialNetworking,Exact match
+weapons,Weapons,Exact match
+unknown,Uncategorized,Partial - unknown maps to uncategorized
 ```
 
 #### Processing Rules
