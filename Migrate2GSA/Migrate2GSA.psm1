@@ -30,5 +30,6 @@ Export-ModuleMember -Function @(
     'Export-EntraInternetAccessConfig',
     'Export-CiscoUmbrellaConfig',
     'Convert-CiscoUmbrella2EIA',
-    'Export-MDEWebFilteringConfig'
+    'Export-MDEWebFilteringConfig',
+    'Disable-Migrate2GSADataCollection'
 )

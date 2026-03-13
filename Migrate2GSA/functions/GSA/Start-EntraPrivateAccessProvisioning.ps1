@@ -1768,6 +1768,23 @@ function Invoke-ProvisioningProcess {
         # Show summary
         Show-ExecutionSummary
         
+        # Send usage telemetry
+        $stats = $Global:ProvisioningStats
+        Send-UsageTelemetry -EventName 'Start-EntraPrivateAccessProvisioning' `
+            -Properties @{
+                TenantId          = (Get-MgContext).TenantId
+                WhatIf            = $WhatIfPreference.ToString()
+                QuickAccessResult = $stats.QuickAccessApp ?? 'None'
+                HasFailures       = ($stats.FailedApps -gt 0 -or $stats.FailedSegments -gt 0).ToString()
+            } `
+            -Metrics @{
+                TotalSegments      = $stats.TotalRecords
+                SuccessfulApps     = $stats.SuccessfulApps
+                FailedApps         = $stats.FailedApps
+                SuccessfulSegments = $stats.SuccessfulSegments
+                FailedSegments     = $stats.FailedSegments
+            }
+
         Write-LogMessage "Provisioning process completed successfully" -Level SUCCESS -Component "Main"
         Write-LogMessage "Results exported to: $outputPath" -Level INFO -Component "Main"
         Write-LogMessage "Log file written to: $LogPath" -Level INFO -Component "Main"

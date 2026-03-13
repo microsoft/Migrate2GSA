@@ -517,6 +517,31 @@ function Start-EntraInternetAccessProvisioning {
             Write-LogMessage "Results CSVs: $PWD\${timestamp}_*_provisioned.csv" -Level INFO -Component "Summary"
             Write-LogMessage "===============================================" -Level SUMMARY -Component "Summary"
             #endregion
+
+            # Send usage telemetry
+            $stats = $Global:ProvisioningStats
+            Send-UsageTelemetry -EventName 'Start-EntraInternetAccessProvisioning' `
+                -Properties @{
+                    TenantId                 = (Get-MgContext).TenantId
+                    WhatIf                   = $WhatIfPreference.ToString()
+                    IncludesSecurityProfiles  = $PSBoundParameters.ContainsKey('SecurityProfilesCsvPath').ToString()
+                    IncludesCAPolicies       = ($stats.TotalCAPolicies -gt 0).ToString()
+                    HasFailures              = ($stats.FailedPolicies -gt 0 -or $stats.FailedRules -gt 0 -or $stats.FailedSecurityProfiles -gt 0 -or $stats.FailedCAPolicies -gt 0).ToString()
+                } `
+                -Metrics @{
+                    TotalPolicies            = $stats.TotalPolicies
+                    CreatedPolicies          = $stats.CreatedPolicies
+                    FailedPolicies           = $stats.FailedPolicies
+                    TotalRules               = $stats.TotalRules
+                    CreatedRules             = $stats.CreatedRules
+                    FailedRules              = $stats.FailedRules
+                    TotalSecurityProfiles    = $stats.TotalSecurityProfiles
+                    CreatedSecurityProfiles  = $stats.CreatedSecurityProfiles
+                    FailedSecurityProfiles   = $stats.FailedSecurityProfiles
+                    TotalCAPolicies          = $stats.TotalCAPolicies
+                    CreatedCAPolicies        = $stats.CreatedCAPolicies
+                    FailedCAPolicies         = $stats.FailedCAPolicies
+                }
         }
         catch {
             # Error already logged by the throwing function, just log the location

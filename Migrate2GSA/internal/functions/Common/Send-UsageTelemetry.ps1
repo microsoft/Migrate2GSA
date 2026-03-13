@@ -42,37 +42,45 @@ function Send-UsageTelemetry {
         [hashtable] $Metrics = @{}
     )
 
-    # --- Configuration -----------------------------------------------------------
-    $ConnectionString = "InstrumentationKey=5b221879-9781-4928-93f3-34023a215e7f;IngestionEndpoint=https://westeurope-5.in.applicationinsights.azure.com/;LiveEndpoint=https://westeurope.livediagnostics.monitor.azure.com/;ApplicationId=ad78454b-2d06-45fb-b0b4-856016374bd2"
-    $ModuleVersion    = (Get-Module -Name 'Migrate2GSA' -ErrorAction SilentlyContinue).Version.ToString() ?? "unknown"
-    # -----------------------------------------------------------------------------
+    # --- Opt-out check -----------------------------------------------------------
+    if ($script:_TelemetryDisabled -or $env:MIGRATE2GSA_TELEMETRY_OPTOUT -eq '1') { return }
 
-    # Parse instrumentation key and ingestion endpoint from the connection string
-    $iKey            = ($ConnectionString -split ';' | Where-Object { $_ -match '^InstrumentationKey=' }) -replace 'InstrumentationKey=', ''
-    $ingestionBase   = ($ConnectionString -split ';' | Where-Object { $_ -match '^IngestionEndpoint=' }) -replace 'IngestionEndpoint=', ''
-    $ingestionUri    = "$($ingestionBase.TrimEnd('/'))//v2/track"
+    # --- Cached configuration (parsed once per session) --------------------------
+    if (-not $script:_TelemetryConfig) {
+        $connectionString = "InstrumentationKey=5b221879-9781-4928-93f3-34023a215e7f;IngestionEndpoint=https://westeurope-5.in.applicationinsights.azure.com/;LiveEndpoint=https://westeurope.livediagnostics.monitor.azure.com/;ApplicationId=ad78454b-2d06-45fb-b0b4-856016374bd2"
+        $parsedIKey        = ($connectionString -split ';' | Where-Object { $_ -match '^InstrumentationKey=' }) -replace 'InstrumentationKey=', ''
+        $ingestionBase     = ($connectionString -split ';' | Where-Object { $_ -match '^IngestionEndpoint=' }) -replace 'IngestionEndpoint=', ''
+
+        $script:_TelemetryConfig = @{
+            iKey          = $parsedIKey
+            IngestionUri  = "$($ingestionBase.TrimEnd('/'))/v2/track"
+            MachineId     = [System.Convert]::ToBase64String(
+                                [System.Security.Cryptography.SHA256]::HashData(
+                                    [System.Text.Encoding]::UTF8.GetBytes($env:COMPUTERNAME ?? $env:HOSTNAME ?? "unknown")
+                                )
+                            ).Substring(0, 16)
+            SessionId     = [System.Guid]::NewGuid().ToString()
+        }
+    }
+
+    $iKey          = $script:_TelemetryConfig.iKey
+    $ingestionUri  = $script:_TelemetryConfig.IngestionUri
+    $moduleVersion = (Get-Module -Name 'Migrate2GSA' -ErrorAction SilentlyContinue).Version.ToString() ?? "unknown"
+    # -----------------------------------------------------------------------------
 
     # --- Auto-properties attached to every event ---------------------------------
     $autoProperties = @{
         PSVersion     = $PSVersionTable.PSVersion.ToString()
         OS            = if ($IsWindows) { "Windows" } elseif ($IsLinux) { "Linux" } elseif ($IsMacOS) { "macOS" } else { "Unknown" }
-        ModuleVersion = $ModuleVersion
-        # Machine name is hashed to avoid capturing PII
-        MachineId     = [System.Convert]::ToBase64String(
-                            [System.Security.Cryptography.SHA256]::Create().ComputeHash(
-                                [System.Text.Encoding]::UTF8.GetBytes($env:COMPUTERNAME ?? $env:HOSTNAME ?? "unknown")
-                            )
-                        ).Substring(0, 16)
+        ModuleVersion = $moduleVersion
+        MachineId     = $script:_TelemetryConfig.MachineId
+        SessionId     = $script:_TelemetryConfig.SessionId
     }
 
-    # Per-session ID — created once per PS session, correlates calls within a run
-    if (-not $script:_TelemetrySessionId) {
-        $script:_TelemetrySessionId = [System.Guid]::NewGuid().ToString()
+    # Merge: caller-supplied properties win on conflict
+    foreach ($key in $Properties.Keys) {
+        $autoProperties[$key] = $Properties[$key]
     }
-    $autoProperties["SessionId"] = $script:_TelemetrySessionId
-
-    # Merge auto-properties with caller-supplied properties (caller wins on conflict)
-    $mergedProperties = $autoProperties + $Properties
 
     # --- Build the payload -------------------------------------------------------
     $payload = @(
@@ -85,26 +93,22 @@ function Send-UsageTelemetry {
                 baseData = @{
                     ver          = 2
                     name         = $EventName
-                    properties   = $mergedProperties
+                    properties   = $autoProperties
                     measurements = $Metrics
                 }
             }
         }
     ) | ConvertTo-Json -Depth 10 -Compress
 
-    # --- Fire and forget (background thread, never blocks the caller) ------------
-    $null = [System.Threading.Tasks.Task]::Run({
+    # --- Fire and forget (thread-pool job, never blocks the caller) --------------
+    $null = Start-ThreadJob -ScriptBlock {
+        param($Uri, $Body)
         try {
-            $response = Invoke-RestMethod -Uri $using:ingestionUri `
-                                          -Method POST `
-                                          -Body $using:payload `
-                                          -ContentType "application/json" `
-                                          -TimeoutSec 5
-            # Uncomment the line below to debug telemetry responses:
-            # Write-Verbose "Telemetry accepted: $($response.itemsAccepted)/$($response.itemsReceived)"
+            Invoke-RestMethod -Uri $Uri -Method POST -Body $Body `
+                              -ContentType "application/json" -TimeoutSec 5
         }
         catch {
             # Silently swallow — telemetry must never break the caller
         }
-    })
+    } -ArgumentList $ingestionUri, $payload
 }

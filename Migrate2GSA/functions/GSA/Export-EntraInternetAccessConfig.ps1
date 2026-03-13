@@ -641,4 +641,19 @@ function Export-EntraInternetAccessConfig {
     Write-LogMessage "  - $(Split-Path -Path $LogPath -Leaf) ($logSizeKB KB)" -Level SUMMARY -Component "Summary"
     #endregion
 
+    # Send usage telemetry
+    Send-UsageTelemetry -EventName 'Export-EntraInternetAccessConfig' `
+        -Properties @{
+            TenantId                 = (Get-MgContext).TenantId
+            HasErrors                = ($errorCount -gt 0).ToString()
+            IncludesSecurityProfiles = $shouldCreateSecurityProfilesCsv.ToString()
+        } `
+        -Metrics @{
+            TotalFilteringPolicies  = $totalFilteringPolicies
+            TotalFilteringRules     = $totalFilteringRules
+            TotalTlsPolicies        = $totalTlsPolicies
+            TotalTlsRules           = $totalTlsRules
+            TotalSecurityProfiles   = $securityProfiles.Count
+        }
+
 }

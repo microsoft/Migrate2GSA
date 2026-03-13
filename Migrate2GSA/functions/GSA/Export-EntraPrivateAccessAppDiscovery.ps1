@@ -645,4 +645,16 @@ function Export-EntraPrivateAccessAppDiscovery {
     Write-LogMessage "  - $csvFileName ($csvSizeKB KB)" -Level SUMMARY -Component "Summary"
     Write-LogMessage "  - $(Split-Path -Path $LogPath -Leaf) ($logSizeKB KB)" -Level SUMMARY -Component "Summary"
     #endregion
+
+    # Send usage telemetry
+    Send-UsageTelemetry -EventName 'Export-EntraPrivateAccessAppDiscovery' `
+        -Properties @{
+            TenantId         = (Get-MgContext).TenantId
+            AccessTypeFilter = $AccessTypeFilter
+            HasErrors        = ($warningCount -gt 0).ToString()
+        } `
+        -Metrics @{
+            TotalSegments = $totalSegments
+            ExportedRows  = $csvRows.Count
+        }
 }
