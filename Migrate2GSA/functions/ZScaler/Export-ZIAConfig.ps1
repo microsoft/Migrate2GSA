@@ -375,6 +375,9 @@ function Export-ZIAConfig {
             if ($success) {
                 Write-Host "`nBackup process completed successfully!" -ForegroundColor Green
                 Write-Host "Function execution finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
+
+                # Send usage telemetry
+                Send-UsageTelemetry -EventName 'Export-ZIAConfig'
             }
             else {
                 Write-Error "Backup process failed!"

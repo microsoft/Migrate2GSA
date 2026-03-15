@@ -942,6 +942,29 @@ function Convert-ForcepointWS2EIA {
     Write-LogMessage "" -Level "INFO"
     Write-LogMessage "Conversion completed successfully" -Level "SUCCESS" `
         -Component "Convert-ForcepointWS2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
-    
+
+    # Send usage telemetry
+    Send-UsageTelemetry -EventName 'Convert-ForcepointWS2EIA' `
+        -Properties @{
+            EnableDebugLogging = $EnableDebugLogging.ToString()
+        } `
+        -Metrics @{
+            TotalRowsProcessed       = $stats.TotalRowsProcessed
+            SecurityGroupsFound      = $stats.SecurityGroupsFound
+            ContinueActionsConverted = $stats.ContinueActionsConverted
+            BlockActionsProcessed    = $stats.BlockActionsProcessed
+            AllowActionsProcessed    = $stats.AllowActionsProcessed
+            UnknownActionsSkipped    = $stats.UnknownActionsSkipped
+            TotalMappedCategories    = $stats.TotalMappedCategories
+            TotalUnmappedCategories  = $stats.TotalUnmappedCategories
+            TotalUserDefinedFQDNs    = $stats.TotalUserDefinedFQDNs
+            UniquePolicyDefinitions  = $stats.UniquePolicyDefinitions
+            GroupsSharingPolicies    = $stats.GroupsSharingPolicies
+            UniquePoliciesCreated    = $stats.UniquePoliciesCreated
+            PolicyEntriesCreated     = $stats.PolicyEntriesCreated
+            RulesNeedingReview       = $stats.RulesNeedingReview
+            SecurityProfilesCreated  = $stats.SecurityProfilesCreated
+        }
+
     #endregion
 }

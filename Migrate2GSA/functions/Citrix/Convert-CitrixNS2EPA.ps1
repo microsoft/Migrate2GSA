@@ -1341,6 +1341,30 @@ try {
 
     Write-LogMessage "Function completed successfully!" -Level "SUCCESS" -Component 'Main'
 
+    # Send usage telemetry
+    Send-UsageTelemetry -EventName 'Convert-CitrixNS2EPA' `
+        -Properties @{
+            HasGroupFilter        = $PSBoundParameters.ContainsKey('GroupFilter').ToString()
+            HasExcludeGroupFilter = $PSBoundParameters.ContainsKey('ExcludeGroupFilter').ToString()
+            PassThru              = $PassThru.ToString()
+        } `
+        -Metrics @{
+            ConfigLinesProcessed   = $configLines.Count
+            AAAGroupsFound         = $aaaGroups.Count
+            AuthPoliciesFound      = $authPolicies.Count
+            IntranetAppsFound      = $intranetApps.Count
+            BindingsFound          = $bindings.Count
+            TcpPolicyBindings      = $resolveResult.TcpPolicyBindings
+            UdpPolicyBindings      = $resolveResult.UdpPolicyBindings
+            IntranetAppBindings    = $resolveResult.IntranetAppBindings
+            IcmpBindingsSkipped    = $resolveResult.IcmpBindingsSkipped
+            DenyPoliciesSkipped    = $denyPoliciesSkipped
+            EnterpriseAppsGenerated = $groupsToProcess.Count
+            TotalSegments          = $allResults.Count
+            ConflictsDetected      = $conflictCount
+            ProvisionNoCount       = $provisionNoCount
+        }
+
     #endregion
 
     # Return results if PassThru is specified

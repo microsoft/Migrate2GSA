@@ -764,6 +764,10 @@ function Export-NetskopeConfig {
             Write-LogMessage "" -Level INFO
             Write-LogMessage "Export process completed successfully!" -Level SUCCESS -Component "Main"
             Write-LogMessage "Finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level INFO -Component "Main"
+
+            # Send usage telemetry
+            Send-UsageTelemetry -EventName 'Export-NetskopeConfig'
+
             return $true
         }
         else {

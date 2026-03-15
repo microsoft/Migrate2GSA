@@ -797,6 +797,21 @@ function Export-MDEWebFilteringConfig {
 
         Write-LogMessage "" -Level INFO
         Write-LogMessage "Finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level INFO -Component "Main"
+
+        # Send usage telemetry
+        Send-UsageTelemetry -EventName 'Export-MDEWebFilteringConfig' `
+            -Properties @{
+                ExportCleanHAR = $ExportCleanHAR.ToString()
+            } `
+            -Metrics @{
+                WcfPolicies   = $objectCounts.wcfPolicies
+                IpIndicators  = $objectCounts.ipIndicators
+                UrlIndicators = $objectCounts.urlIndicators
+                DeviceGroups  = $objectCounts.deviceGroups
+                Warnings      = $warnings.Count
+                FilesCreated  = $filesCreated.Count
+            }
+
         return $true
     }
     catch {

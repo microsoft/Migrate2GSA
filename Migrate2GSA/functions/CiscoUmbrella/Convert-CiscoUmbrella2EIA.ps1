@@ -1643,5 +1643,33 @@ function Convert-CiscoUmbrella2EIA {
     Write-LogMessage "  - Log File: $logPath" -Level "INFO" `
         -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
 
+    # Send usage telemetry
+    Send-UsageTelemetry -EventName 'Convert-CiscoUmbrella2EIA' `
+        -Properties @{
+            HasDnsPolicies  = $hasDnsPolicies.ToString()
+            HasWebPolicies  = $hasWebPolicies.ToString()
+            HasFilters      = ($PSBoundParameters.ContainsKey('IncludePolicyName') -or $PSBoundParameters.ContainsKey('ExcludePolicyName')).ToString()
+        } `
+        -Metrics @{
+            DnsPoliciesProcessed           = $stats.DnsPoliciesProcessed
+            DnsPoliciesSkippedByFilter     = $stats.DnsPoliciesSkippedByFilter
+            WebPoliciesProcessed           = $stats.WebPoliciesProcessed
+            WebPoliciesSkippedByFilter     = $stats.WebPoliciesSkippedByFilter
+            WebRulesProcessed              = $stats.WebRulesProcessed
+            CategoriesMapped               = $stats.CategoriesMapped
+            UnmappedCategories_MissingInFile = $stats.UnmappedCategories_MissingInFile
+            UnmappedCategories_NoGSAValue  = $stats.UnmappedCategories_NoGSAValue
+            AppsMatchedExact               = $stats.AppsMatchedExact
+            AppsMatchedApproximate         = $stats.AppsMatchedApproximate
+            AppsUnmatched_NoMatch          = $stats.AppsUnmatched_NoMatch
+            AppsUnmatched_NotInFile        = $stats.AppsUnmatched_NotInFile
+            DestinationListsResolved       = $stats.DestinationListsResolved
+            TotalFqdnEntries               = $stats.TotalFqdnEntries
+            PoliciesCreated                = $uniquePolicyCount
+            SecurityProfilesCreated        = $stats.SecurityProfilesCreated
+            PoliciesMergedDedup            = $stats.PoliciesMergedDedup
+            RulesSplitForCharLimit         = $stats.RulesSplitForCharLimit
+        }
+
     #endregion
 }

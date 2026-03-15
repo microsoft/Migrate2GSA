@@ -1182,6 +1182,29 @@ try {
     }
     
     Write-LogMessage "Function completed successfully!" -Level "SUCCESS" -Component 'Main'
+
+    # Send usage telemetry
+    Send-UsageTelemetry -EventName 'Convert-NPA2EPA' `
+        -Properties @{
+            HasPoliciesFile     = $PSBoundParameters.ContainsKey('PoliciesPath').ToString()
+            HasTargetAppName    = $PSBoundParameters.ContainsKey('TargetAppName').ToString()
+            HasAppNamePattern   = $PSBoundParameters.ContainsKey('AppNamePattern').ToString()
+            PassThru            = $PassThru.ToString()
+        } `
+        -Metrics @{
+            TotalAppsLoaded       = $originalCount
+            AppsProcessed         = $processedCount
+            AppsSkipped           = $skippedCount
+            TotalSegments         = $totalSegments
+            GroupedResults        = $groupedResults.Count
+            ConflictsDetected     = $conflictCount
+            PoliciesProcessed     = $policyStats.ProcessedPolicies
+            PoliciesSkipped       = $policyStats.SkippedPolicies
+            AppsWithAccess        = $policyStats.AppsWithAccess
+            AppsWithGroups        = $policyStats.AppsWithGroups
+            TotalUniqueUsers      = $policyStats.TotalUniqueUsers
+        }
+
     #endregion
     
     # Return the grouped results only if PassThru is specified

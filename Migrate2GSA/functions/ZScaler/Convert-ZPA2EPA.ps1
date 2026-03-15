@@ -1916,6 +1916,28 @@ try {
     }
     
     Write-LogMessage "Function completed successfully!" -Level "INFO"
+
+    # Send usage telemetry
+    Send-UsageTelemetry -EventName 'Convert-ZPA2EPA' `
+        -Properties @{
+            HasSegmentGroupPath = (-not [string]::IsNullOrEmpty($SegmentGroupPath)).ToString()
+            HasAccessPolicyPath = (Test-Path $AccessPolicyPath -ErrorAction SilentlyContinue).ToString()
+            HasScimGroupPath    = (Test-Path $ScimGroupPath -ErrorAction SilentlyContinue).ToString()
+            HasFilters          = ($PSBoundParameters.ContainsKey('TargetAppSegmentName') -or $PSBoundParameters.ContainsKey('AppSegmentNamePattern')).ToString()
+            PassThru            = $PassThru.ToString()
+        } `
+        -Metrics @{
+            TotalSegmentsLoaded      = $originalCount
+            SegmentsProcessed        = $filteredSegments.Count
+            TotalResults             = $allResults.Count
+            GroupedResults           = $groupedResults.Count
+            ConflictsDetected        = $conflictCount
+            AppsWithGroups           = $accessPolicyStats.AppsWithGroups
+            AppsWithUsers            = $accessPolicyStats.AppsWithUsers
+            AppsWithoutPolicies      = $accessPolicyStats.AppsWithoutPolicies
+            TotalUniqueUsers         = $accessPolicyStats.TotalUniqueUsers
+        }
+
     #endregion
     
     # Return the grouped results only if PassThru is specified

@@ -671,6 +671,9 @@ function Start-ZPAFullBackup {
         if ($success) {
             Write-Host "`nBackup process completed successfully!" -ForegroundColor Green
             Write-Host "Script execution finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
+
+            # Send usage telemetry
+            Send-UsageTelemetry -EventName 'Export-ZPAConfig'
         }
         else {
             Write-Error "Backup process failed!"

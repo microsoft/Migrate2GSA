@@ -1174,7 +1174,32 @@ function Convert-NSWG2EIA {
     #endregion Phase 4.3: Generate Summary Statistics
     
     #endregion Phase 4: Export and Summary
-    
+
+    # Send usage telemetry
+    Send-UsageTelemetry -EventName 'Convert-NSWG2EIA' `
+        -Properties @{
+            EnableDebugLogging = $EnableDebugLogging.ToString()
+        } `
+        -Metrics @{
+            TotalRTPoliciesLoaded          = $stats.TotalRTPoliciesLoaded
+            WebPoliciesProcessed           = $stats.WebPoliciesProcessed
+            PoliciesSkippedDisabled        = $stats.PoliciesSkippedDisabled
+            PoliciesSkippedNPA             = $stats.PoliciesSkippedNPA
+            PoliciesSkippedAppTags         = $stats.PoliciesSkippedAppTags
+            CustomCategoriesProcessed      = $stats.CustomCategoriesProcessed
+            UrlListsProcessed              = $stats.UrlListsProcessed
+            PredefinedCategoriesReferenced = $stats.PredefinedCategoriesReferenced
+            UnmappedCategories_MissingInFile = $stats.UnmappedCategories_MissingInFile
+            UnmappedCategories_NoGSAValue  = $stats.UnmappedCategories_NoGSAValue
+            PoliciesCreated                = $stats.PoliciesCreated
+            SecurityProfilesCreated        = $stats.SecurityProfilesCreated
+            URLsClassified                 = $stats.URLsClassified
+            FQDNsClassified                = $stats.FQDNsClassified
+            IPsClassified                  = $stats.IPsClassified
+            EntriesSkipped                 = $stats.EntriesSkipped
+            UnreferencedPoliciesRemoved    = $stats.UnreferencedPoliciesRemoved
+        }
+
     # Return summary object
     return [PSCustomObject]@{
         PoliciesCreated = $stats.PoliciesCreated

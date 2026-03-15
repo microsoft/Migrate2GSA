@@ -1068,6 +1068,25 @@ function Export-CiscoUmbrellaConfig {
 
         Write-LogMessage "" -Level INFO
         Write-LogMessage "Finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level INFO -Component "Main"
+
+        # Send usage telemetry
+        Send-UsageTelemetry -EventName 'Export-CiscoUmbrellaConfig' `
+            -Properties @{
+                ExportCleanHAR = $ExportCleanHAR.ToString()
+            } `
+            -Metrics @{
+                DnsPolicies              = $objectCounts.dnsPolicies
+                FirewallRules            = $objectCounts.firewallRules
+                WebPolicies              = $objectCounts.webPolicies
+                DestinationLists         = $objectCounts.destinationLists
+                CategorySettings         = $objectCounts.categorySettings
+                ApplicationSettings      = $objectCounts.applicationSettings
+                SecuritySettings         = $objectCounts.securitySettings
+                SelectiveDecryptionLists = $objectCounts.selectiveDecryptionLists
+                Warnings                 = $warnings.Count
+                FilesCreated             = $filesCreated.Count
+            }
+
         return $true
     }
     catch {

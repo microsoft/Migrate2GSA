@@ -1096,6 +1096,30 @@ function Convert-ZIA2EIA {
         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "Conversion completed successfully" -Level "INFO" `
         -Component "Convert-ZIA2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+
+    # Send usage telemetry
+    Send-UsageTelemetry -EventName 'Convert-ZIA2EIA' `
+        -Properties @{
+            EnableDebugLogging = $EnableDebugLogging.ToString()
+        } `
+        -Metrics @{
+            TotalRulesLoaded                = $stats.TotalRulesLoaded
+            RulesProcessed                  = $stats.RulesProcessed
+            RulesSkippedDisabled            = $stats.RulesSkippedDisabled
+            CustomCategoriesProcessed       = $stats.CustomCategoriesProcessed
+            PredefinedCategoriesReferenced  = $stats.PredefinedCategoriesReferenced
+            UnmappedCategories_MissingInFile = $stats.UnmappedCategories_MissingInFile
+            UnmappedCategories_NoGSAValue   = $stats.UnmappedCategories_NoGSAValue
+            URLsClassified                  = $stats.URLsClassified
+            FQDNsClassified                 = $stats.FQDNsClassified
+            IPsClassified                   = $stats.IPsClassified
+            EntriesSkipped                  = $stats.EntriesSkipped
+            PoliciesCreated                 = $stats.PoliciesCreated
+            SecurityProfilesCreated         = $stats.SecurityProfilesCreated
+            TotalFQDNsInPolicies            = $stats.TotalFQDNsInPolicies
+            TotalURLsInPolicies             = $stats.TotalURLsInPolicies
+            TotalRulesInPolicies            = $stats.TotalRulesInPolicies
+        }
     
     #endregion
 }
