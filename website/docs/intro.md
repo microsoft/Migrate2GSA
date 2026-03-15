@@ -24,6 +24,17 @@ We also heavily leverage AI throughout our development process - from researchin
 ## How to contact us
 If you have a migration project and need assistance with Migrate2GSA, or you can work with us to build tools for other SSE solutions, contact us at migrate2gsateam@microsoft.com
 
+## Telemetry
+
+Migrate2GSA collects anonymous usage telemetry to help improve the toolkit. This data includes general usage metrics such as the number of policies converted, categories mapped, and segments processed — **no personal data or configuration content is ever collected**.
+
+You can disable telemetry at any time using:
+
+```powershell
+Disable-Migrate2GSADataCollection
+```
+
+
 ## How to contribute
 Please create a GitHub Issue to discuss the changes you are planning to make, then send us a PR.
 
