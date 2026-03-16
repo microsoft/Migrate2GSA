@@ -1,8 +1,8 @@
 # Convert-PANW2EIA.ps1 Specification
 
 ## Document Information
-- **Specification Version:** 1.0
-- **Date:** 2026-03-02
+- **Specification Version:** 1.1
+- **Date:** 2026-03-16
 - **Status:** Draft
 - **Target Module:** Migrate2GSA
 - **Function Name:** Convert-PANW2EIA
@@ -120,14 +120,43 @@ This section describes the structure and naming conventions used when converting
 - Each rule has a destination type: `FQDN`, `URL`, `ipAddress`, or `webCategory`
 - Policies have a single action: `Allow` or `Block`
 
-**Conversion produces two types of policies:**
+**Conversion produces three types of policies:**
 1. **Custom URL Category Policies** — Created from PANW custom URL categories with URL List type, containing FQDN/URL/IP rules
 2. **Web Category Policies** — Created from URL filtering profile category actions, containing webCategory rules with mapped GSA categories
+3. **Application Policies** — Created from security rules with application references, containing FQDN rules from App-ID to GSA endpoint mappings
 
 **Security Profiles:**
-- Created from PANW security rules that reference URL filtering profiles
-- Link to all related policies generated from the referenced URL filtering profile
-- Assigned to users/groups based on the security rule's `source-user` field
+- Security rules sharing the same user/group assignment are **aggregated** into a single security profile
+- Rules assigned to `any` (all users) → aggregated into `SecurityProfile-All-Users`
+- Rules assigned to specific users/groups → aggregated by unique user/group combination into `SecurityProfile-001`, `SecurityProfile-002`, etc.
+- Each aggregated profile links to all policies from its constituent rules (deduplicated, Allow-first ordering)
+- This follows the same aggregation pattern as `Convert-NSWG2EIA`
+
+### Conversion Logic
+
+**Custom URL Category Conversion:**
+- Each custom URL category (URL List type) creates a Block policy by default: `[CategoryName]-Block`
+- If a URL filtering profile references the category with `allow` action, an Allow version is also created: `[CategoryName]-Allow`
+- Unreferenced policies are cleaned up after security profile aggregation
+
+**URL Filtering Profile Conversion:**
+- Each URL filtering profile creates one policy per action type:
+  - `[ProfileName]-WebCategories-Block` for blocked categories
+  - `[ProfileName]-WebCategories-Allow` for allowed categories
+  - `[ProfileName]-WebCategories-Alert`, `-Continue`, `-Override` for review actions
+- Only mapped GSA categories are included in `RuleDestinations`; partial/unmapped categories are excluded from `RuleDestinations` but listed in `ReviewDetails` for manual review
+
+**Application Conversion:**
+- Security rules with application references (non-`any`) are looked up in the App Mappings CSV
+- For each matched app: if `GSAEndpoints` are available, create a policy with FQDN rules from the endpoints
+- Unmapped apps (empty `GSAAppName`) are flagged for review
+- Application policies are named: `[AppName]-[Action]` (e.g., `office365-Allow`)
+
+**Security Profile Aggregation:**
+- Multiple security rules assigned to the same users/groups are aggregated into a single security profile
+- Policy links are deduplicated — duplicate policy references across rules are merged
+- Policy link ordering: Allow policies first (alphabetically), then Block policies (alphabetically)
+- Priority: specific user/group profiles start at 500, incrementing by 100; All-Users profile gets lowest precedence (highest number)
 
 ### Mapping Summary
 
@@ -137,9 +166,11 @@ This section describes the structure and naming conventions used when converting
 | URL Filtering Profile (block categories) | → | Web Content Filtering Policy | webCategory rules, one policy per profile per action |
 | URL Filtering Profile (alert/continue/override categories) | → | Web Content Filtering Policy | webCategory rules, flagged for review |
 | URL Filtering Profile (allow categories) | → | Web Content Filtering Policy | webCategory rules with Allow action |
-| Security Rule (with URL filtering profile) | → | Security Profile | Links to all policies from its profile |
-| Security Rule (with applications) | → | Security Profile | Flagged for review, apps listed in ReviewDetails |
-| PAN-DB predefined category | → | GSA web category | Via mapping file |
+| Security Rule (with applications + mapping) | → | Web Content Filtering Policy | FQDN rules from GSAEndpoints in app mapping |
+| Security Rule (with unmapped applications) | → | Web Content Filtering Policy | Flagged for review, apps listed in ReviewDetails |
+| Multiple Security Rules (same users/groups) | → | Single Security Profile | Aggregated with deduplicated policy links |
+| PAN-DB predefined category | → | GSA web category | Via category mapping file |
+| App-ID application | → | FQDN destinations | Via app mapping file |
 | Profile Group (containing URL filtering) | → | Resolved to URL filtering profile | Transparent to output |
 
 ### Policy Naming Conventions
@@ -156,11 +187,21 @@ This section describes the structure and naming conventions used when converting
 - Example: `Corporate-URL-Filter-WebCategories-Allow`
 - Actions alert/continue/override each get their own policy: `[ProfileName]-WebCategories-Alert`, etc.
 
+**Application Policies:**
+- Format: `[GSAAppName]-[Action]` (using the mapped GSA app name)
+- Example: `Box-Block`, `Slack-Allow`
+- Unmapped apps: `[PANWAppName]-Application-[Action]` with `ReviewNeeded=Yes`
+- Example: `custom-internal-app-Application-Block`
+
 **Rule Naming (within policies):**
 - FQDN rules: Base domain name (e.g., `example.com`, `example.com-2`)
 - URL rules: Base domain name (e.g., `contoso.com/path`, `contoso.com-2`)
 - IP address rules: `IPs`, `IPs-2`, `IPs-3`
 - Web category rules: `WebCategories` (never split)
+
+**Security Profile Naming Conventions:**
+- All users: `SecurityProfile-All-Users`
+- Specific user/group sets: `SecurityProfile-001`, `SecurityProfile-002`, etc.
 
 ---
 
@@ -290,17 +331,74 @@ unknown,Uncategorized,Partial - unknown maps to uncategorized
 #### Processing Rules
 1. **Lookup:** For each PAN-DB category name, find matching `PANWCategory` (case-insensitive)
 2. **Unmapped Categories:**
-   - If `GSACategory` is null, blank, or `Unmapped`: use placeholder format
-   - Placeholder format: `[PANWCategory]_Unmapped`
-   - Example: `peer-to-peer` → `peer-to-peer_Unmapped`
+   - If `GSACategory` is null, blank, or `Unmapped`: **exclude from `RuleDestinations`**
+   - Do NOT add placeholder values to `RuleDestinations` — only valid GSA categories go into the destination list
+   - Add the unmapped category name to `ReviewDetails`: `Unmapped categories: [list]`
    - Set `ReviewNeeded` = `Yes` in output
+   - Set `Provision` = `No`
 3. **Category Not Found in Mapping File:**
    - If a PAN-DB category referenced in a URL filtering profile is not present in the mapping file
-   - Treat as unmapped: use `[PANWCategory]_Unmapped`
+   - Treat same as unmapped: exclude from `RuleDestinations`, add to `ReviewDetails`
    - Log at WARN level
-4. **Mapped Categories:**
-   - Use the `GSACategory` value directly
+4. **Partial Mappings (MappingNotes contains 'Partial'):**
+   - If the mapping has a valid `GSACategory` but `MappingNotes` indicates `Partial`: **leave the GSA category blank/excluded from `RuleDestinations`**
+   - Add to `ReviewDetails`: `Partial mappings require review: [PANWCategory] -> [GSACategory]`
+   - Set `ReviewNeeded` = `Yes`
+   - This ensures the user explicitly reviews and approves partial matches before provisioning
+5. **Exact Mappings:**
+   - Use the `GSACategory` value directly in `RuleDestinations`
    - Set `ReviewNeeded` = `No` in output (unless overridden by action review)
+
+### 3. PANW2EIA-AppMappings.csv
+**Source:** Provided mapping file (maintained by project)
+**Required:** No (optional — if not provided, application references are only flagged for review)
+**Default Path:** `PANW2EIA-AppMappings.csv` (in script root directory)
+
+#### Description
+Provides mapping between Palo Alto App-ID application names and Microsoft GSA (Global Secure Access) application names with associated FQDN endpoints. When a security rule references applications, this file is used to convert App-ID references into FQDN-based web content filtering policies.
+
+#### Schema
+
+| Column | Type | Required | Description |
+|---|---|---|---|
+| PANWAppName | string | Yes | Palo Alto App-ID name (lowercase-hyphenated, e.g., `office365-base`, `slack-base`) |
+| GSAAppName | string | No | Target GSA application name (e.g., `Box`, `Slack`). Empty if no mapping. |
+| MatchType | string | No | `exact` or `approximate`. Empty if no mapping. |
+| GSAEndpoints | string | No | Semicolon-separated FQDN endpoints (e.g., `box.com;boxcloud.com`). Empty if no mapping. |
+
+#### Sample Data
+```csv
+PANWAppName,GSAAppName,MatchType,GSAEndpoints
+office365-base,Office 365,exact,
+slack-base,Slack,approximate,slack.com;api.slack.com;files.slack.com
+boxnet,Box,approximate,box.com;boxcloud.com;boxlocalhost.com;box.net
+chatgpt,ChatGPT,approximate,chatgpt.com;chat.openai.com
+amazon-bedrock-base,,,,
+custom-internal-app,,,,
+```
+
+#### Processing Rules
+1. **Lookup:** For each App-ID name in a security rule's `<application>` list, find matching `PANWAppName` (case-insensitive)
+2. **Mapped Apps with Endpoints:**
+   - If `GSAAppName` is non-empty AND `GSAEndpoints` is non-empty:
+   - Create a web content filtering policy with FQDN rules from the endpoints
+   - Policy name: `[GSAAppName]-[Action]`
+   - Process endpoints through `ConvertTo-CleanDestination` and `Get-DestinationType`
+   - Group by base domain, split by 300-char limit (same as custom URL categories)
+3. **Mapped Apps without Endpoints:**
+   - If `GSAAppName` is non-empty but `GSAEndpoints` is empty:
+   - Create a placeholder policy flagged for review
+   - `ReviewDetails`: `Application '[GSAAppName]' mapped but no endpoints available`
+4. **Unmapped Apps (empty GSAAppName):**
+   - Do not create a policy
+   - Add to security profile's `ReviewDetails`: `Unmapped applications: [app1, app2]`
+   - Set security profile `ReviewNeeded` = `Yes`
+5. **App Not Found in Mapping File:**
+   - Treat same as unmapped
+   - Log at WARN level
+6. **No App Mappings File Provided:**
+   - All application references are flagged for review (same as current v1.0 behaviour)
+   - Log at INFO: `No app mappings file provided; application references will be flagged for review`
 
 ---
 
@@ -356,37 +454,46 @@ Contains all web content filtering policies including custom URL category polici
 **Filename:** `[yyyyMMdd_HHmmss]_EIA_SecurityProfiles.csv`
 
 #### Description
-Contains security profile definitions that reference web content filtering policies and assign them to users/groups.
+Contains aggregated security profile definitions that combine multiple security rules sharing the same user/group assignment into a single profile.
 
 #### Fields
 
 | Field | Description | Example | Notes |
 |---|---|---|---|
-| SecurityProfileName | Profile name | `Allow-Web-Access` | From security rule `@name` |
-| Priority | Profile priority | `100` | From rule order × 100 |
+| SecurityProfileName | Profile name | `SecurityProfile-All-Users` | Aggregated name or numbered |
+| Priority | Profile priority | `500` | Specific profiles start at 500, All-Users last |
 | SecurityProfileLinks | Policy links with priorities | `Custom-Cat-Block:100;Corp-Filter-WebCategories-Block:200` | `PolicyName:LinkPriority` pairs |
-| CADisplayName | CA policy display name | `CA-Allow-Web-Access` | `CA-[SecurityProfileName]` |
+| CADisplayName | CA policy display name | `SecurityProfile-All-Users` | Same as SecurityProfileName |
 | EntraUsers | Semicolon-separated users | `user@domain.com` | From source-user (if email format) |
 | EntraGroups | Semicolon-separated groups | `Finance;HR` | From source-user (if group name) |
+| Description | Profile description | `Aggregated from 3 security rules` | Lists count of source rules |
 | Provision | Provisioning flag | `Yes` | Always `Yes` for security profiles |
+| Notes | Source rule traceability | `Allow-Web-Access, Allow-SaaS-Apps` | Comma-separated source rule names |
 
 #### SecurityProfileLinks Format
 - Semicolon-separated list of `PolicyName:LinkPriority` pairs
 - LinkPriority is auto-assigned sequentially: 100, 200, 300, etc.
-- Example: `Blocked-Sites-Block:100;Corp-Filter-WebCategories-Block:200;Corp-Filter-WebCategories-Allow:300`
+- Policy links are deduplicated across aggregated rules
+- Ordering: Allow policies first (alphabetically), then Block policies (alphabetically)
+- Example: `Internal-Sites-Allow:100;Corp-Filter-WebCategories-Allow:200;Blocked-Sites-Block:300;Corp-Filter-WebCategories-Block:400`
 
 #### Priority Calculation
-- Rules from `pre-rulebase` are processed first, then `post-rulebase`
-- Priority is assigned based on processing order: first rule = 100, second = 200, etc.
-- Increment by 100 to leave room for manual insertion
+- Specific user/group profiles: start at 500, increment by 100 (`SecurityProfile-001` = 500, `SecurityProfile-002` = 600, etc.)
+- All-Users profile: lowest precedence (highest number), placed after all specific profiles
 - If conflict detected: increment by 1 until unique
 
 #### Source-User Mapping
-- `any` → `EntraGroups` = `Replace_with_All_IA_Users_Group`
+- `any` → `EntraGroups` = `Replace_with_All_IA_Users_Group` → aggregated into `SecurityProfile-All-Users`
 - Email format (contains `@`) → `EntraUsers`
 - Other values (group names, domain\user format) → `EntraGroups`
 - `unknown` → skipped with WARN log
 - `pre-logon` → skipped with WARN log
+
+#### Aggregation Rules
+- Rules assigned to `any` → combined into single `SecurityProfile-All-Users`
+- Rules with identical user/group sets → combined into `SecurityProfile-NNN`
+- User/group matching: create key from sorted users + sorted groups (case-insensitive)
+- Deduplication: same policy referenced by multiple rules appears only once in SecurityProfileLinks
 
 ### 3. Log File
 **Filename:** `[yyyyMMdd_HHmmss]_Convert-PANW2EIA.log`
@@ -441,7 +548,8 @@ For each device-group (and shared):
    - Maintain processing order across both rulebases
 
 #### 1.5 Build Lookup Tables
-- Category mappings hashtable: `PANWCategory` → `GSACategory` (from CSV)
+- Category mappings hashtable: `PANWCategory` → mapping object (GSACategory, MappingNotes) (from CSV)
+- App mappings hashtable: `PANWAppName` → mapping object (GSAAppName, MatchType, GSAEndpoints) (from CSV, if provided)
 - Custom URL categories hashtable: `name` → category object
 - URL filtering profiles hashtable: `name` → profile object
 - Profile groups hashtable: `name` → URL filtering profile name
@@ -505,6 +613,14 @@ For each URL filtering profile collected in Phase 1:
 
 Group predefined categories by action and create one policy per action:
 
+**Category Mapping Logic:**
+For each PAN-DB category, look up in the category mappings hashtable:
+- **Exact match** (MappingNotes does NOT contain 'Partial'): include `GSACategory` in `RuleDestinations`
+- **Partial match** (MappingNotes contains 'Partial'): **exclude from `RuleDestinations`**, add to `ReviewDetails`
+- **Unmapped/missing**: **exclude from `RuleDestinations`**, add to `ReviewDetails`
+
+Only categories with exact mappings appear in `RuleDestinations`. Partial and unmapped categories are listed in `ReviewDetails` for manual review.
+
 **For `block` categories:**
 
 | Field | Value |
@@ -513,10 +629,10 @@ Group predefined categories by action and create one policy per action:
 | PolicyType | `WebContentFiltering` |
 | PolicyAction | `Block` |
 | RuleType | `webCategory` |
-| RuleDestinations | All mapped GSA categories, semicolon-separated |
+| RuleDestinations | Only exactly-mapped GSA categories, semicolon-separated |
 | RuleName | `WebCategories` |
-| ReviewNeeded | `Yes` if any unmapped categories; otherwise `No` |
-| ReviewDetails | `Unmapped categories found: [list]` if applicable |
+| ReviewNeeded | `Yes` if any partial/unmapped categories; otherwise `No` |
+| ReviewDetails | `Partial mappings: [list]; Unmapped categories: [list]` if applicable |
 | Provision | `No` if ReviewNeeded; otherwise `Yes` |
 
 **For `allow` categories:**
@@ -574,7 +690,7 @@ When a custom category is referenced with action `Allow` and only a `Block` poli
 For each security rule collected in Phase 1:
 1. Skip if `<disabled>` = `yes` (log count at INFO, names at DEBUG)
 2. Skip if `<action>` is not `allow` (deny/drop/reset rules block traffic at firewall level)
-3. Skip if no URL filtering profile is referenced (no `<profile-setting>` or no URL filtering profile found)
+3. Skip if no URL filtering profile is referenced AND no application references exist
 4. Process remaining rules
 
 #### 4.2 Resolve URL Filtering Profile
@@ -582,7 +698,7 @@ For each security rule collected in Phase 1:
    - If `<group>` → look up profile group → extract URL filtering profile name
    - If `<profiles><url-filtering>` → extract profile name directly
 2. Look up the resolved profile name in the URL filtering profiles hashtable
-3. If not found: log at WARN level and skip the rule
+3. If not found: log at WARN level (rule may still be processed for application references)
 
 #### 4.3 Extract Users and Groups
 
@@ -595,12 +711,29 @@ Process `<source-user><member>` elements:
 
 If no valid users and no valid groups remain: use `Replace_with_All_IA_Users_Group`.
 
-#### 4.4 Detect Application References
+#### 4.4 Process Application References
+
 1. Check `<application><member>` elements
-2. If any member is not `any`:
-   - Collect application names
-   - Set `ReviewNeeded` = `Yes` on the security profile
-   - Add to `ReviewDetails`: `Applications referenced: [app1, app2, ...]`
+2. If any member is not `any` AND app mappings file is provided:
+   - For each application name, look up in `$appMappingsHashtable`
+   - **Mapped with endpoints:** Create web content filtering policy:
+     - Parse `GSAEndpoints` (semicolon-separated)
+     - Clean endpoints using `ConvertTo-CleanDestination`
+     - Classify as FQDN/URL/IP using `Get-DestinationType`
+     - Group by base domain, split by 300-char limit
+     - Policy name: `[GSAAppName]-[Action]` (action from rule's URL filter profile action context, default Block)
+     - Deduplicate: if same `GSAAppName` policy already exists from another rule, reuse it
+   - **Mapped without endpoints:** Create placeholder policy:
+     - PolicyName: `[GSAAppName]-[Action]`
+     - RuleDestinations: `PLACEHOLDER_[GSAAppName]`
+     - ReviewNeeded: `Yes`
+     - ReviewDetails: `Application '[GSAAppName]' mapped but no endpoints available`
+   - **Unmapped (empty GSAAppName or not in file):**
+     - Do NOT create a policy
+     - Add to review list: `Unmapped applications: [app1, app2]`
+     - Log at WARN level
+3. If any member is not `any` AND no app mappings file is provided:
+   - Flag for review: `Applications referenced (no mapping file): [app1, app2, ...]`
    - Log at INFO level
 
 #### 4.5 Build Policy Links
@@ -620,25 +753,69 @@ For the resolved URL filtering profile, collect all related policy names:
      - If action is `allow` → `[CategoryName]-Allow`
      - If action is `alert`/`continue`/`override` → `[CategoryName]-Block` (with review flag)
 
-3. Format as `PolicyName:LinkPriority` pairs with sequential priorities (100, 200, 300, ...)
+3. **Application Policies** (from Phase 4.4):
+   - For each mapped application with endpoints: `[GSAAppName]-[Action]`
+   - For each mapped application without endpoints: `[GSAAppName]-[Action]` (review-flagged)
 
-#### 4.6 Security Profile Creation
+4. Store policy links and user/group info for aggregation (do NOT create security profiles yet)
 
-| Field | Value |
-|---|---|
-| SecurityProfileName | Security rule `@name` |
-| Priority | Processing order × 100 (pre-rulebase rules first, then post-rulebase) |
-| SecurityProfileLinks | Semicolon-separated `PolicyName:LinkPriority` pairs |
-| CADisplayName | `CA-[SecurityProfileName]` |
-| EntraUsers | Semicolon-separated emails |
-| EntraGroups | Semicolon-separated group names |
-| Provision | `Yes` |
+#### 4.6 Collect for Aggregation
 
-#### 4.7 Priority Conflict Resolution
-Same algorithm as ZIA2EIA: increment by 1 until unique.
+For each processed rule, store:
+```
+$policyInfo = @{
+    RuleName    = rule name
+    Emails      = extracted email list
+    Groups      = extracted group list
+    PolicyLinks = collected policy names (without priority suffixes)
+    NeedsReview = whether review is needed
+    ReviewReasons = list of review reasons
+}
+```
 
-#### 4.8 Cleanup Unreferenced Policies
-After all security profiles are created, remove custom category policies that are not referenced by any security profile's PolicyLinks. This avoids creating unused `-Block` policies for categories only used with `Allow` action.
+Add to `$policiesForAggregation` collection.
+
+#### 4.7 Aggregate by User/Group Assignment
+
+Follow the same aggregation pattern as `Convert-NSWG2EIA`:
+
+1. **Separate "All users" rules** from specific user/group rules:
+   - Rules where groups contain `Replace_with_All_IA_Users_Group` → `$allUsersPolicies`
+   - All others → group by user/group combination key
+
+2. **Create user/group combination key:**
+   - Sort emails alphabetically, join with comma
+   - Sort groups alphabetically, join with comma
+   - Combined key: `{emails}|{groups}`
+   - Rules with identical keys are aggregated
+
+3. **Create security profiles for specific user/group sets:**
+   - For each unique user/group key:
+     - Collect all policy links from constituent rules
+     - Deduplicate policy links
+     - Order: Allow policies first (alphabetically), then Block policies (alphabetically)
+     - Name: `SecurityProfile-001`, `SecurityProfile-002`, etc.
+     - Priority: 500 + ((index - 1) × 100)
+     - Description: `Aggregated from N security rules`
+     - Notes: comma-separated source rule names
+
+4. **Create security profile for "All users":**
+   - Aggregate all rules assigned to `any`
+   - Collect and deduplicate policy links
+   - Order: Allow first, then Block
+   - Name: `SecurityProfile-All-Users`
+   - Priority: 500 + (specific_profile_count × 100) — lowest precedence
+   - EntraGroups: `Replace_with_All_IA_Users_Group`
+
+5. **Add priority suffixes to policy links:**
+   - After aggregation, format links as `PolicyName:100;PolicyName:200;...`
+   - Sequential priorities starting at 100, incrementing by 100
+
+#### 4.8 Priority Conflict Resolution
+Same algorithm as ZIA2EIA/NSWG2EIA: increment by 1 until unique.
+
+#### 4.9 Cleanup Unreferenced Policies
+After all security profiles are created, remove policies that are not referenced by any security profile's PolicyLinks. This avoids creating unused policies.
 
 ### Phase 5: Export and Summary
 
@@ -658,19 +835,23 @@ Device Groups processed: X
 Security rules loaded: A
   Pre-rulebase rules: A1
   Post-rulebase rules: A2
-Rules processed (enabled + allow + URL filter): B
+Rules processed (enabled + allow + URL filter or apps): B
 Rules skipped (disabled): C
 Rules skipped (deny/drop/reset): D
-Rules skipped (no URL filter profile): E
-Rules with application references (flagged): F
+Rules skipped (no URL filter profile and no apps): E
+Rules with application references: F
+  Applications mapped (with endpoints): F1
+  Applications mapped (without endpoints): F2
+  Applications unmapped: F3
 
 URL Filtering Profiles processed: G
 Custom URL Categories processed: H
   Categories skipped (Category Match type): H1
   Categories skipped (empty): H2
 PAN-DB categories referenced: I
-  Mapped to GSA: I1
-  Unmapped: I2
+  Mapped to GSA (exact): I1
+  Partial mappings (excluded, review needed): I2
+  Unmapped: I3
 
 Destinations classified:
   FQDNs: J
@@ -681,8 +862,12 @@ Destinations classified:
 Policies created: N
   Custom category policies: N1
   Web category policies: N2
-  Policies flagged for review: N3
+  Application policies: N3
+  Policies flagged for review: N4
 Security profiles created: O
+  All-Users profile: O1
+  Specific user/group profiles: O2
+  Rules aggregated: O3
 Priority conflicts resolved: P
 
 Output files:
@@ -706,6 +891,7 @@ Output files:
 | Parameter | Type | Default | Description | Validation |
 |---|---|---|---|---|
 | CategoryMappingsPath | string | `PANW2EIA-CategoryMappings.csv` | Path to category mappings CSV | ValidateScript - file must exist |
+| AppMappingsPath | string | (none) | Path to App-ID to GSA app mappings CSV | ValidateScript - file must exist (if provided) |
 | DeviceGroupName | string | (all) | Filter to specific device-group | None (validated at runtime) |
 | OutputBasePath | string | `$PWD` | Output directory | ValidateScript - directory must exist |
 | EnableDebugLogging | switch | `false` | Enable DEBUG level logging | None |
@@ -850,25 +1036,33 @@ All sample files should be created in: `Samples/PANW2EIA/`
 
 #### 2. PANW2EIA-CategoryMappings.rename_to_csv
 **Content:** Representative category mappings demonstrating:
-- Mapped categories (e.g., `adult` → `AdultContent`)
-- Unmapped categories (e.g., `unknown` → `Unmapped`)
+- Mapped categories with exact match (e.g., `adult` → `PornographyAndSexuallyExplicit`)
+- Mapped categories with partial match (e.g., `malware` → `CriminalActivity`, flagged for review)
 - All common PAN-DB categories
 
-#### 3. sample_output_Policies.rename_to_csv
+#### 3. PANW2EIA-AppMappings.convert_to_csv
+**Content:** App-ID to GSA application mappings demonstrating:
+- Mapped apps with endpoints (e.g., `slack-base` → `Slack` with FQDNs)
+- Mapped apps without endpoints (e.g., `office365-base` → `Office 365`)
+- Unmapped apps (empty GSAAppName)
+- Match types: `exact` and `approximate`
+
+#### 4. sample_output_Policies.rename_to_csv
 **Content:** Expected output showing:
 - Custom category policies (FQDN/URL/ipAddress rules)
 - Web category policies (block, allow, alert, continue, override)
 - ReviewNeeded flags for non-standard actions and unmapped categories
 - Provision = No for reviewed entries
 
-#### 4. sample_output_SecurityProfiles.rename_to_csv
+#### 5. sample_output_SecurityProfiles.rename_to_csv
 **Content:** Expected output showing:
-- Security profiles with SecurityProfileLinks in `PolicyName:Priority` format
-- User and group assignments
-- CA display names
-- Application review flags
+- Aggregated security profiles (`SecurityProfile-All-Users`, `SecurityProfile-001`, etc.)
+- Deduplicated `SecurityProfileLinks` in `PolicyName:LinkPriority` format
+- User and group assignments from aggregated source-user fields
+- Description showing aggregation count
+- Notes showing source rule names
 
-#### 5. README.md
+#### 6. README.md
 **Content:** Documentation explaining sample files, expected conversion results, and usage instructions.
 
 ---
@@ -993,7 +1187,7 @@ function Convert-PANW2EIA {
 3. **IPv6:** Not supported, skipped with warning
 4. **CIDR Ranges:** Not supported for IP addresses
 5. **Port Numbers:** Not supported, cleaned from destinations
-6. **Application Filtering:** No direct EIA equivalent; flagged for review only
+6. **Application Filtering:** Requires App Mappings CSV for endpoint-based conversion; unmapped apps are flagged for review
 7. **Zone-based rules:** Source/destination zones are not mapped to EIA (EIA is zoneless)
 8. **Address objects:** Source/destination address objects are not processed (EIA security profiles use user/group assignment, not network-based matching)
 9. **NAT rules:** Out of scope
@@ -1013,7 +1207,7 @@ function Convert-PANW2EIA {
 5. Add WhatIf support
 6. Add PassThru parameter for pipeline support
 7. Add support for local firewall XML exports (vsys-based, not device-group)
-8. Add application-to-web-category mapping for common apps
+8. Expand App Mappings CSV with additional endpoint coverage
 
 ---
 
