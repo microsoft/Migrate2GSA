@@ -81,6 +81,7 @@ FunctionsToExport = @(
     'Export-CiscoUmbrellaConfig',
     'Convert-CiscoUmbrella2EIA',
     'Export-MDEWebFilteringConfig',
+    'Convert-MDE2EIA',
     'Disable-Migrate2GSADataCollection'
 )
 

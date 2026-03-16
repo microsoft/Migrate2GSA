@@ -3,6 +3,7 @@ description: 'Write or review EIA conversion specs. Use for creating new specs t
 tools:
   - readFile
   - editFiles
+  - createFile
   - search
   - fetch
   - agent
