@@ -42,10 +42,12 @@ Expected output showing:
 
 ### sample_output_SecurityProfiles.rename_to_csv
 Expected output showing:
-- Security profiles with `SecurityProfileLinks` in `PolicyName:LinkPriority` format
-- User and group assignments from source-user field
+- Aggregated security profiles (`SecurityProfile-All-Users`, `SecurityProfile-001`, etc.)
+- `SecurityProfileLinks` in `PolicyName:LinkPriority` format with deduplicated links
+- Override profiles (specific users/groups) starting at priority 1000
+- Default profile (`SecurityProfile-All-Users`) at priority 50000
+- User and group assignments from aggregated source-user fields
 - `CA-[SecurityProfileName]` display name format
-- Priority assigned by processing order × 100
 - Default group (`Replace_with_All_IA_Users_Group`) for `any` source-user
 - Application-based rules flagged for review
 
@@ -63,6 +65,9 @@ Copy-Item PANW2EIA-CategoryMappings.rename_to_csv PANW2EIA-CategoryMappings.csv
 
 # Run the conversion
 Convert-PANW2EIA -PanoramaXmlPath ".\panorama_config.xml" -CategoryMappingsPath ".\PANW2EIA-CategoryMappings.csv" -OutputBasePath ".\output"
+
+# Run with policy name filtering
+Convert-PANW2EIA -PanoramaXmlPath ".\panorama_config.xml" -CategoryMappingsPath ".\PANW2EIA-CategoryMappings.csv" -OutputBasePath ".\output" -IncludePolicyName "Allow-*"
 
 # Compare output with expected results
 # Output files will be in .\output\ with timestamp prefix
@@ -88,6 +93,6 @@ The conversion processes the Panorama XML in five phases:
 
 ### Review Items
 - **Alert/Continue/Override actions:** Mapped to Block with review flag
-- **Unmapped categories:** `peer-to-peer` and `unknown-category` have no GSA equivalent
+- **Unmapped categories:** `peer-to-peer` and `unknown-category` use `UNMAPPED:` placeholder format
 - **Application references:** `Allow-SaaS-Apps` rule references office365, salesforce, slack
 - **domain\user format:** `CORP\contractors` flagged for source-user format review
