@@ -1,4 +1,4 @@
-function Convert-PANW2EIA {
+function Convert-PANW2EIA-OLD {
     <#
     .SYNOPSIS
         Converts Palo Alto Networks (PANW) Panorama configuration to Microsoft Entra Internet Access (EIA) format.
