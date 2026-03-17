@@ -363,7 +363,7 @@ Provides mapping between Palo Alto App-ID application names and Microsoft GSA (G
 | PANWAppName | string | Yes | Palo Alto App-ID name (lowercase-hyphenated, e.g., `office365-base`, `slack-base`) |
 | GSAAppName | string | No | Target GSA application name (e.g., `Box`, `Slack`). Empty if no mapping. |
 | MatchType | string | No | `exact` or `approximate`. Empty if no mapping. |
-| GSAEndpoints | string | No | Semicolon-separated FQDN endpoints (e.g., `box.com;boxcloud.com`). Empty if no mapping. |
+| GSAEndpoints | string | No | Semicolon-separated FQDN endpoints (e.g., `box.com;boxcloud.com`). Empty if no mapping. Each endpoint is expanded using the dual FQDN pattern (`domain.com;*.domain.com`). |
 
 #### Sample Data
 ```csv
@@ -384,6 +384,7 @@ custom-internal-app,,,,
    - Policy name: `[GSAAppName]-[Action]`
    - Process endpoints through `ConvertTo-CleanDestination` and `Get-DestinationType`
    - Group by base domain, split by 300-char limit (same as custom URL categories)
+   > **Note:** The dual FQDN pattern does NOT apply to custom URL category members (Phase 2) — those are taken as-is from the Panorama export, which already includes explicit wildcard entries where intended.
 3. **Mapped Apps without Endpoints:**
    - If `GSAAppName` is non-empty but `GSAEndpoints` is empty:
    - Create a placeholder policy flagged for review
@@ -724,6 +725,7 @@ If no valid users and no valid groups remain: use `Replace_with_All_IA_Users_Gro
    - **Mapped with endpoints:** Create web content filtering policy:
      - Parse `GSAEndpoints` (semicolon-separated)
      - Clean endpoints using `ConvertTo-CleanDestination`
+     - Apply dual FQDN pattern: each endpoint produces two entries (`domain.com;*.domain.com`) to match both the bare domain and all subdomains
      - Classify as FQDN/URL/IP using `Get-DestinationType`
      - Group by base domain, split by 300-char limit
      - Policy name: `[GSAAppName]-[Action]` (action from rule's URL filter profile action context, default Block)
@@ -825,10 +827,10 @@ After all security profiles are created, remove policies that are not referenced
 ### Phase 5: Export and Summary
 
 #### 5.1 Export Policies CSV
-Export `$policies` collection to `[timestamp]_EIA_Policies.csv`.
+Export `$policies` collection to `[timestamp]_EIA_Policies.csv` using `Export-DataToFile` with UTF-8 BOM encoding.
 
 #### 5.2 Export Security Profiles CSV
-Export `$securityProfiles` collection to `[timestamp]_EIA_SecurityProfiles.csv`.
+Export `$securityProfiles` collection to `[timestamp]_EIA_SecurityProfiles.csv` using `Export-DataToFile` with UTF-8 BOM encoding.
 
 #### 5.3 Generate Summary Statistics
 
