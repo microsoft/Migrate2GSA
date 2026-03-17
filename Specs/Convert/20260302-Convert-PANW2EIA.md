@@ -101,7 +101,7 @@ This section describes the structure and naming conventions used when converting
 - The `<type>` element is either `URL List` or `Category Match`
   - **URL List:** Contains a `<list>` of URL/FQDN/IP members
   - **Category Match:** Groups predefined categories (out of scope for this conversion — these are handled as predefined category references within the URL filtering profile)
-- Each member is a destination entry (FQDN, URL, or IP address)
+- Each member is a destination entry (FQDN, URL, or IP address — IP addresses are logged and skipped since EIA does not support them)
 
 **Profile Groups:**
 - Profile groups bundle multiple security profiles (URL filtering, antivirus, etc.)
@@ -117,11 +117,11 @@ This section describes the structure and naming conventions used when converting
 
 **EIA Web Content Filtering Policies:**
 - Each EIA web content filtering policy contains one or more rules
-- Each rule has a destination type: `FQDN`, `URL`, `ipAddress`, or `webCategory`
+- Each rule has a destination type: `FQDN`, `URL`, or `webCategory`
 - Policies have a single action: `Allow` or `Block`
 
 **Conversion produces three types of policies:**
-1. **Custom URL Category Policies** — Created from PANW custom URL categories with URL List type, containing FQDN/URL/IP rules
+1. **Custom URL Category Policies** — Created from PANW custom URL categories with URL List type, containing FQDN/URL rules (IP addresses are logged and skipped — EIA does not support IP address destinations)
 2. **Web Category Policies** — Created from URL filtering profile category actions, containing webCategory rules with mapped GSA categories
 3. **Application Policies** — Created from security rules with application references, containing FQDN rules from App-ID to GSA endpoint mappings
 
@@ -196,7 +196,6 @@ This section describes the structure and naming conventions used when converting
 **Rule Naming (within policies):**
 - FQDN rules: Base domain name (e.g., `example.com`, `example.com-2`)
 - URL rules: Base domain name (e.g., `contoso.com/path`, `contoso.com-2`)
-- IP address rules: `IPs`, `IPs-2`, `IPs-3`
 - Web category rules: `WebCategories` (never split)
 
 **Security Profile Naming Conventions:**
@@ -420,9 +419,9 @@ Contains all web content filtering policies including custom URL category polici
 | PolicyType | Type of policy | `WebContentFiltering` | Always `WebContentFiltering` |
 | PolicyAction | Allow or Block | `Block`, `Allow` | From URL filtering profile action |
 | Description | Policy description | `Blocked categories from Corp-URL-Filter profile` | From profile/category or generated |
-| RuleType | Type of destination | `FQDN`, `URL`, `webCategory`, `ipAddress` | One type per row |
+| RuleType | Type of destination | `FQDN`, `URL`, `webCategory` | One type per row |
 | RuleDestinations | Semicolon-separated list | `*.example.com;site.com` | Max 300 chars for FQDN/URL/IP |
-| RuleName | Sub-rule identifier | `example.com`, `WebCategories`, `IPs` | For grouping/splitting |
+| RuleName | Sub-rule identifier | `example.com`, `WebCategories` | For grouping/splitting |
 | ReviewNeeded | Manual review flag | `Yes`, `No` | `Yes` if unmapped categories or non-standard action |
 | ReviewDetails | Reason for review | `Alert action requires review; Unmapped categories found` | Semicolon-separated reasons |
 | Provision | Provisioning flag | `Yes`, `No` | `No` if ReviewNeeded is `Yes` |
@@ -439,7 +438,7 @@ Contains all web content filtering policies including custom URL category polici
 
 #### RuleDestinations Field
 - Semicolon-separated list of destinations
-- Character limit: 300 characters for FQDN, URL, and ipAddress types
+- Character limit: 300 characters for FQDN and URL types
 - **Web categories (`webCategory` type) have NO character limit** and are never split
 - If limit exceeded, split into multiple rows with `-2`, `-3` suffix on RuleName
 
@@ -569,7 +568,7 @@ For each custom URL category:
 2. Deduplicate entries (case-insensitive)
 3. Clean each entry using `ConvertTo-CleanDestination` (remove schema, port, query, fragment)
 4. Classify each entry using `Get-DestinationType`:
-   - IPv4 address → validate with `Test-ValidIPv4Address`, classify as `ipAddress`
+   - IPv4 address → WARN and skip (EIA does not support IP address destinations); log the skipped IP and its source category name
    - IPv6 address → WARN and skip (not supported)
    - Contains `/` → classify as `URL`
    - Starts with `*.` → classify as `FQDN`
@@ -577,7 +576,6 @@ For each custom URL category:
 
 #### 2.3 Grouping and Splitting
 - **FQDNs and URLs:** Group by base domain using `Get-BaseDomain`, split by 300-char limit
-- **IP addresses:** Keep as single collection (no domain grouping), split by 300-char limit
 - Use `Split-ByCharacterLimit` for splitting (same as ZIA2EIA)
 
 #### 2.4 Policy Entry Creation
@@ -590,9 +588,9 @@ Create policy entries with default `Block` action:
 | PolicyType | `WebContentFiltering` |
 | PolicyAction | `Block` |
 | Description | From `<description>` element or `Converted from PANW custom URL category: [name]` |
-| RuleType | `FQDN`, `URL`, or `ipAddress` |
+| RuleType | `FQDN` or `URL` |
 | RuleDestinations | Semicolon-separated entries |
-| RuleName | Base domain / `IPs` / with numeric suffix if split |
+| RuleName | Base domain / with numeric suffix if split |
 | ReviewNeeded | `No` |
 | ReviewDetails | (empty) |
 | Provision | `Yes` |
@@ -864,7 +862,7 @@ PAN-DB categories referenced: I
 Destinations classified:
   FQDNs: J
   URLs: K
-  IP addresses: L
+  Skipped (IP addresses - not supported by EIA): L
   Skipped (IPv6/invalid): M
 
 Policies created: N
@@ -1053,9 +1051,8 @@ function Test-PolicyNameFilter {
 |---|---|---|
 | Category Match type | Custom URL category with type `Category Match` | INFO, skip |
 | Empty custom category | No `<member>` entries in `<list>` | WARN, skip |
-| IPv6 address | Destination contains IPv6 | WARN, skip |
-| Invalid IPv4 | Failed validation | WARN, skip |
-| IP with port/path | IP followed by `:` or `/` | WARN, skip |
+| IP address (IPv4) | Destination is an IPv4 address | WARN, skip (EIA does not support IP destinations) |
+| IP address (IPv6) | Destination is an IPv6 address | WARN, skip (EIA does not support IP destinations) |
 | Unmapped PAN-DB category | Not in mapping file | WARN, use `UNMAPPED:` placeholder |
 | Profile group not found | Referenced profile group missing | WARN, skip rule |
 | URL filter profile not found | Referenced profile missing | WARN, skip rule |
@@ -1098,7 +1095,7 @@ All sample files should be created in: `Samples/PANW2EIA/`
 
 #### 4. sample_output_Policies.rename_to_csv
 **Content:** Expected output showing:
-- Custom category policies (FQDN/URL/ipAddress rules)
+- Custom category policies (FQDN/URL rules)
 - Web category policies (block, allow, alert, continue, override)
 - ReviewNeeded flags for non-standard actions and unmapped categories
 - Provision = No for reviewed entries
@@ -1234,8 +1231,8 @@ function Convert-PANW2EIA {
 
 1. **XML Structure Assumption:** XPaths are based on standard Panorama XML schema; actual exports may vary by PAN-OS version
 2. **Category Match custom URL categories:** Not processed (only URL List type is supported)
-3. **IPv6:** Not supported, skipped with warning
-4. **CIDR Ranges:** Not supported for IP addresses
+3. **IP Addresses:** EIA does not support IP address destinations; IPv4 and IPv6 addresses are logged and skipped
+4. **CIDR Ranges:** Not supported (skipped with IP addresses)
 5. **Port Numbers:** Not supported, cleaned from destinations
 6. **Application Filtering:** Requires App Mappings CSV for endpoint-based conversion; unmapped apps are flagged for review
 7. **Zone-based rules:** Source/destination zones are not mapped to EIA (EIA is zoneless)
