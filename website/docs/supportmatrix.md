@@ -63,6 +63,36 @@ Unlike migrations from third-party platforms, GSA export captures existing Globa
 | **Predefined Categories** | Manual export | Supported | Supported | Transformation requires provided mapping file |
 | **User-Defined FQDNs** | Manual export | Supported | Supported | FQDNs listed in User-Defined category |
 
+## Citrix NetScaler Gateway to Entra Private Access
+
+| Feature / Object | Export | Transform | Provision | Notes |
+|---------|--------|-----------|-----------|-------|
+| **AAA Groups → Enterprise Applications** | Manual export | Supported | Supported | Each AAA group maps to one Entra Private Access Enterprise Application |
+| **Authorization Policies** | Manual export | Supported | Supported | IP/subnet/FQDN/port rule expressions parsed. DENY, boolean, and negated policies skipped. |
+| **VPN Intranet Applications** | Manual export | Supported | Supported | Multi-destination entries expanded. ICMP protocol skipped. |
+| **Group Bindings (TCP/UDP consolidation)** | Manual export | Supported | Supported | Same policy bound for TCP+UDP consolidated into single segment |
+| **Conflict Detection** | N/A | Supported | N/A | Cross-app overlap detection for IPs, FQDNs, and wildcards |
+
+## Microsoft Defender for Endpoint to Entra Internet Access
+
+| Feature / Object | Export | Transform | Provision | Notes |
+|---------|--------|-----------|-----------|-------|
+| **Web Content Filtering Policies** | Supported | Supported | Supported | Exported from HAR file. Blocked categories mapped directly. Audited categories converted to Block with review flag. |
+| **URL/Domain Indicators** | Supported | Supported | Supported | Exported from HAR file. Warn/AlertOnly actions flagged for review. |
+| **IP Indicators** | Supported | Not supported | Not supported | Exported from HAR file.
+| **Device Group Scoping** | Supported | Supported | Supported | Exported from HAR file. All device groups → Default profile. Specific groups → Override profiles with placeholder Entra groups. |
+
+## Palo Alto Panorama to Entra Internet Access
+
+| Feature / Object | Export | Transform | Provision | Notes |
+|---------|--------|-----------|-----------|-------|
+| **Custom URL Categories** | Manual export | Supported | Supported | URL List type only. |
+| **URL Filtering Profiles** | Manual export | Supported | Supported | Per-category actions mapped. Alert/continue/override actions flagged for review. |
+| **PAN-DB Predefined Categories** | Manual export | Supported | Supported | Transformation requires provided mapping file. Partial mappings excluded and flagged. |
+| **Security Rules** | Manual export | Supported | Supported | Only allow-action rules with URL filtering profiles processed. |
+| **Application References (App-ID)** | Manual export | Supported | Supported | Optional app mapping file. Mapped apps with endpoints → FQDN policies. Unmapped apps flagged for review. |
+| **Security Profile Aggregation** | N/A | Supported | Supported | Rules with same user/group assignments aggregated into single profile. |
+
 ## Cisco Umbrella to Entra Internet Access
 
 | Feature / Object | Export | Transform | Provision | Notes |
@@ -73,5 +103,3 @@ Unlike migrations from third-party platforms, GSA export captures existing Globa
 | **Category Settings** | Supported | Supported | Supported | Umbrella categories mapped to GSA web categories via provided mapping file. |
 | **Application Settings** | Supported | Supported | Supported | Application controls converted to FQDN-based rules via provided app mapping file. |
 | **Firewall Rules** | Supported | Not implemented | Not implemented | Exported from HAR file |
-| **Security Settings** | Supported | Not implemented | Not implemented | MSP-inherited records tagged |
-| **Selective Decryption Lists** | Supported | Not implemented | Not implemented | SSL/TLS inspection bypass settings |
