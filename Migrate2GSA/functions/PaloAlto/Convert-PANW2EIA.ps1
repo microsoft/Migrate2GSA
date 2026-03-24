@@ -968,9 +968,9 @@ function Convert-PANW2EIA {
                 $eiaAction = switch ($actionName) {
                     'allow'    { "Allow" }
                     'block'    { "Block" }
-                    'alert'    { "Block" }
-                    'continue' { "Block" }
-                    'override' { "Block" }
+                    'alert'    { "Allow" }
+                    'continue' { "Allow" }
+                    'override' { "Allow" }
                 }
 
                 $reviewNeeded = $false
@@ -978,7 +978,7 @@ function Convert-PANW2EIA {
 
                 if ($actionName -in @('alert', 'continue', 'override')) {
                     $reviewNeeded = $true
-                    [void]$reviewReasons.Add("PANW '$actionName' action requires review - mapped to Block")
+                    [void]$reviewReasons.Add("PANW '$actionName' action requires review - mapped to Allow")
                 }
                 if ($partialMappings.Count -gt 0) {
                     $reviewNeeded = $true
