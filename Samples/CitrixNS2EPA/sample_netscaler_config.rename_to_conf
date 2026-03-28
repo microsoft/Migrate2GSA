@@ -1,0 +1,207 @@
+# ============================================================================
+# Sample Citrix NetScaler Gateway Configuration
+# ============================================================================
+# This is a representative sample for testing Convert-CitrixNS2EPA.
+# All names, IPs, and domains are fictitious.
+# ============================================================================
+
+# ────────────────────────────────────────────
+# AAA Groups
+# ────────────────────────────────────────────
+add aaa group ns-az-vpn-developers
+add aaa group ns-az-vpn-finance
+add aaa group ns-az-vpn-operations
+add aaa group ns-az-vpn-dba
+add aaa group ns-az-vpn-external
+add aaa group ns-az-vpn-allstaff
+add aaa group ns-az-vpn-secops
+add aaa group default-deny-group
+
+# ────────────────────────────────────────────
+# Authorization Policies — IP destinations
+# ────────────────────────────────────────────
+
+# Single IP destination, no port clause
+add authorization policy pol_devportal "CLIENT.IP.DST.EQ(10.50.100.10)" ALLOW
+
+# CIDR subnet destination, no port clause
+add authorization policy pol_devnet "CLIENT.IP.DST.IN_SUBNET(10.50.0.0/16)" ALLOW
+
+# Multiple IP destinations via || (OR) in expression (both parsed individually)
+add authorization policy pol_appservers "CLIENT.IP.DST.EQ(10.50.100.20) || CLIENT.IP.DST.EQ(10.50.100.21)" ALLOW
+
+# IP destination with TCP port clause
+add authorization policy pol_sqlserver "CLIENT.IP.DST.EQ(10.60.10.50) && CLIENT.TCP.DSTPORT.EQ(1433)" ALLOW
+
+# Subnet destination with multiple TCP ports
+add authorization policy pol_webfarm "CLIENT.IP.DST.IN_SUBNET(10.70.0.0/24) && (CLIENT.TCP.DSTPORT.EQ(80) || CLIENT.TCP.DSTPORT.EQ(443))" ALLOW
+
+# UDP port clause
+add authorization policy pol_dnsresolvers "CLIENT.IP.DST.IN_SUBNET(10.80.1.0/24) && CLIENT.UDP.DSTPORT.EQ(53)" ALLOW
+
+# Mixed TCP+UDP ports on same destination
+add authorization policy pol_monitoring "CLIENT.IP.DST.EQ(10.90.5.100) && (CLIENT.TCP.DSTPORT.EQ(8443) || CLIENT.UDP.DSTPORT.EQ(161))" ALLOW
+
+# ────────────────────────────────────────────
+# Authorization Policies — FQDN destinations
+# ────────────────────────────────────────────
+
+# FQDN via HOSTNAME.CONTAINS → converted to wildcard *.domain
+add authorization policy pol_erp "HTTP.REQ.HOSTNAME.CONTAINS(\"erp.contoso.local\")" ALLOW
+
+# Multiple FQDN via HOSTNAME.CONTAINS
+add authorization policy pol_intranet "HTTP.REQ.HOSTNAME.CONTAINS(\"portal.contoso.local\") || HTTP.REQ.HOSTNAME.CONTAINS(\"wiki.contoso.local\")" ALLOW
+
+# ────────────────────────────────────────────
+# Authorization Policies — DENY (should be skipped)
+# ────────────────────────────────────────────
+add authorization policy pol_block_external "CLIENT.IP.DST.IN_SUBNET(203.0.113.0/24)" DENY
+
+# ────────────────────────────────────────────
+# Authorization Policies — Negated (should be skipped)
+# ────────────────────────────────────────────
+add authorization policy pol_not_internal "CLIENT.IP.DST.IN_SUBNET(10.0.0.0/8).NOT" ALLOW
+
+# ────────────────────────────────────────────
+# Authorization Policies — Boolean (should be skipped)
+# ────────────────────────────────────────────
+add authorization policy pol_allow_all TRUE ALLOW
+add authorization policy pol_deny_all TRUE DENY
+
+# ────────────────────────────────────────────
+# VPN Intranet Applications — Various destination formats
+# ────────────────────────────────────────────
+
+# Plain FQDN (unquoted)
+add vpn intranetApplication iApp_erpweb ANY erp.contoso.local -destPort 1-65535 -interception TRANSPARENT
+
+# Wildcard FQDN (quoted)
+add vpn intranetApplication iApp_contoso_wildcard ANY "*.contoso.local" -destPort 1-65535 -interception TRANSPARENT
+
+# Single IP address
+add vpn intranetApplication iApp_fileserver01 TCP 10.50.200.10 -destPort 445 -interception TRANSPARENT
+
+# IP range (startIP-endIP)
+add vpn intranetApplication iApp_rfc1918_classA ANY 10.0.0.0-10.255.255.255 -destPort 1-65535 -interception TRANSPARENT
+
+# IP with netmask → should be converted to CIDR (10.60.10.0/24)
+add vpn intranetApplication iApp_dbnet01 ANY 10.60.10.0 -netmask 255.255.255.0 -destPort 1-65535 -interception TRANSPARENT
+
+# IP with netmask /26 → should be converted to CIDR (172.16.50.0/26)
+add vpn intranetApplication iApp_paymentsvc ANY 172.16.50.0 -netmask 255.255.255.192 -destPort 1-65535 -interception TRANSPARENT
+
+# IP with netmask /27 → should be converted to CIDR (192.168.100.0/27)
+add vpn intranetApplication iApp_printnet ANY 192.168.100.0 -netmask 255.255.255.224 -destPort 1-65535 -interception TRANSPARENT
+
+# IP with netmask /25 → should be converted to CIDR (10.70.0.128/25)
+add vpn intranetApplication iApp_webfarm_ext ANY 10.70.0.128 -netmask 255.255.255.128 -destPort 1-65535 -interception TRANSPARENT
+
+# Comma-separated FQDN destinations (quoted)
+add vpn intranetApplication iApp_saas_apis ANY "api.fabrikam.com,auth.fabrikam.com,cdn.fabrikam.com" -destPort 1-65535 -interception TRANSPARENT
+
+# TCP with specific port
+add vpn intranetApplication iApp_rdgateway TCP 10.50.100.50 -destPort 3389 -interception TRANSPARENT
+
+# UDP only
+add vpn intranetApplication iApp_voip UDP 10.80.5.0 -netmask 255.255.255.0 -destPort 5060-5061 -interception TRANSPARENT
+
+# ICMP (should be skipped — unsupported protocol)
+add vpn intranetApplication iApp_ping_test ICMP 10.50.100.1 -destPort 1-65535 -interception TRANSPARENT
+
+# IP range for RFC 1918 Class B
+add vpn intranetApplication iApp_rfc1918_classB ANY 172.16.0.0-172.31.255.255 -destPort 1-65535 -interception TRANSPARENT
+
+# IP range for RFC 1918 Class C
+add vpn intranetApplication iApp_rfc1918_classC ANY 192.168.0.0-192.168.255.255 -destPort 1-65535 -interception TRANSPARENT
+
+# Wildcard FQDN with subdomain
+add vpn intranetApplication iApp_grafana ANY "*.monitoring.contoso.local" -destPort 1-65535 -interception TRANSPARENT
+
+# ────────────────────────────────────────────
+# Bind AAA Group — Policy bindings
+# ────────────────────────────────────────────
+
+# TCP policy bindings (default type)
+bind aaa group ns-az-vpn-developers -policy pol_devportal -priority 100
+bind aaa group ns-az-vpn-developers -policy pol_devnet -priority 200
+bind aaa group ns-az-vpn-developers -policy pol_appservers -priority 300
+bind aaa group ns-az-vpn-developers -policy pol_erp -priority 400
+
+# UDP policy binding
+bind aaa group ns-az-vpn-developers -policy pol_dnsresolvers -priority 500 -type UDP_REQUEST
+
+# Same policy bound to multiple groups with different protocols → consolidated
+bind aaa group ns-az-vpn-operations -policy pol_webfarm -priority 100
+bind aaa group ns-az-vpn-operations -policy pol_webfarm -priority 100 -type UDP_REQUEST
+bind aaa group ns-az-vpn-operations -policy pol_monitoring -priority 200
+
+# Finance group
+bind aaa group ns-az-vpn-finance -policy pol_sqlserver -priority 100
+bind aaa group ns-az-vpn-finance -policy pol_erp -priority 200
+
+# DBA group — multiple IP destinations
+bind aaa group ns-az-vpn-dba -policy pol_sqlserver -priority 100
+bind aaa group ns-az-vpn-dba -policy pol_appservers -priority 200
+
+# ICMP binding (should be skipped)
+bind aaa group ns-az-vpn-secops -policy pol_monitoring -priority 100 -type ICMP_REQUEST
+
+# TCP binding for secops (same policy, different protocol — should work)
+bind aaa group ns-az-vpn-secops -policy pol_monitoring -priority 100
+
+# ────────────────────────────────────────────
+# Bind AAA Group — Intranet application bindings
+# ────────────────────────────────────────────
+
+# Bind various intranet apps to groups
+bind aaa group ns-az-vpn-allstaff -intranetApplication iApp_erpweb
+bind aaa group ns-az-vpn-allstaff -intranetApplication iApp_contoso_wildcard
+bind aaa group ns-az-vpn-allstaff -intranetApplication iApp_saas_apis
+bind aaa group ns-az-vpn-allstaff -intranetApplication iApp_grafana
+
+# Developer group gets RFC 1918 ranges and specific servers
+bind aaa group ns-az-vpn-developers -intranetApplication iApp_rfc1918_classA
+bind aaa group ns-az-vpn-developers -intranetApplication iApp_fileserver01
+bind aaa group ns-az-vpn-developers -intranetApplication iApp_rdgateway
+
+# Finance gets payment network and file server
+bind aaa group ns-az-vpn-finance -intranetApplication iApp_paymentsvc
+bind aaa group ns-az-vpn-finance -intranetApplication iApp_fileserver01
+
+# DBA group — database subnet and web farm extension
+bind aaa group ns-az-vpn-dba -intranetApplication iApp_dbnet01
+bind aaa group ns-az-vpn-dba -intranetApplication iApp_webfarm_ext
+
+# Operations — all RFC 1918 ranges, printer network, VoIP
+bind aaa group ns-az-vpn-operations -intranetApplication iApp_rfc1918_classA
+bind aaa group ns-az-vpn-operations -intranetApplication iApp_rfc1918_classB
+bind aaa group ns-az-vpn-operations -intranetApplication iApp_rfc1918_classC
+bind aaa group ns-az-vpn-operations -intranetApplication iApp_printnet
+bind aaa group ns-az-vpn-operations -intranetApplication iApp_voip
+
+# External group — limited SaaS access only
+bind aaa group ns-az-vpn-external -intranetApplication iApp_saas_apis
+
+# ICMP app bound (intranet app itself is ICMP — should be skipped during transform)
+bind aaa group ns-az-vpn-secops -intranetApplication iApp_ping_test
+
+# ────────────────────────────────────────────
+# Unbound policy — not bound to any group
+# (should appear under GSA-UnboundPolicies with Provision=No)
+# ────────────────────────────────────────────
+add authorization policy pol_legacy_sap "CLIENT.IP.DST.EQ(10.99.1.100) && CLIENT.TCP.DSTPORT.EQ(8000)" ALLOW
+
+# ────────────────────────────────────────────
+# Group with no bindings — should be skipped
+# ────────────────────────────────────────────
+# default-deny-group defined above has no bind statements
+
+# ────────────────────────────────────────────
+# Non-relevant configuration lines (should be ignored)
+# ────────────────────────────────────────────
+add ssl certKey ns-az-vpn-cert -cert ns-az-vpn.cer -key ns-az-vpn.key
+set vpn parameter -splitTunnel ON -transparentInterception ON
+add lb vserver vs_web HTTP 10.50.1.100 80
+bind lb vserver vs_web svc_web1
+add server srv_web1 10.50.100.30
+add serviceGroup svcg_web HTTP

@@ -242,18 +242,67 @@ function Test-PortRangeOverlap {
     }
 }
 
+function ConvertTo-CidrFromNetmask {
+    <#
+    .SYNOPSIS
+        Converts an IP + subnet mask pair to CIDR notation.
+    .EXAMPLE
+        ConvertTo-CidrFromNetmask -IPAddress '13.66.138.0' -Netmask '255.255.255.192'
+        # Returns '13.66.138.0/26'
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$IPAddress,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Netmask
+    )
+
+    try {
+        $maskInt = Convert-IPToInteger -IPAddress $Netmask
+        if ($null -eq $maskInt) {
+            Write-LogMessage "Invalid netmask: $Netmask" -Level "WARN" -Component 'Parse'
+            return $null
+        }
+
+        # Count leading 1-bits to get the prefix length
+        $prefixLength = 0
+        for ($i = 31; $i -ge 0; $i--) {
+            if (($maskInt -band ([uint32]1 -shl $i)) -ne 0) {
+                $prefixLength++
+            }
+            else {
+                break
+            }
+        }
+
+        return "$IPAddress/$prefixLength"
+    }
+    catch {
+        Write-LogMessage "Error converting netmask $Netmask for IP $IPAddress to CIDR: $_" -Level "ERROR" -Component 'Parse'
+        return $null
+    }
+}
+
 function Get-DestinationType {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Destination
     )
 
+    # Single IP address: 10.50.100.10
     if ($Destination -match '^\d{1,3}(\.\d{1,3}){3}$') {
         return "ipAddress"
     }
 
+    # CIDR notation: 10.0.0.0/24
     if ($Destination -match '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$') {
         return "ipRangeCidr"
+    }
+
+    # IP range: 10.0.0.0-10.223.255.255
+    if ($Destination -match '^\d{1,3}(\.\d{1,3}){3}-\d{1,3}(\.\d{1,3}){3}$') {
+        return "ipRange"
     }
 
     return "fqdn"
@@ -431,8 +480,8 @@ function Parse-IntranetApplication {
     #>
     param([string]$Line)
 
-    # add vpn intranetApplication <appName> <protocol> "<destination>" -destPort <portRange> [...]
-    # Also handle unquoted destinations
+    # add vpn intranetApplication <appName> <protocol> "<destination>" [-netmask <mask>] -destPort <portRange> [...]
+    # Destination can be: FQDN, IP, IP-IP range, or IP followed by -netmask
     if ($Line -notmatch '(?i)^add\s+vpn\s+intranetApplication\s+(\S+)\s+(TCP|UDP|ANY|ICMP)\s+"?([^"]+?)"?\s+-destPort\s+(\S+)') {
         return $null
     }
@@ -441,6 +490,18 @@ function Parse-IntranetApplication {
     $protocol = $Matches[2].ToUpper()
     $destinationStr = $Matches[3].Trim()
     $portRange = $Matches[4]
+
+    # Handle "-netmask <mask>" suffix: convert "IP -netmask MASK" to CIDR notation
+    if ($destinationStr -match '^(\d{1,3}(?:\.\d{1,3}){3})\s+-netmask\s+(\d{1,3}(?:\.\d{1,3}){3})$') {
+        $cidr = ConvertTo-CidrFromNetmask -IPAddress $Matches[1] -Netmask $Matches[2]
+        if ($null -ne $cidr) {
+            $destinationStr = $cidr
+            Write-LogMessage "Converted netmask notation to CIDR for app '$appName': $destinationStr" -Level "INFO" -Component 'Parse'
+        }
+        else {
+            Write-LogMessage "Failed to convert netmask notation for app '$appName': $destinationStr" -Level "WARN" -Component 'Parse'
+        }
+    }
 
     # Split comma-separated destinations and clean each
     $destinations = @($destinationStr -split ',' | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -704,7 +765,7 @@ function Convert-PolicyToSegments {
         }
     }
 
-    return $segments
+    return , $segments
 }
 
 function Convert-IntranetAppToSegments {
@@ -733,7 +794,7 @@ function Convert-IntranetAppToSegments {
 
     if ($null -eq $protocolStr) {
         Write-LogMessage "Skipping intranet application '$($IntranetApp.Name)' with unsupported protocol '$($IntranetApp.Protocol)'" -Level "WARN" -Component 'Transform'
-        return $segments
+        return , $segments
     }
 
     foreach ($dest in $IntranetApp.Destinations) {
@@ -759,7 +820,7 @@ function Convert-IntranetAppToSegments {
         $SegmentCounter.Value++
     }
 
-    return $segments
+    return , $segments
 }
 
 #endregion
@@ -1123,12 +1184,22 @@ try {
             $hasConflict = $false
             $conflictingApps = @()
 
-            if ($destType -eq 'ipAddress' -or $destType -eq 'ipRangeCidr') {
+            if ($destType -eq 'ipAddress' -or $destType -eq 'ipRangeCidr' -or $destType -eq 'ipRange') {
                 # Convert to IP range for comparison
                 $currentRange = if ($destType -eq 'ipAddress') {
                     $ipInt = Convert-IPToInteger -IPAddress $cleanDomain
                     if ($null -ne $ipInt) {
                         @{ Start = $ipInt; End = $ipInt }
+                    }
+                    else { $null }
+                }
+                elseif ($destType -eq 'ipRange') {
+                    # startIP-endIP format
+                    $rangeParts = $cleanDomain -split '-', 2
+                    $startInt = Convert-IPToInteger -IPAddress $rangeParts[0]
+                    $endInt = Convert-IPToInteger -IPAddress $rangeParts[1]
+                    if ($null -ne $startInt -and $null -ne $endInt) {
+                        @{ Start = $startInt; End = $endInt }
                     }
                     else { $null }
                 }
