@@ -2,6 +2,7 @@
 sidebar_position: 1
 title: Introduction
 description: Overview of CSV-based configuration for Global Secure Access deployments and migrations.
+keywords: [CSV configuration, Global Secure Access, migration, deployment, Migrate2GSA]
 ---
 
 # Working with CSV Files

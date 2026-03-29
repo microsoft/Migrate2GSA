@@ -1,6 +1,8 @@
 ---
 sidebar_position: 30
 title: Export ZPA Config
+description: Export Zscaler Private Access configuration to JSON files for backup and migration to Entra Private Access.
+keywords: [ZScaler, ZPA, export, backup, migration, Entra Private Access, Global Secure Access]
 ---
 
 ### Overview

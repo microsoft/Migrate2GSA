@@ -1,5 +1,8 @@
 ---
 sidebar_position: 1
+title: EIA Configuration Model
+description: Core concepts of the Entra Internet Access configuration model including filtering policies, policy rules, security profiles, and Conditional Access.
+keywords: [Entra Internet Access, EIA, configuration model, filtering policies, security profiles, web categories]
 ---
 
 # Entra Internet Access Configuration Model

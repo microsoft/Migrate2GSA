@@ -1,6 +1,8 @@
 ---
 sidebar_position: 2
 title: Entra Internet Access Export
+description: Export Entra Internet Access configuration to CSV for backup, disaster recovery, and tenant-to-tenant migration.
+keywords: [Entra Internet Access, EIA, export, backup, disaster recovery, tenant migration, Global Secure Access]
 ---
 
 # Export Entra Internet Access Configuration

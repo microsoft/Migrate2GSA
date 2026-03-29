@@ -1,6 +1,8 @@
 ---
 sidebar_position: 60
 title: ZIA to Entra Internet Access (EIA) Configuration Transformer
+description: Convert ZScaler Internet Access URL filtering policies and categories to Entra Internet Access format.
+keywords: [ZScaler, ZIA, Entra Internet Access, EIA, URL filtering, web categories, migration, conversion]
 ---
 
 ## Overview

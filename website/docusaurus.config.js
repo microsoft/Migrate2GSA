@@ -22,6 +22,13 @@ const config = {
   // Microsoft Clarity analytics
   headTags: [
     {
+      tagName: 'meta',
+      attributes: {
+        name: 'robots',
+        content: 'index, follow',
+      },
+    },
+    {
       tagName: 'script',
       attributes: {
         type: 'text/javascript',
@@ -73,7 +80,7 @@ const config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
+            'https://github.com/microsoft/Migrate2GSA/tree/main/website/',
         },
         // blog: {
         //   showReadingTime: true,
@@ -102,6 +109,10 @@ const config = {
     ({
       // Replace with your project's social card
       image: 'img/Migrate2GSA.png',
+      metadata: [
+        { name: 'keywords', content: 'Global Secure Access migration, Zscaler, Netskope, Citrix Netscaler, Forcepoint, Palo Alto, Cisco Umbrella, Entra Internet Access, Entra Private Access, Migrate2GSA, Microsoft Entra' },
+        { name: 'description', content: 'Migrate2GSA - PowerShell toolkit to migrate from SSE solutions to Microsoft Global Secure Access' },
+      ],
       colorMode: {
         respectPrefersColorScheme: true,
       },

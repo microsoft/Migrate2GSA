@@ -1,6 +1,8 @@
 ---
 sidebar_position: 2
 title: Entra Internet Access (EIA) Automated Provisioning
+description: Automatically provision Entra Internet Access filtering policies, security profiles, and Conditional Access policies from CSV files.
+keywords: [EIA provisioning, Entra Internet Access, filtering policies, security profiles, Conditional Access, automation]
 ---
 
 

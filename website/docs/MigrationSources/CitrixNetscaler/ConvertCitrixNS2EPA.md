@@ -1,6 +1,8 @@
 ---
 sidebar_position: 10
 title: Citrix NetScaler to Entra Private Access (EPA) Configuration Transformer
+description: Convert Citrix NetScaler Gateway VPN configuration to Entra Private Access enterprise application format.
+keywords: [Citrix, NetScaler, VPN, Entra Private Access, EPA, migration, conversion, Global Secure Access]
 ---
 
 ## Overview

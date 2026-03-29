@@ -1,6 +1,8 @@
 ---
 sidebar_position: 40
 title: ZPA to Entra Private Access (EPA) Configuration Transformer
+description: Convert Zscaler Private Access application segments to Entra Private Access enterprise application format.
+keywords: [ZScaler, ZPA, Entra Private Access, EPA, application segments, migration, conversion]
 ---
 
 ### Overview

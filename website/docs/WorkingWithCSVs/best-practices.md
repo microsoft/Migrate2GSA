@@ -2,6 +2,7 @@
 sidebar_position: 4
 title: Best Practices
 description: Cross-product best practices for editing, testing, and deploying CSV configurations.
+keywords: [best practices, CSV, validation, testing, Global Secure Access, deployment]
 ---
 
 # CSV Configuration Best Practices

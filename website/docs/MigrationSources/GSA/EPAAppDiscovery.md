@@ -1,6 +1,8 @@
 ---
 sidebar_position: 3
 title: Entra Private Access App Discovery
+description: Export Entra Private Access App Discovery data to CSV for application onboarding and provisioning.
+keywords: [Entra Private Access, EPA, app discovery, application onboarding, Global Secure Access]
 ---
 
 # Export Entra Private Access App Discovery

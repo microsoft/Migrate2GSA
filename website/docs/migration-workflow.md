@@ -1,5 +1,8 @@
 ---
 sidebar_position: 4
+title: Migration Workflow
+description: Core concepts and workflow for migrating security configurations to Microsoft Global Secure Access using Migrate2GSA.
+keywords: [migration workflow, export, convert, provision, Global Secure Access, Migrate2GSA]
 ---
 
 # Migration Workflow

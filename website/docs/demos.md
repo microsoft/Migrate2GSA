@@ -1,5 +1,8 @@
 ---
 sidebar_position: 2
+title: Demos
+description: Video demonstrations of Migrate2GSA migration workflows for ZScaler, Netskope, Forcepoint, and other SSE platforms.
+keywords: [Migrate2GSA, demo, video, migration walkthrough, Global Secure Access]
 ---
 
 # Demos

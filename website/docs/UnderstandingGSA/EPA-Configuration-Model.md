@@ -1,5 +1,8 @@
 ---
 sidebar_position: 2
+title: EPA Configuration Model
+description: Core concepts of the Entra Private Access configuration model including enterprise applications, application segments, and connectors.
+keywords: [Entra Private Access, EPA, configuration model, enterprise applications, application segments, connectors]
 ---
 
 # Entra Private Access Configuration Model

@@ -1,6 +1,8 @@
 ---
 sidebar_position: 10
 title: ZPA to EPA Migration Guide
+description: Conceptual mapping guide for migrating from Zscaler Private Access to Microsoft Entra Private Access.
+keywords: [ZScaler, ZPA, Entra Private Access, EPA, migration guide, conceptual mapping, Global Secure Access]
 ---
 
 # Migrating from Zscaler Private Access to Microsoft Entra Private Access

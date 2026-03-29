@@ -1,5 +1,8 @@
 ---
 sidebar_position: 3
+title: Installation and Setup
+description: How to install and configure the Migrate2GSA PowerShell module for Global Secure Access migrations.
+keywords: [Migrate2GSA, installation, setup, PowerShell module, Global Secure Access]
 ---
 
 # Installation and Setup

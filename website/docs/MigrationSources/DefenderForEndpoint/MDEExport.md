@@ -1,6 +1,8 @@
 ---
 sidebar_position: 1
 title: Export MDE Web Filtering Config
+description: Export Microsoft Defender for Endpoint web filtering configuration from HAR files for migration to Entra Internet Access.
+keywords: [Microsoft Defender for Endpoint, MDE, web filtering, export, HAR file, migration, Global Secure Access]
 ---
 
 ## Overview

@@ -1,6 +1,8 @@
 ---
 sidebar_position: 2
 title: Cisco Umbrella to Entra Internet Access (EIA) Configuration Transformer
+description: Convert Cisco Umbrella DNS and web policies to Entra Internet Access filtering policies and security profiles.
+keywords: [Cisco Umbrella, Entra Internet Access, EIA, DNS policies, web filtering, migration, conversion]
 ---
 
 ## Overview

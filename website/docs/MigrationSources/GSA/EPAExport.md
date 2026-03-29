@@ -1,6 +1,8 @@
 ---
 sidebar_position: 1
 title: Entra Private Access Export
+description: Export Entra Private Access configuration to CSV for backup, disaster recovery, and tenant-to-tenant migration.
+keywords: [Entra Private Access, EPA, export, backup, disaster recovery, tenant migration, Global Secure Access]
 ---
 
 # Export Entra Private Access Configuration

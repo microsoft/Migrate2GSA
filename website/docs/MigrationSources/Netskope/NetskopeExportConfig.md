@@ -1,6 +1,8 @@
 ---
 sidebar_position: 1
 title: Export Netskope Config
+description: Export Netskope configurations to JSON files for backup and migration to Global Secure Access.
+keywords: [Netskope, export, backup, migration, NPA, NSWG, Global Secure Access]
 ---
 
 ## Overview

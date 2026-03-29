@@ -1,5 +1,8 @@
 ---
 sidebar_position: 6
+title: Support Matrix
+description: Comprehensive overview of Migrate2GSA capabilities across migration scenarios including export, convert, and provisioning support.
+keywords: [support matrix, migration capabilities, Entra Internet Access, Entra Private Access, Global Secure Access]
 ---
 
 # Support Matrix

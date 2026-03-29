@@ -1,6 +1,8 @@
 ---
 sidebar_position: 50
 title: Export ZIA Config
+description: Export Zscaler Internet Access configuration to JSON files for backup and migration to Entra Internet Access.
+keywords: [ZScaler, ZIA, export, backup, migration, Entra Internet Access, Global Secure Access]
 ---
 
 The `Export-ZIAConfig` function is designed to:

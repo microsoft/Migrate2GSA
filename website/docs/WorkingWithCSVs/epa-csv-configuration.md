@@ -2,6 +2,7 @@
 sidebar_position: 3
 title: EPA CSV Configuration
 description: Complete guide to Entra Private Access CSV file structure, validation, and samples.
+keywords: [EPA, CSV, Entra Private Access, enterprise applications, application segments, configuration]
 ---
 
 # Entra Private Access CSV Configuration

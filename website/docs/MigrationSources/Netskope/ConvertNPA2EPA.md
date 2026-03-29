@@ -1,6 +1,8 @@
 ---
 sidebar_position: 2
 title: NPA to Entra Private Access (EPA) Configuration Transformer
+description: Convert Netskope Private Access applications and policies to Entra Private Access enterprise application format.
+keywords: [Netskope, NPA, Entra Private Access, EPA, private access, migration, conversion]
 ---
 
 ## Overview

@@ -1,6 +1,8 @@
 ---
 sidebar_position: 1
 title: Entra Private Access (EPA) Automated Provisioning
+description: Automatically provision Entra Private Access enterprise applications and application segments from CSV configuration files.
+keywords: [EPA provisioning, Entra Private Access, enterprise applications, application segments, automation]
 ---
 
 The [Migrate2GSA Toolkit](https://github.com/microsoft/Migrate2GSA) not only helps migration projects, it also includes a set of common GSA provisioning tools to streamline your GSA configuration provisioning process.

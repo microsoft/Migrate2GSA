@@ -1,6 +1,8 @@
 ---
 sidebar_position: 1
 title: Forcepoint Web Security to Entra Internet Access (EIA) Configuration Transformer
+description: Convert Forcepoint Web Security policies and categories to Entra Internet Access format.
+keywords: [Forcepoint, web security, Entra Internet Access, EIA, web filtering, migration, conversion]
 ---
 
 ## Overview

@@ -2,6 +2,7 @@
 sidebar_position: 5
 title: Migration Scenarios
 description: Quick reference guide for finding the right migration workflow based on your source platform and target configuration.
+keywords: [migration scenarios, ZScaler, Netskope, Forcepoint, Cisco Umbrella, Citrix, Global Secure Access]
 ---
 
 # Migration Scenarios

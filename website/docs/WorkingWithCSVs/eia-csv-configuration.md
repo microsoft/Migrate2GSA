@@ -2,6 +2,7 @@
 sidebar_position: 2
 title: EIA CSV Configuration
 description: Complete guide to Entra Internet Access CSV file structure, validation, and samples.
+keywords: [EIA, CSV, Entra Internet Access, web filtering, security profiles, configuration]
 ---
 
 # Entra Internet Access CSV Configuration

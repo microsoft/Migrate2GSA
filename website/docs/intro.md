@@ -1,5 +1,8 @@
 ---
 sidebar_position: 1
+title: Introduction
+description: Overview of Migrate2GSA, a PowerShell toolkit for migrating from SSE solutions to Microsoft Global Secure Access.
+keywords: [Migrate2GSA, Global Secure Access, SSE migration, PowerShell, Microsoft Entra]
 ---
 
 # Introduction

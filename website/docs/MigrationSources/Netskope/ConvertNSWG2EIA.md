@@ -1,6 +1,8 @@
 ---
 sidebar_position: 3
 title: NSWG to Entra Internet Access (EIA) Configuration Transformer
+description: Convert Netskope Secure Web Gateway policies and categories to Entra Internet Access format.
+keywords: [Netskope, NSWG, Entra Internet Access, EIA, web gateway, URL filtering, migration, conversion]
 ---
 
 ## Overview

@@ -1,6 +1,8 @@
 ---
 sidebar_position: 1
 title: Export Cisco Umbrella Config
+description: Export Cisco Umbrella DNS and web policy configuration from HAR files for migration to Entra Internet Access.
+keywords: [Cisco Umbrella, export, HAR file, DNS policies, web policies, migration, Global Secure Access]
 ---
 
 ## Overview
