@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EIA Greenfield Wizard — PROTOTYPE</title>
+  <script src="eia-categories.js"></script>
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      background: #f5f6fa;
+      color: #1a1a2e;
+    }
+    a { color: #0078d4; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Prototype Banner ─────────────────────────────────────────── */
+    #prototype-banner {
+      background: #fff4ce;
+      border-bottom: 2px solid #f0c000;
+      color: #5c4000;
+      text-align: center;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    #prototype-banner span { font-weight: 400; margin-left: 8px; }
+
+    /* ── Header ───────────────────────────────────────────────────── */
+    header {
+      background: #0078d4;
+      color: #fff;
+      padding: 20px 32px 16px;
+    }
+    header h1 { font-size: 22px; font-weight: 600; }
+    header p  { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+
+    /* ── Layout ───────────────────────────────────────────────────── */
+    main {
+      max-width: 1100px;
+      margin: 28px auto;
+      padding: 0 20px;
+    }
+
+    /* ── Info Box ─────────────────────────────────────────────────── */
+    .info-box {
+      background: #e6f2fd;
+      border-left: 4px solid #0078d4;
+      border-radius: 4px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .info-box strong { display: block; margin-bottom: 4px; font-size: 14px; }
+
+    /* ── Section Card ─────────────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+    .card h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      color: #003a70;
+      border-bottom: 1px solid #e8e8e8;
+      padding-bottom: 8px;
+    }
+
+    /* ── Buttons ──────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .btn-primary   { background: #0078d4; color: #fff; }
+    .btn-primary:hover { background: #005fa3; }
+    .btn-secondary { background: #fff; color: #0078d4; border: 1px solid #0078d4; }
+    .btn-secondary:hover { background: #e6f2fd; }
+    .btn-danger    { background: #fff; color: #c00; border: 1px solid #c00; }
+    .btn-danger:hover { background: #fdf0f0; }
+    .btn-success   { background: #107c10; color: #fff; }
+    .btn-success:hover { background: #0a5c0a; }
+    .btn:disabled  { opacity: 0.45; cursor: not-allowed; }
+
+    /* ── Persona Table ────────────────────────────────────────────── */
+    #persona-table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th {
+      background: #f0f4f8;
+      text-align: left;
+      padding: 9px 12px;
+      font-weight: 600;
+      color: #003a70;
+      border-bottom: 2px solid #cdd6e0;
+    }
+    td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #eee;
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f7fafd; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-block { background: #fde7e9; color: #c00; }
+    .badge-allow { background: #dff6dd; color: #107c10; }
+
+    #empty-state {
+      text-align: center;
+      padding: 32px;
+      color: #777;
+      font-size: 13px;
+    }
+
+    /* ── Export Row ───────────────────────────────────────────────── */
+    .export-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 16px;
+    }
+
+    /* ── Modal Overlay ────────────────────────────────────────────── */
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 100;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 16px;
+      overflow-y: auto;
+    }
+    #modal-overlay.open { display: flex; }
+
+    #modal {
+      background: #fff;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 720px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      padding: 28px;
+      position: relative;
+    }
+    #modal h2 {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      color: #003a70;
+    }
+
+    /* ── Modal Form Fields ────────────────────────────────────────── */
+    .field-group { margin-bottom: 18px; }
+    .field-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 5px;
+      font-size: 13px;
+    }
+    .field-group input[type="text"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .field-group input[type="text"]:focus {
+      outline: none;
+      border-color: #0078d4;
+      box-shadow: 0 0 0 2px rgba(0,120,212,0.2);
+    }
+    .field-hint { font-size: 11px; color: #666; margin-top: 4px; }
+    .field-error { font-size: 11px; color: #c00; margin-top: 4px; display: none; }
+
+    /* ── Filtering Model Radio ────────────────────────────────────── */
+    .model-options { display: flex; gap: 12px; flex-wrap: wrap; }
+    .model-option {
+      flex: 1;
+      min-width: 220px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      padding: 12px 14px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .model-option:hover { border-color: #0078d4; background: #f0f7ff; }
+    .model-option.selected { border-color: #0078d4; background: #e6f2fd; }
+    .model-option input[type="radio"] { margin-right: 7px; accent-color: #0078d4; }
+    .model-option strong { font-size: 13px; }
+    .model-option p { font-size: 11px; color: #555; margin-top: 4px; }
+    .model-option .model-recommended {
+      font-size: 10px;
+      background: #107c10;
+      color: #fff;
+      padding: 1px 6px;
+      border-radius: 8px;
+      margin-left: 6px;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+
+    /* ── Category Picker ──────────────────────────────────────────── */
+    #category-section label { font-weight: 600; font-size: 13px; }
+
+    .cat-group {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .cat-group-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #f4f6fa;
+      padding: 9px 14px;
+      cursor: pointer;
+      user-select: none;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .cat-group-header:hover { background: #eaeff7; }
+    .cat-group-header .group-count {
+      margin-left: auto;
+      font-size: 11px;
+      color: #0078d4;
+      font-weight: 700;
+    }
+    .cat-group-header .chevron {
+      font-size: 11px;
+      transition: transform 0.2s;
+      color: #666;
+    }
+    .cat-group-header.expanded .chevron { transform: rotate(90deg); }
+
+    .cat-group-body {
+      display: none;
+      padding: 10px 14px 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 6px 16px;
+    }
+    .cat-group-body.collapsed { display: none; }
+
+    .cat-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .cat-item input[type="checkbox"] { accent-color: #0078d4; cursor: pointer; }
+
+    /* ── Summary Bar ──────────────────────────────────────────────── */
+    #summary-bar {
+      margin-top: 14px;
+      padding: 10px 14px;
+      border-radius: 5px;
+      font-size: 13px;
+      background: #f0f4f8;
+      border-left: 4px solid #0078d4;
+    }
+    #summary-bar.warn-bar { background: #fff4ce; border-left-color: #f0c000; }
+
+    /* ── Modal Footer ─────────────────────────────────────────────── */
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 22px;
+      padding-top: 16px;
+      border-top: 1px solid #eee;
+    }
+
+    /* ── CSV Preview ──────────────────────────────────────────────── */
+    .preview-wrap {
+      margin-top: 16px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #f4f6fa;
+      padding: 8px 14px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .preview-body {
+      overflow-x: auto;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .preview-body pre {
+      font-size: 11px;
+      padding: 12px;
+      white-space: pre;
+      color: #222;
+      background: #fafafa;
+    }
+
+    /* ── Footer ───────────────────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 11px;
+      color: #999;
+      border-top: 1px solid #e0e0e0;
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Prototype Banner ──────────────────────────────────────────────────── -->
+<div id="prototype-banner">
+  ⚠ PROTOTYPE — Work in progress.
+  <span>This tool is experimental. Review all generated CSV files before provisioning.</span>
+</div>
+
+<!-- ── Header ────────────────────────────────────────────────────────────── -->
+<header>
+  <h1>Entra Internet Access — Greenfield Configuration Wizard</h1>
+  <p>Generate ready-to-use <code>policies.csv</code> and <code>security_profiles.csv</code> files for <code>Start-EntraInternetAccessProvisioning</code></p>
+</header>
+
+<main>
+
+  <!-- ── Info box ───────────────────────────────────────────────────────── -->
+  <div class="info-box">
+    <strong>How it works</strong>
+    Define one persona per user segment (e.g. Finance, Marketing, Developers). For each persona, choose a filtering model and select which web categories to block or allow.
+    The wizard generates two CSV files that you can import directly using the
+    <a href="https://github.com/microsoft/Migrate2GSA" target="_blank">Migrate2GSA</a>
+    PowerShell module's <code>Start-EntraInternetAccessProvisioning</code> cmdlet.
+    <br/><br/>
+    <strong>Tip:</strong> "Allow all, block exceptions" is the recommended starting model — it only requires selecting the categories you want to block.
+  </div>
+
+  <!-- ── Persona builder card ───────────────────────────────────────────── -->
+  <div class="card">
+    <h2>User Personas</h2>
+
+    <div id="persona-table-wrap">
+      <div id="empty-state">No personas yet. Click <strong>+ Add Persona</strong> to get started.</div>
+      <table id="persona-table" style="display:none">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Persona Name</th>
+            <th>Filtering Model</th>
+            <th>Categories</th>
+            <th>Generated Policy Name</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="persona-tbody"></tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+      <button class="btn btn-primary" onclick="openModal()">+ Add Persona</button>
+    </div>
+  </div>
+
+  <!-- ── Export card ────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Export CSV Files</h2>
+    <p style="font-size:13px; color:#555; margin-bottom:14px;">
+      Download both files and place them in the same folder. Run <code>Start-EntraInternetAccessProvisioning</code> with <code>-PoliciesCsvPath</code> and <code>-SecurityProfilesCsvPath</code>.
+    </p>
+
+    <div class="export-row">
+      <button class="btn btn-success" id="btn-dl-policies" disabled onclick="downloadCsv('policies')">
+        ⬇ Download policies.csv
+      </button>
+      <button class="btn btn-success" id="btn-dl-profiles" disabled onclick="downloadCsv('profiles')">
+        ⬇ Download security_profiles.csv
+      </button>
+    </div>
+
+    <!-- Inline previews -->
+    <div id="preview-policies" class="preview-wrap" style="display:none; margin-top:18px;">
+      <div class="preview-header" onclick="togglePreview('policies-body')">
+        policies.csv preview <span id="policies-chevron">▶</span>
+      </div>
+      <div class="preview-body collapsed" id="policies-body">
+        <pre id="policies-preview-content"></pre>
+      </div>
+    </div>
+
+    <div id="preview-profiles" class="preview-wrap" style="display:none; margin-top:12px;">
+      <div class="preview-header" onclick="togglePreview('profiles-body')">
+        security_profiles.csv preview <span id="profiles-chevron">▶</span>
+      </div>
+      <div class="preview-body collapsed" id="profiles-body">
+        <pre id="profiles-preview-content"></pre>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── Modal: Persona Editor ─────────────────────────────────────────────── -->
+<div id="modal-overlay">
+  <div id="modal">
+    <h2 id="modal-title">Add Persona</h2>
+
+    <!-- Persona name -->
+    <div class="field-group">
+      <label for="input-name">Persona Name <span style="color:#c00">*</span></label>
+      <input type="text" id="input-name" placeholder="e.g. Finance, Marketing, Developers" maxlength="60" />
+      <div class="field-hint">Used to name the generated policy and security profile. Letters, numbers, hyphens and underscores only.</div>
+      <div class="field-error" id="err-name"></div>
+    </div>
+
+    <!-- Filtering model -->
+    <div class="field-group">
+      <label>Filtering Model <span style="color:#c00">*</span></label>
+      <div class="model-options">
+        <label class="model-option selected" id="opt-allow-except">
+          <input type="radio" name="model" value="allow-except" checked onchange="onModelChange()" />
+          <strong>Allow all, block exceptions <span class="model-recommended">Recommended</span></strong>
+          <p>All internet access is allowed. Select the categories you want to <strong>block</strong>.</p>
+        </label>
+        <label class="model-option" id="opt-block-except">
+          <input type="radio" name="model" value="block-except" onchange="onModelChange()" />
+          <strong>Block all, allow exceptions</strong>
+          <p>All internet access is blocked. Select the categories you want to <strong>allow</strong>. All other categories will be blocked.</p>
+        </label>
+      </div>
+    </div>
+
+    <!-- Category picker -->
+    <div class="field-group" id="category-section">
+      <label id="cat-picker-label">Select categories to block:</label>
+      <div id="cat-groups-container" style="margin-top:8px;"></div>
+      <div class="field-error" id="err-cats"></div>
+    </div>
+
+    <!-- Summary bar -->
+    <div id="summary-bar">Select categories above to see a summary.</div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="savePersona()">Save Persona</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  EIA Greenfield Wizard — PROTOTYPE |
+  <a href="https://github.com/microsoft/Migrate2GSA" target="_blank">Migrate2GSA on GitHub</a> |
+  Generated CSVs require review before production use.
+</footer>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+let personas = [];     // array of { id, name, model, selectedCategories }
+let editingId = null;  // null = new persona, otherwise persona id being edited
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modal open / close
+// ─────────────────────────────────────────────────────────────────────────────
+function openModal(personaId) {
+  editingId = personaId ?? null;
+  const overlay = document.getElementById('modal-overlay');
+  overlay.classList.add('open');
+
+  if (editingId !== null) {
+    const p = personas.find(x => x.id === editingId);
+    document.getElementById('modal-title').textContent = `Edit Persona — ${p.name}`;
+    document.getElementById('input-name').value = p.name;
+    document.querySelector(`input[name="model"][value="${p.model}"]`).checked = true;
+    updateModelUI(p.model);
+    buildCategoryPicker(p.selectedCategories);
+  } else {
+    document.getElementById('modal-title').textContent = 'Add Persona';
+    document.getElementById('input-name').value = '';
+    document.querySelector('input[name="model"][value="allow-except"]').checked = true;
+    updateModelUI('allow-except');
+    buildCategoryPicker([]);
+  }
+  clearErrors();
+  updateSummary();
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  editingId = null;
+}
+
+// Close on overlay click
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Category Picker — build grouped checkboxes
+// ─────────────────────────────────────────────────────────────────────────────
+function buildCategoryPicker(preselected) {
+  const container = document.getElementById('cat-groups-container');
+  container.innerHTML = '';
+
+  EIA_CATEGORY_GROUPS.forEach(group => {
+    const cats = getCategoriesByGroup(group);
+    const groupEl = document.createElement('div');
+    groupEl.className = 'cat-group';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'cat-group-header';
+    header.innerHTML = `
+      <input type="checkbox" class="group-select-all" data-group="${group}" title="Select all in group" />
+      <span>${group}</span>
+      <span class="group-count" id="gc-${group.replace(/\s/g,'-')}">0 / ${cats.length}</span>
+      <span class="chevron">▶</span>
+    `;
+    header.addEventListener('click', e => {
+      if (e.target.tagName === 'INPUT') return; // let checkbox handle itself
+      const body = groupEl.querySelector('.cat-group-body');
+      const expanded = !body.classList.contains('collapsed');
+      body.classList.toggle('collapsed', expanded);
+      header.querySelector('.chevron').style.transform = expanded ? '' : 'rotate(90deg)';
+    });
+
+    // Select-all checkbox
+    const selectAll = header.querySelector('.group-select-all');
+    selectAll.addEventListener('change', () => {
+      groupEl.querySelectorAll('.cat-item input[type="checkbox"]').forEach(cb => {
+        cb.checked = selectAll.checked;
+      });
+      updateGroupCount(group);
+      updateSummary();
+    });
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'cat-group-body collapsed';
+
+    cats.forEach(cat => {
+      const item = document.createElement('label');
+      item.className = 'cat-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = cat.name;
+      cb.checked = preselected.includes(cat.name);
+      cb.addEventListener('change', () => { updateGroupCount(group); updateSummary(); });
+      item.appendChild(cb);
+      item.appendChild(document.createTextNode(cat.displayName));
+      body.appendChild(item);
+    });
+
+    groupEl.appendChild(header);
+    groupEl.appendChild(body);
+    container.appendChild(groupEl);
+    updateGroupCount(group);
+  });
+}
+
+function updateGroupCount(group) {
+  const container = document.getElementById('cat-groups-container');
+  const cats = getCategoriesByGroup(group);
+  const checked = [...container.querySelectorAll(`.cat-item input[value]`)]
+    .filter(cb => getCategoriesByGroup(group).some(c => c.name === cb.value) && cb.checked)
+    .length;
+  const el = document.getElementById(`gc-${group.replace(/\s/g,'-')}`);
+  if (el) el.textContent = `${checked} / ${cats.length}`;
+
+  // Sync group select-all state
+  const allCbs = container.querySelectorAll('.cat-item input[type="checkbox"]');
+  const groupCbs = [...allCbs].filter(cb => cats.some(c => c.name === cb.value));
+  const groupSelectAll = container.querySelector(`.group-select-all[data-group="${group}"]`);
+  if (groupSelectAll) {
+    groupSelectAll.checked = groupCbs.length > 0 && groupCbs.every(cb => cb.checked);
+    groupSelectAll.indeterminate = groupCbs.some(cb => cb.checked) && !groupCbs.every(cb => cb.checked);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Filtering model change
+// ─────────────────────────────────────────────────────────────────────────────
+function onModelChange() {
+  const model = document.querySelector('input[name="model"]:checked').value;
+  updateModelUI(model);
+  updateSummary();
+}
+
+function updateModelUI(model) {
+  document.getElementById('opt-allow-except').classList.toggle('selected', model === 'allow-except');
+  document.getElementById('opt-block-except').classList.toggle('selected', model === 'block-except');
+  document.getElementById('cat-picker-label').textContent =
+    model === 'allow-except'
+      ? 'Select categories to block:'
+      : 'Select categories to allow (everything else will be blocked):';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Summary bar
+// ─────────────────────────────────────────────────────────────────────────────
+function updateSummary() {
+  const model = document.querySelector('input[name="model"]:checked')?.value ?? 'allow-except';
+  const selected = getSelectedCategories();
+  const bar = document.getElementById('summary-bar');
+  const total = EIA_CATEGORIES.length;
+
+  if (model === 'allow-except') {
+    if (selected.length === 0) {
+      bar.className = 'info-box';
+      bar.style.cssText = 'margin-top:14px;padding:10px 14px;border-radius:5px;font-size:13px;background:#f0f4f8;border-left:4px solid #0078d4;';
+      bar.textContent = 'No categories selected — nothing will be blocked for this persona.';
+    } else {
+      bar.style.cssText = 'margin-top:14px;padding:10px 14px;border-radius:5px;font-size:13px;background:#fde7e9;border-left:4px solid #c00;';
+      bar.innerHTML = `<strong>${selected.length}</strong> categor${selected.length===1?'y':'ies'} will be <strong>blocked</strong>.`;
+    }
+  } else {
+    // block-except: selected = allowed; blocked = everything else
+    const blockedCount = total - selected.length;
+    if (selected.length === 0) {
+      bar.style.cssText = 'margin-top:14px;padding:10px 14px;border-radius:5px;font-size:13px;background:#fff4ce;border-left:4px solid #f0c000;';
+      bar.innerHTML = `No categories allowed — <strong>all ${total} categories</strong> will be blocked.`;
+    } else if (blockedCount > 50) {
+      bar.style.cssText = 'margin-top:14px;padding:10px 14px;border-radius:5px;font-size:13px;background:#fff4ce;border-left:4px solid #f0c000;';
+      bar.innerHTML = `<strong>${selected.length}</strong> categor${selected.length===1?'y':'ies'} allowed — <strong>${blockedCount} categories will be blocked</strong>.
+        <br/><small>⚠ Large block list: consider reviewing whether all ${blockedCount} blocked categories are intentional.</small>`;
+    } else {
+      bar.style.cssText = 'margin-top:14px;padding:10px 14px;border-radius:5px;font-size:13px;background:#fde7e9;border-left:4px solid #c00;';
+      bar.innerHTML = `<strong>${selected.length}</strong> categor${selected.length===1?'y':'ies'} allowed — <strong>${blockedCount} categories will be blocked</strong>.`;
+    }
+  }
+}
+
+function getSelectedCategories() {
+  return [...document.querySelectorAll('#cat-groups-container .cat-item input[type="checkbox"]:checked')]
+    .map(cb => cb.value);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Validation
+// ─────────────────────────────────────────────────────────────────────────────
+function clearErrors() {
+  document.getElementById('err-name').style.display = 'none';
+  document.getElementById('err-cats').style.display = 'none';
+}
+
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save persona
+// ─────────────────────────────────────────────────────────────────────────────
+function savePersona() {
+  clearErrors();
+  let valid = true;
+
+  const rawName = document.getElementById('input-name').value.trim();
+  if (!rawName) {
+    showError('err-name', 'Persona name is required.'); valid = false;
+  } else if (!/^[A-Za-z0-9_-]+$/.test(rawName)) {
+    showError('err-name', 'Only letters, numbers, hyphens and underscores are allowed.'); valid = false;
+  } else {
+    const duplicate = personas.find(p => p.name.toLowerCase() === rawName.toLowerCase() && p.id !== editingId);
+    if (duplicate) {
+      showError('err-name', `A persona named "${duplicate.name}" already exists.`); valid = false;
+    }
+  }
+
+  if (!valid) return;
+
+  const model = document.querySelector('input[name="model"]:checked').value;
+  const selectedCategories = getSelectedCategories();
+
+  if (editingId !== null) {
+    const idx = personas.findIndex(p => p.id === editingId);
+    personas[idx] = { id: editingId, name: rawName, model, selectedCategories };
+  } else {
+    personas.push({ id: Date.now(), name: rawName, model, selectedCategories });
+  }
+
+  closeModal();
+  renderTable();
+  updateExportButtons();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Table rendering
+// ─────────────────────────────────────────────────────────────────────────────
+function renderTable() {
+  const tbody = document.getElementById('persona-tbody');
+  const table = document.getElementById('persona-table');
+  const empty = document.getElementById('empty-state');
+
+  if (personas.length === 0) {
+    table.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+
+  table.style.display = 'table';
+  empty.style.display = 'none';
+  tbody.innerHTML = '';
+
+  personas.forEach((p, i) => {
+    const blockedCategories = getBlockedCategories(p);
+    const modelLabel = p.model === 'allow-except' ? 'Allow all, block exceptions' : 'Block all, allow exceptions';
+    const badge = `<span class="badge badge-block">${blockedCategories.length} blocked</span>`;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td><strong>${escHtml(p.name)}</strong></td>
+      <td>${escHtml(modelLabel)}</td>
+      <td>${badge}</td>
+      <td><code>${escHtml(p.name)}-Block</code></td>
+      <td>
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="openModal(${p.id})">Edit</button>
+        <button class="btn btn-danger"    style="padding:4px 10px;font-size:12px;margin-left:4px" onclick="removePersona(${p.id})">Remove</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Refresh CSV previews if visible
+  refreshPreviews();
+}
+
+function removePersona(id) {
+  if (!confirm('Remove this persona?')) return;
+  personas = personas.filter(p => p.id !== id);
+  renderTable();
+  updateExportButtons();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSV generation helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Returns the actual categories that will be in the Block policy rule
+function getBlockedCategories(persona) {
+  if (persona.model === 'allow-except') {
+    return persona.selectedCategories;
+  } else {
+    // block-except: block everything EXCEPT selected
+    return getAllCategoriesExcept(persona.selectedCategories);
+  }
+}
+
+function csvEscape(val) {
+  if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+    return `"${val.replace(/"/g, '""')}"`;
+  }
+  return val;
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function generateTimestamp() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  return `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
+function generatePoliciesCsv() {
+  const header = 'PolicyName,PolicyType,PolicyAction,Description,RuleType,RuleDestinations,RuleName,Provision';
+  const rows = personas.map(p => {
+    const blocked = getBlockedCategories(p);
+    const desc = p.model === 'allow-except'
+      ? `Block selected categories for ${p.name} persona`
+      : `Block all categories except allowed list for ${p.name} persona`;
+    return [
+      `${p.name}-Block`,
+      'WebContentFiltering',
+      'Block',
+      desc,
+      'webCategory',
+      blocked.join(';'),
+      `${p.name}-BlockedCategories`,
+      'yes'
+    ].map(csvEscape).join(',');
+  });
+  return [header, ...rows].join('\r\n');
+}
+
+function generateProfilesCsv() {
+  const header = 'SecurityProfileName,Priority,SecurityProfileLinks,CADisplayName,EntraUsers,EntraGroups,Provision';
+  const rows = personas.map((p, i) => {
+    const priority = (i + 1) * 100;
+    return [
+      `Profile_${p.name}`,
+      String(priority),
+      `${p.name}-Block:100`,
+      '',
+      '',
+      '',
+      'yes'
+    ].map(csvEscape).join(',');
+  });
+  return [header, ...rows].join('\r\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export buttons / download
+// ─────────────────────────────────────────────────────────────────────────────
+function updateExportButtons() {
+  const hasPersonas = personas.length > 0;
+  document.getElementById('btn-dl-policies').disabled = !hasPersonas;
+  document.getElementById('btn-dl-profiles').disabled = !hasPersonas;
+
+  document.getElementById('preview-policies').style.display = hasPersonas ? 'block' : 'none';
+  document.getElementById('preview-profiles').style.display = hasPersonas ? 'block' : 'none';
+
+  if (hasPersonas) refreshPreviews();
+}
+
+function refreshPreviews() {
+  document.getElementById('policies-preview-content').textContent = generatePoliciesCsv();
+  document.getElementById('profiles-preview-content').textContent = generateProfilesCsv();
+}
+
+function downloadCsv(type) {
+  const ts = generateTimestamp();
+  let content, filename;
+  if (type === 'policies') {
+    content  = generatePoliciesCsv();
+    filename = `${ts}_EIA_Policies.csv`;
+  } else {
+    content  = generateProfilesCsv();
+    filename = `${ts}_EIA_SecurityProfiles.csv`;
+  }
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function togglePreview(bodyId) {
+  const body    = document.getElementById(bodyId);
+  const chevron = document.getElementById(bodyId.replace('-body', '-chevron'));
+  const collapsed = body.classList.toggle('collapsed');
+  chevron.textContent = collapsed ? '▶' : '▼';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+renderTable();
+</script>
+</body>
+</html>
