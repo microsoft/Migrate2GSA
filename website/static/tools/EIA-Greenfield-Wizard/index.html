@@ -737,9 +737,10 @@ function renderTable() {
   tbody.innerHTML = '';
 
   personas.forEach((p, i) => {
-    const blockedCategories = getBlockedCategories(p);
     const modelLabel = p.model === 'allow-except' ? 'Allow all, block exceptions' : 'Block all, allow exceptions';
-    const badge = `<span class="badge badge-block">${blockedCategories.length} blocked</span>`;
+    const badge = p.model === 'allow-except'
+      ? `<span class="badge badge-block">${p.selectedCategories.length} blocked</span>`
+      : `<span class="badge badge-allow">${p.selectedCategories.length} allowed</span> <span class="badge badge-block">+ catch-all block</span>`;
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -798,24 +799,56 @@ function generateTimestamp() {
   return `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
+const BLOCK_ALL_POLICY_NAME = 'BlockAll-FQDN';
+
 function generatePoliciesCsv() {
   const header = 'PolicyName,PolicyType,PolicyAction,Description,RuleType,RuleDestinations,RuleName,Provision';
-  const rows = personas.map(p => {
-    const blocked = getBlockedCategories(p);
-    const desc = p.model === 'allow-except'
-      ? `Block selected categories for ${p.name} persona`
-      : `Block all categories except allowed list for ${p.name} persona`;
-    return [
-      `${p.name}-Block`,
+  const rows = [];
+  let needsBlockAllPolicy = false;
+
+  personas.forEach(p => {
+    if (p.model === 'allow-except') {
+      const blocked = p.selectedCategories;
+      rows.push([
+        `${p.name}-Block`,
+        'WebContentFiltering',
+        'Block',
+        `Block selected categories for ${p.name} persona`,
+        'webCategory',
+        blocked.join(';'),
+        `${p.name}-BlockedCategories`,
+        'yes'
+      ].map(csvEscape).join(','));
+    } else {
+      // block-except: Allow policy for selected categories + shared catch-all Block at priority 64000
+      rows.push([
+        `${p.name}-Allow`,
+        'WebContentFiltering',
+        'Allow',
+        `Allow selected categories for ${p.name} persona — all others blocked by ${BLOCK_ALL_POLICY_NAME}`,
+        'webCategory',
+        p.selectedCategories.join(';'),
+        `${p.name}-AllowedCategories`,
+        'yes'
+      ].map(csvEscape).join(','));
+      needsBlockAllPolicy = true;
+    }
+  });
+
+  // Shared catch-all block policy — emitted once even if multiple block-except personas exist
+  if (needsBlockAllPolicy) {
+    rows.push([
+      BLOCK_ALL_POLICY_NAME,
       'WebContentFiltering',
       'Block',
-      desc,
-      'webCategory',
-      blocked.join(';'),
-      `${p.name}-BlockedCategories`,
+      'Catch-all block policy — shared by all block-all-except personas (FQDN wildcard)',
+      'fqdn',
+      '*',
+      'BlockAll-FQDN-Rule',
       'yes'
-    ].map(csvEscape).join(',');
-  });
+    ].map(csvEscape).join(','));
+  }
+
   return [header, ...rows].join('\r\n');
 }
 
@@ -823,10 +856,15 @@ function generateProfilesCsv() {
   const header = 'SecurityProfileName,Priority,SecurityProfileLinks,CADisplayName,EntraUsers,EntraGroups,Provision';
   const rows = personas.map((p, i) => {
     const priority = (i + 1) * 100;
+    // allow-except: single block policy at priority 100
+    // block-except: allow policy at 100 + shared catch-all block at 64000
+    const links = p.model === 'allow-except'
+      ? `${p.name}-Block:100`
+      : `${p.name}-Allow:100;${BLOCK_ALL_POLICY_NAME}:64000`;
     return [
       `Profile_${p.name}`,
       String(priority),
-      `${p.name}-Block:100`,
+      links,
       '',
       '',
       '',
