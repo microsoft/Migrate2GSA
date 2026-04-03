@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/website"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # lodash-es has no safe version — vulnerability is in mermaid's transitive
+      # chain (langium → chevrotain ~11.x). No upstream fix available yet.
+      # Track: https://github.com/mermaid-js/mermaid/issues
+      - dependency-name: "lodash-es"
+        update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
