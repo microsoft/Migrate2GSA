@@ -24,6 +24,12 @@ function Convert-PANW2EIA {
         Path to the PANW to EIA category mappings CSV file.
         Default: PANW2EIA-CategoryMappings.csv in current directory
 
+    .PARAMETER AppMappingsPath
+        Path to the PANW App-ID to GSA application mappings CSV file.
+        When provided, security rules with application references (non-'any') are looked up
+        in this file and converted to FQDN-based web content filtering policies.
+        If not provided, application references are only flagged for review.
+
     .PARAMETER DeviceGroupName
         Filter to a specific device-group name. If not specified, all device-groups are processed.
 
@@ -43,6 +49,11 @@ function Convert-PANW2EIA {
         Convert-PANW2EIA -PanoramaXmlPath "C:\Exports\panorama.xml" -DeviceGroupName "DG-Corporate" -OutputBasePath "C:\Output"
 
         Converts only the DG-Corporate device-group and saves output to C:\Output.
+
+    .EXAMPLE
+        Convert-PANW2EIA -PanoramaXmlPath "C:\Exports\panorama.xml" -AppMappingsPath ".\PANW2EIA-AppMappings.csv"
+
+        Converts Panorama configuration with application-to-FQDN mapping, producing policies for App-ID references.
 
     .EXAMPLE
         Convert-PANW2EIA -PanoramaXmlPath "C:\Exports\panorama.xml" -EnableDebugLogging
@@ -85,6 +96,13 @@ function Convert-PANW2EIA {
             else { throw "File not found: $_" }
         })]
         [string]$CategoryMappingsPath = (Join-Path $PWD "PANW2EIA-CategoryMappings.csv"),
+
+        [Parameter(HelpMessage = "Path to PANW App-ID to GSA application mappings CSV file")]
+        [ValidateScript({
+            if (Test-Path $_) { return $true }
+            else { throw "File not found: $_" }
+        })]
+        [string]$AppMappingsPath,
 
         [Parameter(HelpMessage = "Filter to specific device-group name")]
         [string]$DeviceGroupName,
@@ -512,6 +530,14 @@ function Convert-PANW2EIA {
         -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "  Category Mappings: $CategoryMappingsPath" -Level "INFO" `
         -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    if ($AppMappingsPath) {
+        Write-LogMessage "  App Mappings: $AppMappingsPath" -Level "INFO" `
+            -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    }
+    else {
+        Write-LogMessage "  App Mappings: (not provided - application references will be flagged for review)" -Level "INFO" `
+            -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    }
     Write-LogMessage "  Output Path: $OutputBasePath" -Level "INFO" `
         -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     if ($DeviceGroupName) {
@@ -529,6 +555,11 @@ function Convert-PANW2EIA {
         RulesSkippedDenyDropReset   = 0
         RulesSkippedNoUrlFilter     = 0
         RulesWithApplications       = 0
+        AppsMapped                  = 0
+        AppsMappedWithEndpoints     = 0
+        AppsMappedNoEndpoints       = 0
+        AppsUnmapped                = 0
+        ApplicationPolicies         = 0
         UrlFilteringProfilesProcessed = 0
         CustomCategoriesProcessed   = 0
         CustomCategoriesSkippedCategoryMatch = 0
@@ -654,6 +685,35 @@ function Convert-PANW2EIA {
     foreach ($mapping in $categoryMappings) {
         $categoryMappingsHashtable[$mapping.PANWCategory.ToLower()] = $mapping
     }
+
+    # Load app mappings if provided
+    $appMappingsHashtable = @{}
+    if ($AppMappingsPath) {
+        Write-LogMessage "Loading app mappings from: $AppMappingsPath" -Level "INFO" `
+            -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+
+        try {
+            $appMappings = Import-Csv -Path $AppMappingsPath -ErrorAction Stop
+            Write-LogMessage "Loaded $($appMappings.Count) app mappings" -Level "INFO" `
+                -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+        }
+        catch {
+            Write-LogMessage "Failed to load app mappings: $_" -Level "ERROR" `
+                -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+            throw "Failed to load app mappings file: $AppMappingsPath"
+        }
+
+        foreach ($appMapping in $appMappings) {
+            $appMappingsHashtable[$appMapping.PANWAppName.ToLower()] = $appMapping
+        }
+    }
+    else {
+        Write-LogMessage "No app mappings file provided; application references will be flagged for review" -Level "INFO" `
+            -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    }
+
+    # Application policies tracking hashtable (populated in Phase 4)
+    $applicationPoliciesHashtable = @{}
 
     # Custom category policies tracking hashtable (populated in Phase 2)
     $customCategoryPoliciesHashtable = @{}
@@ -1200,17 +1260,239 @@ function Convert-PANW2EIA {
             [void]$entraGroups.Add("Replace_with_All_IA_Users_Group")
         }
 
-        # 4.4: Detect application references
+        # 4.4: Process application references
+        $appPolicyLinks = [System.Collections.ArrayList]::new()
         $hasNonAnyApps = $false
         if ($null -ne $rule.Applications -and $rule.Applications.Count -gt 0) {
             $nonAnyApps = @($rule.Applications | Where-Object { $_ -ne "any" })
             if ($nonAnyApps.Count -gt 0) {
                 $hasNonAnyApps = $true
-                $needsReview = $true
-                [void]$reviewReasons.Add("Applications referenced: $($nonAnyApps -join ', ')")
                 $stats.RulesWithApplications++
                 Write-LogMessage "Rule '$($rule.Name)' has application references: $($nonAnyApps -join ', ')" -Level "INFO" `
                     -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+
+                if ($appMappingsHashtable.Count -gt 0) {
+                    # App mappings file provided - look up each app
+                    $unmappedApps = [System.Collections.ArrayList]::new()
+
+                    foreach ($appName in $nonAnyApps) {
+                        $appMapping = $appMappingsHashtable[$appName.ToLower()]
+
+                        if ($null -eq $appMapping -or [string]::IsNullOrWhiteSpace($appMapping.GSAAppName)) {
+                            # Unmapped app - no policy created
+                            [void]$unmappedApps.Add($appName)
+                            $stats.AppsUnmapped++
+                            Write-LogMessage "App '$appName' is unmapped (no GSAAppName)" -Level "WARN" `
+                                -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                            continue
+                        }
+
+                        $stats.AppsMapped++
+                        $gsaAppName = $appMapping.GSAAppName
+                        $gsaEndpoints = $appMapping.GSAEndpoints
+
+                        if ([string]::IsNullOrWhiteSpace($gsaEndpoints)) {
+                            # Mapped but no endpoints - create placeholder policy
+                            $stats.AppsMappedNoEndpoints++
+                            $appPolicyName = "$gsaAppName-Allow"
+
+                            if (-not $applicationPoliciesHashtable.ContainsKey($appPolicyName)) {
+                                $policyEntry = [PSCustomObject]@{
+                                    PolicyName       = $appPolicyName
+                                    PolicyType       = "WebContentFiltering"
+                                    PolicyAction     = "Allow"
+                                    Description      = "Application policy for $gsaAppName (no endpoints available)"
+                                    RuleType         = "FQDN"
+                                    RuleDestinations = "PLACEHOLDER_$gsaAppName"
+                                    RuleName         = $gsaAppName
+                                    ReviewNeeded     = "Yes"
+                                    ReviewDetails    = "Application '$gsaAppName' mapped but no endpoints available"
+                                    Provision        = "No"
+                                }
+                                [void]$policies.Add($policyEntry)
+                                $applicationPoliciesHashtable[$appPolicyName] = $true
+                                $stats.ApplicationPolicies++
+                                $stats.PoliciesFlaggedForReview++
+                                $stats.TotalRulesInPolicies++
+                            }
+                            if ($appPolicyName -notin $appPolicyLinks) {
+                                [void]$appPolicyLinks.Add($appPolicyName)
+                            }
+
+                            Write-LogMessage "Created placeholder policy for app '$gsaAppName' (no endpoints)" -Level "INFO" `
+                                -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                            continue
+                        }
+
+                        # Mapped with endpoints - create FQDN policy
+                        $stats.AppsMappedWithEndpoints++
+                        $appPolicyName = "$gsaAppName-Allow"
+
+                        if (-not $applicationPoliciesHashtable.ContainsKey($appPolicyName)) {
+                            # Parse and clean endpoints
+                            $endpoints = @($gsaEndpoints -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+                            $cleanedEndpoints = @()
+                            foreach ($endpoint in $endpoints) {
+                                $cleaned = ConvertTo-CleanDestination -Destination $endpoint -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                                if ($null -ne $cleaned) {
+                                    $cleanedEndpoints += $cleaned
+                                }
+                            }
+
+                            # Deduplicate
+                            $cleanedEndpoints = @($cleanedEndpoints | Group-Object -Property { $_.ToLower() } | ForEach-Object { $_.Group[0] })
+
+                            if ($cleanedEndpoints.Count -gt 0) {
+                                # Classify and group by type and base domain
+                                $appFqdns = [System.Collections.ArrayList]::new()
+                                $appUrls = [System.Collections.ArrayList]::new()
+                                $appIps = [System.Collections.ArrayList]::new()
+
+                                foreach ($dest in $cleanedEndpoints) {
+                                    $type = Get-DestinationType -Destination $dest
+                                    switch ($type) {
+                                        'ipv4' {
+                                            if (Test-ValidIPv4Address -IpAddress $dest) {
+                                                [void]$appIps.Add($dest)
+                                                $stats.IPsClassified++
+                                            }
+                                        }
+                                        'ipv6' {
+                                            Write-LogMessage "Skipping IPv6 endpoint for app '$gsaAppName': $dest" -Level "WARN" `
+                                                -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                                            $stats.EntriesSkippedIPv6++
+                                        }
+                                        'URL' {
+                                            [void]$appUrls.Add($dest)
+                                            $stats.URLsClassified++
+                                        }
+                                        'FQDN' {
+                                            [void]$appFqdns.Add($dest)
+                                            $stats.FQDNsClassified++
+                                        }
+                                    }
+                                }
+
+                                # Create FQDN rules grouped by base domain
+                                if ($appFqdns.Count -gt 0) {
+                                    $fqdnsByBaseDomain = @{}
+                                    foreach ($fqdn in $appFqdns) {
+                                        $baseDomain = Get-BaseDomain -Domain $fqdn
+                                        if (-not $fqdnsByBaseDomain.ContainsKey($baseDomain)) {
+                                            $fqdnsByBaseDomain[$baseDomain] = [System.Collections.ArrayList]::new()
+                                        }
+                                        [void]$fqdnsByBaseDomain[$baseDomain].Add($fqdn)
+                                    }
+
+                                    foreach ($baseDomain in $fqdnsByBaseDomain.Keys) {
+                                        $groups = Split-ByCharacterLimit -Entries @($fqdnsByBaseDomain[$baseDomain]) -MaxLength 300
+                                        if ($groups.Count -gt 1) { $stats.GroupsSplitForCharLimit++ }
+
+                                        for ($i = 0; $i -lt $groups.Count; $i++) {
+                                            $ruleName = if ($i -eq 0) { $baseDomain } else { "$baseDomain-$($i + 1)" }
+                                            $policyEntry = [PSCustomObject]@{
+                                                PolicyName       = $appPolicyName
+                                                PolicyType       = "WebContentFiltering"
+                                                PolicyAction     = "Allow"
+                                                Description      = "Application policy for $gsaAppName (from PANW App-ID)"
+                                                RuleType         = "FQDN"
+                                                RuleDestinations = $groups[$i] -join ";"
+                                                RuleName         = $ruleName
+                                                ReviewNeeded     = "No"
+                                                ReviewDetails    = ""
+                                                Provision        = "Yes"
+                                            }
+                                            [void]$policies.Add($policyEntry)
+                                            $stats.TotalRulesInPolicies++
+                                            $stats.TotalFQDNsInPolicies += $groups[$i].Count
+                                        }
+                                    }
+                                }
+
+                                # Create URL rules grouped by base domain
+                                if ($appUrls.Count -gt 0) {
+                                    $urlsByBaseDomain = @{}
+                                    foreach ($url in $appUrls) {
+                                        $baseDomain = Get-BaseDomain -Domain $url
+                                        if (-not $urlsByBaseDomain.ContainsKey($baseDomain)) {
+                                            $urlsByBaseDomain[$baseDomain] = [System.Collections.ArrayList]::new()
+                                        }
+                                        [void]$urlsByBaseDomain[$baseDomain].Add($url)
+                                    }
+
+                                    foreach ($baseDomain in $urlsByBaseDomain.Keys) {
+                                        $groups = Split-ByCharacterLimit -Entries @($urlsByBaseDomain[$baseDomain]) -MaxLength 300
+                                        if ($groups.Count -gt 1) { $stats.GroupsSplitForCharLimit++ }
+
+                                        for ($i = 0; $i -lt $groups.Count; $i++) {
+                                            $ruleName = if ($i -eq 0) { $baseDomain } else { "$baseDomain-$($i + 1)" }
+                                            $policyEntry = [PSCustomObject]@{
+                                                PolicyName       = $appPolicyName
+                                                PolicyType       = "WebContentFiltering"
+                                                PolicyAction     = "Allow"
+                                                Description      = "Application policy for $gsaAppName (from PANW App-ID)"
+                                                RuleType         = "URL"
+                                                RuleDestinations = $groups[$i] -join ";"
+                                                RuleName         = $ruleName
+                                                ReviewNeeded     = "No"
+                                                ReviewDetails    = ""
+                                                Provision        = "Yes"
+                                            }
+                                            [void]$policies.Add($policyEntry)
+                                            $stats.TotalRulesInPolicies++
+                                            $stats.TotalURLsInPolicies += $groups[$i].Count
+                                        }
+                                    }
+                                }
+
+                                # Create IP rules
+                                if ($appIps.Count -gt 0) {
+                                    $groups = Split-ByCharacterLimit -Entries @($appIps) -MaxLength 300
+                                    if ($groups.Count -gt 1) { $stats.GroupsSplitForCharLimit++ }
+
+                                    for ($i = 0; $i -lt $groups.Count; $i++) {
+                                        $ruleName = if ($i -eq 0) { "IPs" } else { "IPs-$($i + 1)" }
+                                        $policyEntry = [PSCustomObject]@{
+                                            PolicyName       = $appPolicyName
+                                            PolicyType       = "WebContentFiltering"
+                                            PolicyAction     = "Allow"
+                                            Description      = "Application policy for $gsaAppName (from PANW App-ID)"
+                                            RuleType         = "ipAddress"
+                                            RuleDestinations = $groups[$i] -join ";"
+                                            RuleName         = $ruleName
+                                            ReviewNeeded     = "No"
+                                            ReviewDetails    = ""
+                                            Provision        = "Yes"
+                                        }
+                                        [void]$policies.Add($policyEntry)
+                                        $stats.TotalRulesInPolicies++
+                                    }
+                                }
+                            }
+
+                            $applicationPoliciesHashtable[$appPolicyName] = $true
+                            $stats.ApplicationPolicies++
+
+                            Write-LogMessage "Created application policy '$appPolicyName' with $($cleanedEndpoints.Count) endpoints" -Level "INFO" `
+                                -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                        }
+
+                        if ($appPolicyName -notin $appPolicyLinks) {
+                            [void]$appPolicyLinks.Add($appPolicyName)
+                        }
+                    }
+
+                    # Flag unmapped apps for review
+                    if ($unmappedApps.Count -gt 0) {
+                        $needsReview = $true
+                        [void]$reviewReasons.Add("Unmapped applications: $($unmappedApps -join ', ')")
+                    }
+                }
+                else {
+                    # No app mappings file - flag all apps for review
+                    $needsReview = $true
+                    [void]$reviewReasons.Add("Applications referenced (no mapping file): $($nonAnyApps -join ', ')")
+                }
             }
         }
 
@@ -1244,6 +1526,13 @@ function Convert-PANW2EIA {
                         }
                     }
                 }
+            }
+        }
+
+        # Add application policies from app mappings
+        foreach ($appLink in $appPolicyLinks) {
+            if ($appLink -notin $policyLinks) {
+                [void]$policyLinks.Add($appLink)
             }
         }
 
@@ -1389,6 +1678,16 @@ function Convert-PANW2EIA {
         -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "Rules with application references (flagged): $($stats.RulesWithApplications)" -Level "INFO" `
         -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    if ($AppMappingsPath) {
+        Write-LogMessage "  Applications mapped (with endpoints): $($stats.AppsMappedWithEndpoints)" -Level "INFO" `
+            -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+        Write-LogMessage "  Applications mapped (no endpoints): $($stats.AppsMappedNoEndpoints)" -Level "INFO" `
+            -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+        Write-LogMessage "  Applications unmapped: $($stats.AppsUnmapped)" -Level "INFO" `
+            -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+        Write-LogMessage "  Application policies created: $($stats.ApplicationPolicies)" -Level "INFO" `
+            -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    }
     Write-LogMessage "" -Level "INFO" `
         -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "URL Filtering Profiles processed: $($stats.UrlFilteringProfilesProcessed)" -Level "INFO" `
@@ -1422,6 +1721,8 @@ function Convert-PANW2EIA {
     Write-LogMessage "Policies created: $($stats.PoliciesCreated)" -Level "INFO" `
         -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "  Custom category policies: $($stats.CustomCategoryPolicies)" -Level "INFO" `
+        -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "  Application policies: $($stats.ApplicationPolicies)" -Level "INFO" `
         -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "  Web category policies: $($stats.WebCategoryPolicies)" -Level "INFO" `
         -Component "Convert-PANW2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
