@@ -186,82 +186,23 @@ function Export-NetskopeConfig {
                 # Clear sensitive data from memory
                 [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
             }
-            
-            # Test connectivity with a simple API call
-            Write-LogMessage "Testing API connectivity..." -Level INFO -Component "Auth"
-            $testEndpoint = "/api/v2/infrastructure/publishers"
-            $testUrl = "$script:NetskopeTenantUrl$testEndpoint"
-            
-            try {
-                $null = Invoke-RestMethod -Uri $testUrl -Method Get -Headers $script:NetskopeHeaders -ErrorAction Stop
-                Write-LogMessage "API connectivity test successful" -Level SUCCESS -Component "Auth"
-                Write-LogMessage "Successfully authenticated with Netskope API" -Level DEBUG -Component "Auth"
-                return $true
-            }
-            catch {
-                $errorMessage = $_.Exception.Message
-                $friendlyError = $null
-                
-                # In debug mode, show raw error details
-                if ($script:EnableDebugLogging) {
-                    Write-LogMessage "Raw error details:" -Level ERROR -Component "Auth"
-                    Write-LogMessage "Exception Type: $($_.Exception.GetType().FullName)" -Level ERROR -Component "Auth"
-                    Write-LogMessage "Exception Message: $errorMessage" -Level ERROR -Component "Auth"
-                    
-                    if ($_.Exception.Response) {
-                        $statusCode = [int]$_.Exception.Response.StatusCode
-                        Write-LogMessage "HTTP Status Code: $statusCode" -Level ERROR -Component "Auth"
-                        Write-LogMessage "HTTP Status Description: $($_.Exception.Response.StatusDescription)" -Level ERROR -Component "Auth"
-                    }
-                    
-                    # Try to get response body from ErrorDetails (PowerShell 7+)
-                    if ($_.ErrorDetails.Message) {
-                        Write-LogMessage "Response Body: $($_.ErrorDetails.Message)" -Level ERROR -Component "Auth"
-                    }
-                    # Fallback for older PowerShell versions
-                    elseif ($_.Exception.Response.GetResponseStream) {
-                        try {
-                            $reader = [System.IO.StreamReader]::new($_.Exception.Response.GetResponseStream())
-                            $responseBody = $reader.ReadToEnd()
-                            $reader.Close()
-                            Write-LogMessage "Response Body: $responseBody" -Level ERROR -Component "Auth"
-                        }
-                        catch {
-                            Write-LogMessage "Could not read response body from stream" -Level ERROR -Component "Auth"
-                        }
-                    }
-                    
-                    if ($_.ErrorDetails) {
-                        Write-LogMessage "Error Details: $($_.ErrorDetails.Message)" -Level ERROR -Component "Auth"
-                    }
-                    
-                    Write-LogMessage "Stack Trace: $($_.ScriptStackTrace)" -Level ERROR -Component "Auth"
-                    
-                    # In debug mode, throw the original error for full details
-                    throw
-                }
-                
-                # Normal mode: friendly error messages
-                if ($_.Exception.Response) {
-                    $statusCode = [int]$_.Exception.Response.StatusCode
-                    switch ($statusCode) {
-                        401 { $friendlyError = "Authentication failed: Invalid or expired API token" }
-                        403 { $friendlyError = "Authentication failed: Insufficient permissions" }
-                        404 { $friendlyError = "API endpoint not found. Please verify the tenant URL: $script:NetskopeTenantUrl" }
-                        default { $friendlyError = "API connectivity test failed (HTTP $statusCode): $errorMessage" }
-                    }
-                }
-                else {
-                    $friendlyError = "API connectivity test failed: $errorMessage"
-                }
-                
-                throw $friendlyError
-            }
+
+            # Note: Connectivity is not pre-tested. Each endpoint call in
+            # Start-NetskopeFullBackup will surface its own auth/permission errors
+            # (e.g. 401/403) and be skipped individually without aborting the run.
+            Write-LogMessage "Successfully authenticated with Netskope API" -Level SUCCESS -Component "Auth"
+            return $true
         }
         catch {
             $errorMsg = $_.Exception.Message
             Write-LogMessage "Failed to initialize Netskope session: $errorMsg" -Level ERROR -Component "Auth"
-            # Use Write-Error with ErrorAction Stop for cleaner error output
+
+            if ($script:EnableDebugLogging) {
+                Write-LogMessage "Stack Trace: $($_.ScriptStackTrace)" -Level ERROR -Component "Auth"
+            }
+
+            # URL validation / setup failures are unrecoverable - terminate cleanly
+            # without stack trace noise in normal mode.
             $PSCmdlet.ThrowTerminatingError(
                 [System.Management.Automation.ErrorRecord]::new(
                     [System.Exception]::new($errorMsg),
