@@ -45,13 +45,13 @@ A HAR (HTTP Archive) file records all browser network requests and responses. Yo
 3. Once logged in and on the dashboard home page, press **F12** to open Developer Tools (or right-click anywhere and select **Inspect**)
 4. Click the **Network** tab in the Developer Tools panel
 
-<!-- TODO: Screenshot — Edge DevTools with Network tab selected -->
+{/* TODO: Screenshot — Edge DevTools with Network tab selected */}
 
 5. Ensure the following settings are configured:
    - **Preserve log** is checked (this prevents the log from clearing when pages navigate)
    - The red recording dot is active (recording is ON)
 
-<!-- TODO: Screenshot — Network tab with Preserve log checkbox highlighted -->
+{/* TODO: Screenshot — Network tab with Preserve log checkbox highlighted */}
 
 :::tip Why start after login?
 Opening Developer Tools **after** logging in ensures that your login credentials are not captured in the HAR file. The HAR only needs the API responses from browsing configuration pages — not the authentication flow.
@@ -76,8 +76,8 @@ Follow this sequence, clicking through every item in each section:
 3. **Click on each DNS policy** to open its detail view
 4. Wait for the page to fully load before moving to the next policy
 
-<!-- TODO: Screenshot — DNS Policies list page -->
-<!-- TODO: Screenshot — DNS Policy detail view -->
+{/* TODO: Screenshot — DNS Policies list page */}
+{/* TODO: Screenshot — DNS Policy detail view */}
 
 ---
 
@@ -87,7 +87,7 @@ Follow this sequence, clicking through every item in each section:
 2. The firewall ruleset loads automatically in a single view
 3. If there are more than 25 rules, **scroll down** or navigate to subsequent pages to load all rules
 
-<!-- TODO: Screenshot — Firewall Policy page -->
+{/* TODO: Screenshot — Firewall Policy page */}
 
 ---
 
@@ -98,8 +98,8 @@ Follow this sequence, clicking through every item in each section:
 3. **Click on each web policy** to open its detail view — this triggers the proxy ruleset and ruleset settings API calls
 4. Wait for the page to fully load before moving to the next policy
 
-<!-- TODO: Screenshot — Web Policy list page -->
-<!-- TODO: Screenshot — Web Policy detail view -->
+{/* TODO: Screenshot — Web Policy list page */}
+{/* TODO: Screenshot — Web Policy detail view */}
 
 ---
 
@@ -110,8 +110,8 @@ Follow this sequence, clicking through every item in each section:
 3. **Click on each destination list** to view its entries — this triggers the destinations detail API calls
 4. If a list has many entries, **scroll through** or page through all entries to ensure they are captured
 
-<!-- TODO: Screenshot — Destination Lists page -->
-<!-- TODO: Screenshot — Destination List detail with entries -->
+{/* TODO: Screenshot — Destination Lists page */}
+{/* TODO: Screenshot — Destination List detail with entries */}
 
 ---
 
@@ -121,8 +121,8 @@ Follow this sequence, clicking through every item in each section:
 2. The list view loads the category settings summaries
 3. **Click on each category setting** to expand it
 
-<!-- TODO: Screenshot — Content Categories list -->
-<!-- TODO: Screenshot — Content Category detail view -->
+{/* TODO: Screenshot — Content Categories list */}
+{/* TODO: Screenshot — Content Category detail view */}
 
 ---
 
@@ -132,8 +132,8 @@ Follow this sequence, clicking through every item in each section:
 2. The list view loads application setting summaries
 3. **Click on each application setting** to expand it
 
-<!-- TODO: Screenshot — Application Settings list -->
-<!-- TODO: Screenshot — Application Setting detail view -->
+{/* TODO: Screenshot — Application Settings list */}
+{/* TODO: Screenshot — Application Setting detail view */}
 
 ---
 
@@ -142,8 +142,8 @@ Follow this sequence, clicking through every item in each section:
 1. Navigate to **Policies** > **Policy Components** > **Security Settings**
 2. **Click on each security setting** to open its detail view — detail responses use datetime strings instead of epoch timestamps
 
-<!-- TODO: Screenshot — Security Settings list -->
-<!-- TODO: Screenshot — Security Setting detail view -->
+{/* TODO: Screenshot — Security Settings list */}
+{/* TODO: Screenshot — Security Setting detail view */}
 
 ---
 
@@ -153,7 +153,7 @@ Follow this sequence, clicking through every item in each section:
 2. The list view loads the selective decryption list settings
 3. **Click on each list** to view its detail if any are present
 
-<!-- TODO: Screenshot — Selective Decryption Lists page -->
+{/* TODO: Screenshot — Selective Decryption Lists page */}
 
 ---
 
@@ -165,7 +165,7 @@ Once you have browsed through **all** sections above:
 2. Right-click anywhere in the request list
 3. Select **Save all as HAR with content** (in Edge) or **Save all as HAR** (in Chrome)
 
-<!-- TODO: Screenshot — Right-click menu with "Save all as HAR with content" highlighted -->
+{/* TODO: Screenshot — Right-click menu with "Save all as HAR with content" highlighted */}
 
 4. Save the file with a `.har` extension (e.g., `umbrella_dashboard.har`)
 5. Close Developer Tools
