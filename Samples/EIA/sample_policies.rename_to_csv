@@ -1,6 +1,6 @@
 PolicyName,PolicyType,PolicyAction,Description,RuleType,RuleDestinations,RuleName,Provision
 Dev_Tools-Allow,WebContentFiltering,Allow,Allow development tools and resources,FQDN,github.com;*.github.io;stackoverflow.com;*.stackexchange.com,GitHub_StackOverflow,yes
-Dev_Tools-Allow,WebContentFiltering,Allow,Allow development tools and resources,URL,https://docs.microsoft.com/*;https://learn.microsoft.com/*,Microsoft_Docs,yes
+Dev_Tools-Allow,WebContentFiltering,Allow,Allow development tools and resources,URL,docs.microsoft.com/*;learn.microsoft.com/*,Microsoft_Docs,yes
 Dev_Tools-Allow,WebContentFiltering,Allow,Allow development tools and resources,webCategory,CodeRepositories,Dev_Categories,yes
 Social_Media-Block,WebContentFiltering,Block,Block social media and entertainment sites,webCategory,SocialNetworking;Entertainment;Games,Social_Entertainment_Block,yes
 Social_Media-Block,WebContentFiltering,Block,Block social media and entertainment sites,FQDN,facebook.com;*.facebook.com;twitter.com;*.twitter.com;instagram.com;*.instagram.com,Popular_Social_Sites,yes
