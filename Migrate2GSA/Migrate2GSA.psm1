@@ -10,6 +10,9 @@ foreach ($file in Get-ChildItem -Path "$PSScriptRoot/internal/scripts" -Filter *
     . $file.FullName
 }
 
+# Display a friendly contact/feedback message on every module load.
+Write-ContactMessage
+
 # Export only public functions
 Export-ModuleMember -Function @(
     'Export-ZPAConfig',
