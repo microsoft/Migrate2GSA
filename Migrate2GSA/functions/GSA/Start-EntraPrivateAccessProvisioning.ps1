@@ -1449,6 +1449,7 @@ function Invoke-ProvisioningProcess {
         $requiredScopes = @(
             'NetworkAccessPolicy.ReadWrite.All',
             'Application.ReadWrite.All',
+            'Directory.ReadWrite.All',
             'NetworkAccess.ReadWrite.All'
         )
         Test-GraphConnection -RequiredScopes $requiredScopes

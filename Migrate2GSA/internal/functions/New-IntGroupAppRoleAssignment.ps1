@@ -48,8 +48,9 @@ function New-IntGroupAppRoleAssignment {
         This is an internal function and should not be exported from the module.
         Uses Invoke-InternalGraphRequest for consistent error handling and retry logic.
         
-        API Endpoint: POST /groups/{group-id}/appRoleAssignments
+        API Endpoint: POST /servicePrincipals/{resource-id}/appRoleAssignedTo
         Graph Permission Required: AppRoleAssignment.ReadWrite.All
+        Directory Role Action: microsoft.directory/servicePrincipals/appRoleAssignedTo/update
     #>
     [CmdletBinding()]
     param(
@@ -77,7 +78,10 @@ function New-IntGroupAppRoleAssignment {
     process {
         try {
             # Construct the Graph API endpoint
-            $uri = "/beta/groups/$GroupId/appRoleAssignments"
+            # Using servicePrincipals/{resourceId}/appRoleAssignedTo rather than groups/{groupId}/appRoleAssignments
+            # so the required directory action (servicePrincipals/appRoleAssignedTo/update) aligns with
+            # Application Administrator and equivalent least-privilege custom roles.
+            $uri = "/beta/servicePrincipals/$ResourceId/appRoleAssignedTo"
             
             # Build request body
             $body = @{
