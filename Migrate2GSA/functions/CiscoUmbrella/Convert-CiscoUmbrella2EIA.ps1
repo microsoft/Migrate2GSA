@@ -730,28 +730,31 @@ function Convert-CiscoUmbrella2EIA {
                     $policyNameClean = $dnsPolicy.name -replace '\s+', '' -replace '[^a-zA-Z0-9_-]', ''
                     $policyName = "DNS-$policyNameClean-$listNameClean-$actionSuffix"
 
-                    # Split by character limit if needed
-                    $groups = Split-ByCharacterLimit -Entries @($fqdnEntries) -MaxLength 300
+                    # Group by base domain, then split by character limit
+                    $grouped = @($fqdnEntries) | Group-Object -Property { Get-BaseDomain -Domain $_ }
 
-                    if ($groups.Count -gt 1) { $stats.RulesSplitForCharLimit++ }
+                    foreach ($group in $grouped | Sort-Object Name) {
+                        $splitGroups = Split-ByCharacterLimit -Entries @($group.Group) -MaxLength 300
+                        if ($splitGroups.Count -gt 1) { $stats.RulesSplitForCharLimit++ }
 
-                    for ($i = 0; $i -lt $groups.Count; $i++) {
-                        $ruleName = if ($i -eq 0) { "FQDNs" } else { "FQDNs-$($i + 1)" }
+                        for ($i = 0; $i -lt $splitGroups.Count; $i++) {
+                            $ruleName = if ($i -eq 0) { $group.Name } else { "$($group.Name)-$($i + 1)" }
 
-                        $policyEntry = [PSCustomObject]@{
-                            PolicyName       = $policyName
-                            PolicyType       = "WebContentFiltering"
-                            PolicyAction     = $action
-                            Description      = "Converted from Umbrella DNS policy: $($dnsPolicy.name), list: $($domainlistRef.name)"
-                            RuleType         = "FQDN"
-                            RuleDestinations = $groups[$i] -join ";"
-                            RuleName         = $ruleName
-                            ReviewNeeded     = "No"
-                            ReviewDetails    = ""
-                            Provision        = "yes"
+                            $policyEntry = [PSCustomObject]@{
+                                PolicyName       = $policyName
+                                PolicyType       = "WebContentFiltering"
+                                PolicyAction     = $action
+                                Description      = "Converted from Umbrella DNS policy: $($dnsPolicy.name), list: $($domainlistRef.name)"
+                                RuleType         = "FQDN"
+                                RuleDestinations = $splitGroups[$i] -join ";"
+                                RuleName         = $ruleName
+                                ReviewNeeded     = "No"
+                                ReviewDetails    = ""
+                                Provision        = "yes"
+                            }
+
+                            [void]$allPolicies.Add($policyEntry)
                         }
-
-                        [void]$allPolicies.Add($policyEntry)
                     }
 
                     [void]$defaultScopePolicies.Add($policyName)
@@ -980,34 +983,61 @@ function Convert-CiscoUmbrella2EIA {
 
                         $stats.TotalFqdnEntries += $allEndpoints.Count
 
-                        # Combine real endpoints and unmapped app placeholders
-                        $allRuleDestinations = [System.Collections.ArrayList]::new()
-                        foreach ($ep in $allEndpoints) { [void]$allRuleDestinations.Add($ep) }
-                        foreach ($ua in $unmappedApps) { [void]$allRuleDestinations.Add($ua) }
-
-                        $groups = Split-ByCharacterLimit -Entries @($allRuleDestinations) -MaxLength 300
-                        if ($groups.Count -gt 1) { $stats.RulesSplitForCharLimit++ }
-
                         # Has unmapped apps means review needed
                         $hasUnmappedApps = $unmappedApps.Count -gt 0
 
-                        for ($i = 0; $i -lt $groups.Count; $i++) {
-                            $ruleSuffix = if ($i -eq 0) { "FQDNs" } else { "FQDNs-$($i + 1)" }
+                        # Group real endpoints by base domain, then split by character limit
+                        if ($allEndpoints.Count -gt 0) {
+                            $grouped = @($allEndpoints) | Group-Object -Property { Get-BaseDomain -Domain $_ }
 
-                            $policyEntry = [PSCustomObject]@{
-                                PolicyName       = $policyName
-                                PolicyType       = "WebContentFiltering"
-                                PolicyAction     = $eiaAction
-                                Description      = "Converted from Umbrella web rule: $($rule.ruleName)"
-                                RuleType         = "FQDN"
-                                RuleDestinations = $groups[$i] -join ";"
-                                RuleName         = $ruleSuffix
-                                ReviewNeeded     = if ($hasUnmappedApps) { "Yes" } else { "No" }
-                                ReviewDetails    = $appReviewReasons -join "; "
-                                Provision        = if ($hasUnmappedApps) { "no" } else { "yes" }
+                            foreach ($group in $grouped | Sort-Object Name) {
+                                $epGroups = Split-ByCharacterLimit -Entries @($group.Group) -MaxLength 300
+                                if ($epGroups.Count -gt 1) { $stats.RulesSplitForCharLimit++ }
+
+                                for ($i = 0; $i -lt $epGroups.Count; $i++) {
+                                    $ruleSuffix = if ($i -eq 0) { $group.Name } else { "$($group.Name)-$($i + 1)" }
+
+                                    $policyEntry = [PSCustomObject]@{
+                                        PolicyName       = $policyName
+                                        PolicyType       = "WebContentFiltering"
+                                        PolicyAction     = $eiaAction
+                                        Description      = "Converted from Umbrella web rule: $($rule.ruleName)"
+                                        RuleType         = "FQDN"
+                                        RuleDestinations = $epGroups[$i] -join ";"
+                                        RuleName         = $ruleSuffix
+                                        ReviewNeeded     = if ($hasUnmappedApps) { "Yes" } else { "No" }
+                                        ReviewDetails    = $appReviewReasons -join "; "
+                                        Provision        = if ($hasUnmappedApps) { "no" } else { "yes" }
+                                    }
+
+                                    [void]$allPolicies.Add($policyEntry)
+                                }
                             }
+                        }
 
-                            [void]$allPolicies.Add($policyEntry)
+                        # Unmapped app placeholders go into a separate review rule
+                        if ($unmappedApps.Count -gt 0) {
+                            $unmappedGroups = Split-ByCharacterLimit -Entries @($unmappedApps) -MaxLength 300
+                            if ($unmappedGroups.Count -gt 1) { $stats.RulesSplitForCharLimit++ }
+
+                            for ($i = 0; $i -lt $unmappedGroups.Count; $i++) {
+                                $ruleSuffix = if ($i -eq 0) { "Apps-Unmapped" } else { "Apps-Unmapped-$($i + 1)" }
+
+                                $policyEntry = [PSCustomObject]@{
+                                    PolicyName       = $policyName
+                                    PolicyType       = "WebContentFiltering"
+                                    PolicyAction     = $eiaAction
+                                    Description      = "Converted from Umbrella web rule: $($rule.ruleName)"
+                                    RuleType         = "FQDN"
+                                    RuleDestinations = $unmappedGroups[$i] -join ";"
+                                    RuleName         = $ruleSuffix
+                                    ReviewNeeded     = "Yes"
+                                    ReviewDetails    = $appReviewReasons -join "; "
+                                    Provision        = "no"
+                                }
+
+                                [void]$allPolicies.Add($policyEntry)
+                            }
                         }
 
                         [void]$rulePolicyNames.Add($policyName)
@@ -1064,26 +1094,31 @@ function Convert-CiscoUmbrella2EIA {
                         }
                         $hasReview = $destReviewReasons.Count -gt 0
 
-                        $dlGroups = Split-ByCharacterLimit -Entries @($fqdnEntries) -MaxLength 300
-                        if ($dlGroups.Count -gt 1) { $stats.RulesSplitForCharLimit++ }
+                        # Group by base domain, then split by character limit
+                        $grouped = @($fqdnEntries) | Group-Object -Property { Get-BaseDomain -Domain $_ }
 
-                        for ($i = 0; $i -lt $dlGroups.Count; $i++) {
-                            $ruleSuffix = if ($i -eq 0) { "FQDNs" } else { "FQDNs-$($i + 1)" }
+                        foreach ($group in $grouped | Sort-Object Name) {
+                            $dlGroups = Split-ByCharacterLimit -Entries @($group.Group) -MaxLength 300
+                            if ($dlGroups.Count -gt 1) { $stats.RulesSplitForCharLimit++ }
 
-                            $policyEntry = [PSCustomObject]@{
-                                PolicyName       = $policyName
-                                PolicyType       = "WebContentFiltering"
-                                PolicyAction     = $eiaAction
-                                Description      = "Converted from Umbrella web rule: $($rule.ruleName), list: $($fullList.name)"
-                                RuleType         = "FQDN"
-                                RuleDestinations = $dlGroups[$i] -join ";"
-                                RuleName         = $ruleSuffix
-                                ReviewNeeded     = if ($hasReview) { "Yes" } else { "No" }
-                                ReviewDetails    = $destReviewReasons -join "; "
-                                Provision        = if ($hasReview) { "no" } else { "yes" }
+                            for ($i = 0; $i -lt $dlGroups.Count; $i++) {
+                                $ruleSuffix = if ($i -eq 0) { $group.Name } else { "$($group.Name)-$($i + 1)" }
+
+                                $policyEntry = [PSCustomObject]@{
+                                    PolicyName       = $policyName
+                                    PolicyType       = "WebContentFiltering"
+                                    PolicyAction     = $eiaAction
+                                    Description      = "Converted from Umbrella web rule: $($rule.ruleName), list: $($fullList.name)"
+                                    RuleType         = "FQDN"
+                                    RuleDestinations = $dlGroups[$i] -join ";"
+                                    RuleName         = $ruleSuffix
+                                    ReviewNeeded     = if ($hasReview) { "Yes" } else { "No" }
+                                    ReviewDetails    = $destReviewReasons -join "; "
+                                    Provision        = if ($hasReview) { "no" } else { "yes" }
+                                }
+
+                                [void]$allPolicies.Add($policyEntry)
                             }
-
-                            [void]$allPolicies.Add($policyEntry)
                         }
 
                         [void]$rulePolicyNames.Add($policyName)

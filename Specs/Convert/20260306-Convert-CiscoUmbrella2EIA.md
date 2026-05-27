@@ -333,7 +333,7 @@ Contains all web content filtering policies with FQDN and webCategory rules.
 | Description | Policy description | "Converted from Umbrella rule: Block - Yandex" | Source context |
 | RuleType | Type of destination | "FQDN", "webCategory" | One type per row |
 | RuleDestinations | Semicolon-separated list | "yandex.com;*.yandex.com;yandex.ru;*.yandex.ru" | Dual FQDN pattern for domains |
-| RuleName | Sub-rule identifier | "FQDNs", "WebCategories" | For grouping/splitting |
+| RuleName | Sub-rule identifier | `"example.com"`, `"WebCategories"` | Base domain name for FQDN rules; `"WebCategories"` for category rules. Overflow groups use a numeric suffix (e.g., `"example.com-2"`). Unmapped app placeholders use `"Apps-Unmapped"`. |
 | ReviewNeeded | Manual review flag | "Yes", "No" | "Yes" if unmapped category, unmapped/missing app, or warn/isolate action |
 | ReviewDetails | Reason for review | "App 'SomeApp' (ID: 123) not found in app mapping file" | Semicolon-separated reasons |
 | Provision | Provisioning flag | "yes", "no" | "no" if ReviewNeeded is "Yes" |
@@ -346,13 +346,15 @@ When converting domain destinations (from destination lists or application mappi
 
 Both entries are semicolon-separated in the `RuleDestinations` column of the same rule row.
 
-Example: A destination list with domains `example.com` and `contoso.com` produces:
-```
-RuleDestinations: example.com;*.example.com;contoso.com;*.contoso.com
-```
+Example: A destination list with domains `example.com` and `contoso.com` produces two separate rules (one per base domain, sorted alphabetically):
+
+| RuleName | RuleDestinations |
+|----------|------------------|
+| `contoso.com` | `contoso.com;*.contoso.com` |
+| `example.com` | `example.com;*.example.com` |
 
 #### RuleDestinations Character Limit
-- **FQDN rules**: 300-character limit per `RuleDestinations` field. If exceeded, split into multiple rules with numeric suffixes (e.g., `FQDNs`, `FQDNs-2`, `FQDNs-3`)
+- **FQDN rules**: FQDNs are first grouped by base domain — each base-domain group becomes one rule named after that domain (e.g., `example.com`). The 300-character limit applies per rule; if a single base-domain group exceeds it, it is further split with numeric suffixes (e.g., `example.com`, `example.com-2`).
 - **webCategory rules**: No character limit, never split
 
 ### 2. Security Profiles CSV
