@@ -126,6 +126,21 @@ function Convert-MDE2EIA {
 
     #region Helper Functions
 
+    function ConvertTo-DualFqdnEntries {
+        param([string]$Domain)
+
+        $cleanDomain = $Domain.Trim().TrimEnd('.')
+
+        if ([string]::IsNullOrWhiteSpace($cleanDomain)) { return @() }
+
+        # If already a wildcard, return as-is
+        if ($cleanDomain.StartsWith('*.')) {
+            return @($cleanDomain)
+        }
+
+        return @($cleanDomain, "*.$cleanDomain")
+    }
+
     function Test-PolicyNameFilter {
         param(
             [Parameter(Mandatory)]
@@ -666,9 +681,8 @@ function Convert-MDE2EIA {
                 $fqdnEntries += $value
             }
             else {
-                # Domain — apply dual FQDN pattern
-                $fqdnEntries += $value
-                $fqdnEntries += "*.$value"
+                # Domain — apply dual FQDN pattern (domain + *.domain)
+                $fqdnEntries += ConvertTo-DualFqdnEntries -Domain $value
             }
 
             # Determine scope
@@ -715,25 +729,29 @@ function Convert-MDE2EIA {
 
             $uniqueReviewReasons = $group.ReviewReasons | Select-Object -Unique
 
-            # Split by character limit
-            $groups = Split-ByCharacterLimit -Entries $group.FqdnEntries -MaxLength 300 `
-                -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+            # Group by base domain, then split by character limit
+            $grouped = @($group.FqdnEntries) | Group-Object -Property { Get-BaseDomain -Domain $_ }
 
-            for ($i = 0; $i -lt $groups.Count; $i++) {
-                $ruleName = if ($i -eq 0) { "FQDNs" } else { "FQDNs-$($i + 1)" }
+            foreach ($domainGroup in $grouped | Sort-Object Name) {
+                $splitGroups = Split-ByCharacterLimit -Entries @($domainGroup.Group) -MaxLength 300 `
+                    -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
 
-                [void]$allPolicies.Add([PSCustomObject]@{
-                    PolicyName       = $indicatorPolicyName
-                    PolicyType       = "WebContentFiltering"
-                    PolicyAction     = $action
-                    Description      = "Converted from MDE URL/Domain indicators ($action)"
-                    RuleType         = "FQDN"
-                    RuleDestinations = $groups[$i] -join ";"
-                    RuleName         = $ruleName
-                    ReviewNeeded     = if ($group.HasReview) { "Yes" } else { "No" }
-                    ReviewDetails    = $uniqueReviewReasons -join "; "
-                    Provision        = if ($group.HasReview) { "no" } else { "yes" }
-                })
+                for ($i = 0; $i -lt $splitGroups.Count; $i++) {
+                    $ruleName = if ($i -eq 0) { $domainGroup.Name } else { "$($domainGroup.Name)-$($i + 1)" }
+
+                    [void]$allPolicies.Add([PSCustomObject]@{
+                        PolicyName       = $indicatorPolicyName
+                        PolicyType       = "WebContentFiltering"
+                        PolicyAction     = $action
+                        Description      = "Converted from MDE URL/Domain indicators ($action)"
+                        RuleType         = "FQDN"
+                        RuleDestinations = $splitGroups[$i] -join ";"
+                        RuleName         = $ruleName
+                        ReviewNeeded     = if ($group.HasReview) { "Yes" } else { "No" }
+                        ReviewDetails    = $uniqueReviewReasons -join "; "
+                        Provision        = if ($group.HasReview) { "no" } else { "yes" }
+                    })
+                }
             }
 
             # Route to scope
@@ -745,7 +763,7 @@ function Convert-MDE2EIA {
             }
 
             $stats.PoliciesCreated++
-            Write-LogMessage "Created policy '$indicatorPolicyName' with $($group.FqdnEntries.Count) FQDN entries in $($groups.Count) rule(s) (scope: $scopeKey)" -Level "DEBUG" `
+            Write-LogMessage "Created policy '$indicatorPolicyName' with $($group.FqdnEntries.Count) FQDN entries in $($grouped.Count) base-domain group(s) (scope: $scopeKey)" -Level "DEBUG" `
                 -Component "Convert-MDE2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
         }
 

@@ -96,8 +96,8 @@ The conversion produces a tiered Security Profile structure:
 | WCF blocked categories | → | WCF Policy (webCategory rules, `Block`) | Direct mapping via hardcoded table |
 | WCF audited categories | → | WCF Policy (webCategory rules, `Block`) | `ReviewNeeded=Yes` — original was monitor-only |
 | IP indicators (all actions) | → | **Skipped** | EIA does not support IP destinations; logged as WARN |
-| URL/Domain indicator (`Block`) | → | WCF Policy (FQDN rule, `Block`) | Dual FQDN pattern; grouped by action + scope |
-| URL/Domain indicator (`Allow`) | → | WCF Policy (FQDN rule, `Allow`) | Dual FQDN pattern; grouped by action + scope |
+| URL/Domain indicator (`Block`) | → | WCF Policy (FQDN rule, `Block`) | Dual FQDN pattern; grouped by base domain within action + scope |
+| URL/Domain indicator (`Allow`) | → | WCF Policy (FQDN rule, `Allow`) | Dual FQDN pattern; grouped by base domain within action + scope |
 | URL/Domain indicator (`Warn`) | → | WCF Policy (FQDN rule, `Block`) | `ReviewNeeded=Yes`; dual FQDN pattern |
 | URL/Domain indicator (`AlertOnly`) | → | WCF Policy (FQDN rule, `Allow`) | `ReviewNeeded=Yes`; dual FQDN pattern |
 | `RbacGroupNames = "All device groups"` | → | Default Security Profile | Priority 50000 |
@@ -173,7 +173,7 @@ Since MDE and EIA share the same Microsoft web category taxonomy, categories are
 |-----------|----------------|-------|
 | WebCategory (blocked) | `BlockedCategories` | Never split |
 | WebCategory (audited) | `AuditedCategories` | Never split |
-| FQDN | `FQDNs`, `FQDNs-2`, `FQDNs-3` | Split at 300-char limit |
+| FQDN | `<baseDomain>`, `<baseDomain>-2`, `<baseDomain>-3` | Grouped by base domain (last 2 segments via `Get-BaseDomain`); split at 300-char limit within each group |
 
 ### Security Profile Naming
 
@@ -291,8 +291,8 @@ Contains custom URL and domain indicators with resolved action and type enums.
 3. Apply dual FQDN pattern: each `indicatorValue` produces two entries (`domain.com;*.domain.com`)
 4. If `indicatorValue` contains a path (`/`), classify as URL type and use as-is (no dual pattern)
 5. Group enabled, non-expired indicators by: (`mappedAction` × `scopeKey`)
-6. Each group becomes one EIA policy with FQDN rules
-7. Apply 300-character limit splitting for `RuleDestinations`
+6. Each group becomes one EIA policy with FQDN rules grouped by base domain (via `Get-BaseDomain`)
+7. Within each base-domain group, apply 300-character limit splitting for `RuleDestinations`; rule names use the base domain (e.g., `google.com`, `google.com-2`)
 
 ### 4. device_groups.json
 **Source:** `Export-MDEWebFilteringConfig` output
@@ -356,19 +356,26 @@ Contains all web content filtering policies for WCF category rules and indicator
 
 #### FQDN Dual-Entry Pattern
 
-When converting URL/Domain indicator values, each domain produces two FQDN entries:
-- `domain.com` — matches the bare domain
-- `*.domain.com` — matches all subdomains
+When converting URL/Domain indicator values, the `ConvertTo-DualFqdnEntries` helper function is used to produce FQDN entries:
+- Trims whitespace and trailing dots from the domain
+- If the value is empty/whitespace after cleaning, returns nothing
+- If the value already starts with `*.`, returns it as-is (no double-wildcard)
+- Otherwise, produces two entries: `domain.com` + `*.domain.com`
 
 Example: An indicator with `indicatorValue = "facebook.com"` produces:
 ```
 RuleDestinations: facebook.com;*.facebook.com
 ```
 
+Example: An indicator with `indicatorValue = "*.cdn.example.com"` produces:
+```
+RuleDestinations: *.cdn.example.com
+```
+
 If the `indicatorValue` contains a path (e.g., `example.com/path`), it is treated as a URL and used as-is without dual pattern.
 
 #### RuleDestinations Character Limit
-- **FQDN rules**: 300-character limit per `RuleDestinations` field. If exceeded, split into multiple rules with numeric suffixes (`FQDNs`, `FQDNs-2`, `FQDNs-3`)
+- **FQDN rules**: Entries are first grouped by base domain (last 2 segments of the FQDN, extracted via `Get-BaseDomain`). Within each base-domain group, a 300-character limit applies per `RuleDestinations` field. If exceeded, split into multiple rules with numeric suffixes (`google.com`, `google.com-2`, `google.com-3`). Groups are sorted alphabetically by base domain.
 - **webCategory rules**: No character limit, never split
 
 ### 2. Security Profiles CSV
@@ -779,9 +786,8 @@ foreach ($indicator in $urlIndicators) {
         $fqdnEntries += $value
     }
     else {
-        # Domain — apply dual FQDN pattern
-        $fqdnEntries += $value
-        $fqdnEntries += "*.$value"
+        # Domain — apply dual FQDN pattern (domain + *.domain)
+        $fqdnEntries += ConvertTo-DualFqdnEntries -Domain $value
     }
 
     # Determine scope
@@ -830,26 +836,30 @@ foreach ($groupKey in $fqdnGroups.Keys) {
 
     $uniqueReviewReasons = $group.ReviewReasons | Select-Object -Unique
 
-    # Split by character limit
-    $groups = Split-ByCharacterLimit -Entries $group.FqdnEntries -MaxLength 300
+    # Group by base domain, then split by character limit
+    $grouped = @($group.FqdnEntries) | Group-Object -Property { Get-BaseDomain -Domain $_ }
 
-    for ($i = 0; $i -lt $groups.Count; $i++) {
-        $ruleName = if ($i -eq 0) { "FQDNs" } else { "FQDNs-$($i + 1)" }
+    foreach ($domainGroup in $grouped | Sort-Object Name) {
+        $splitGroups = Split-ByCharacterLimit -Entries @($domainGroup.Group) -MaxLength 300
 
-        $policyEntry = @{
-            PolicyName       = $policyName
-            PolicyType       = "WebContentFiltering"
-            PolicyAction     = $action
-            Description      = "Converted from MDE URL/Domain indicators ($action)"
-            RuleType         = "FQDN"
-            RuleDestinations = $groups[$i] -join ";"
-            RuleName         = $ruleName
-            ReviewNeeded     = if ($group.HasReview) { "Yes" } else { "No" }
-            ReviewDetails    = $uniqueReviewReasons -join "; "
-            Provision        = if ($group.HasReview) { "no" } else { "yes" }
+        for ($i = 0; $i -lt $splitGroups.Count; $i++) {
+            $ruleName = if ($i -eq 0) { $domainGroup.Name } else { "$($domainGroup.Name)-$($i + 1)" }
+
+            $policyEntry = @{
+                PolicyName       = $policyName
+                PolicyType       = "WebContentFiltering"
+                PolicyAction     = $action
+                Description      = "Converted from MDE URL/Domain indicators ($action)"
+                RuleType         = "FQDN"
+                RuleDestinations = $splitGroups[$i] -join ";"
+                RuleName         = $ruleName
+                ReviewNeeded     = if ($group.HasReview) { "Yes" } else { "No" }
+                ReviewDetails    = $uniqueReviewReasons -join "; "
+                Provision        = if ($group.HasReview) { "no" } else { "yes" }
+            }
+
+            $allPolicies += $policyEntry
         }
-
-        $allPolicies += $policyEntry
     }
 
     # Route to scope
