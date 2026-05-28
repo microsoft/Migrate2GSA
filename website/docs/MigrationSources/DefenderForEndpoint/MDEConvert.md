@@ -329,4 +329,4 @@ A conversion summary is appended at the end of the log with counts for all proce
 - [Export MDE Web Filtering Config](./MDEExport.md) — prerequisite export step
 - [EIA CSV Configuration Reference](../../WorkingWithCSVs/eia-csv-configuration.md) — detailed CSV column documentation
 - [Migration Workflow](../../migration-workflow.md) — end-to-end 4-phase workflow
-- [Start-EntraInternetAccessProvisioning](../../Provision/start-eia-provisioning.md) — provisioning step
+- [Start-EntraInternetAccessProvisioning](../../Provision/EntraInternetAccessProvisioning.md) — provisioning step
