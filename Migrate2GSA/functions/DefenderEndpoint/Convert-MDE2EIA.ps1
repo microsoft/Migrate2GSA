@@ -673,22 +673,24 @@ function Convert-MDE2EIA {
             if ($indicator.action -eq "Warn") { $stats.IndicatorsWarn++ }
             if ($indicator.action -eq "AlertOnly") { $stats.IndicatorsAlertOnly++ }
 
-            # Build FQDN entries
+            # Build FQDN/URL entries
             $value = $indicator.indicatorValue
-            $fqdnEntries = @()
+            $entries = @()
+            $ruleType = "FQDN"
             if ($value -match '/') {
-                # Contains path — treat as URL, use as-is
-                $fqdnEntries += $value
+                # Contains path or scheme — treat as URL, use as-is
+                $entries += $value
+                $ruleType = "URL"
             }
             else {
                 # Domain — apply dual FQDN pattern (domain + *.domain)
-                $fqdnEntries += ConvertTo-DualFqdnEntries -Domain $value
+                $entries += ConvertTo-DualFqdnEntries -Domain $value
             }
 
             # Determine scope
             $scopeKey = Resolve-ScopeKey -RbacGroupNames $indicator.rbacGroupNames
 
-            # Group key
+            # Group key by action and scope (FQDNs and URLs share the same policy)
             $groupKey = "${mappedAction}|${scopeKey}"
 
             if (-not $fqdnGroups.ContainsKey($groupKey)) {
@@ -696,12 +698,18 @@ function Convert-MDE2EIA {
                     Action        = $mappedAction
                     ScopeKey      = $scopeKey
                     FqdnEntries   = @()
+                    UrlEntries    = @()
                     ReviewReasons = @()
                     HasReview     = $false
                 }
             }
 
-            $fqdnGroups[$groupKey].FqdnEntries += $fqdnEntries
+            if ($ruleType -eq "URL") {
+                $fqdnGroups[$groupKey].UrlEntries += $entries
+            }
+            else {
+                $fqdnGroups[$groupKey].FqdnEntries += $entries
+            }
             if ($hasReview) {
                 $fqdnGroups[$groupKey].HasReview = $true
                 $fqdnGroups[$groupKey].ReviewReasons += "$reviewDetail (indicator: $($indicator.title))"
@@ -720,37 +728,66 @@ function Convert-MDE2EIA {
 
             # Build policy name
             if ($scopeKey -eq "DEFAULT") {
-                $indicatorPolicyName = "Indicators-FQDN-$action"
+                $indicatorPolicyName = "Indicators-URL/Domain-$action"
             }
             else {
                 $scopeLabel = ($scopeKey -split ";")[0] -replace '\s+', '-' -replace '[^a-zA-Z0-9_-]', ''
-                $indicatorPolicyName = "Indicators-FQDN-$scopeLabel-$action"
+                $indicatorPolicyName = "Indicators-URL/Domain-$scopeLabel-$action"
             }
 
             $uniqueReviewReasons = $group.ReviewReasons | Select-Object -Unique
 
-            # Group by base domain, then split by character limit
-            $grouped = @($group.FqdnEntries) | Group-Object -Property { Get-BaseDomain -Domain $_ }
+            # Emit FQDN rules grouped by base domain
+            if ($group.FqdnEntries.Count -gt 0) {
+                $grouped = @($group.FqdnEntries) | Group-Object -Property { Get-BaseDomain -Domain $_ }
 
-            foreach ($domainGroup in $grouped | Sort-Object Name) {
-                $splitGroups = Split-ByCharacterLimit -Entries @($domainGroup.Group) -MaxLength 300 `
-                    -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                foreach ($domainGroup in $grouped | Sort-Object Name) {
+                    $splitGroups = Split-ByCharacterLimit -Entries @($domainGroup.Group) -MaxLength 300 `
+                        -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
 
-                for ($i = 0; $i -lt $splitGroups.Count; $i++) {
-                    $ruleName = if ($i -eq 0) { $domainGroup.Name } else { "$($domainGroup.Name)-$($i + 1)" }
+                    for ($i = 0; $i -lt $splitGroups.Count; $i++) {
+                        $ruleName = if ($i -eq 0) { $domainGroup.Name } else { "$($domainGroup.Name)-$($i + 1)" }
 
-                    [void]$allPolicies.Add([PSCustomObject]@{
-                        PolicyName       = $indicatorPolicyName
-                        PolicyType       = "WebContentFiltering"
-                        PolicyAction     = $action
-                        Description      = "Converted from MDE URL/Domain indicators ($action)"
-                        RuleType         = "FQDN"
-                        RuleDestinations = $splitGroups[$i] -join ";"
-                        RuleName         = $ruleName
-                        ReviewNeeded     = if ($group.HasReview) { "Yes" } else { "No" }
-                        ReviewDetails    = $uniqueReviewReasons -join "; "
-                        Provision        = if ($group.HasReview) { "no" } else { "yes" }
-                    })
+                        [void]$allPolicies.Add([PSCustomObject]@{
+                            PolicyName       = $indicatorPolicyName
+                            PolicyType       = "WebContentFiltering"
+                            PolicyAction     = $action
+                            Description      = "Converted from MDE URL/Domain indicators ($action)"
+                            RuleType         = "FQDN"
+                            RuleDestinations = $splitGroups[$i] -join ";"
+                            RuleName         = $ruleName
+                            ReviewNeeded     = if ($group.HasReview) { "Yes" } else { "No" }
+                            ReviewDetails    = $uniqueReviewReasons -join "; "
+                            Provision        = if ($group.HasReview) { "no" } else { "yes" }
+                        })
+                    }
+                }
+            }
+
+            # Emit URL rules grouped by base domain
+            if ($group.UrlEntries.Count -gt 0) {
+                $grouped = @($group.UrlEntries) | Group-Object -Property { Get-BaseDomain -Domain $_ }
+
+                foreach ($domainGroup in $grouped | Sort-Object Name) {
+                    $splitGroups = Split-ByCharacterLimit -Entries @($domainGroup.Group) -MaxLength 300 `
+                        -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+
+                    for ($i = 0; $i -lt $splitGroups.Count; $i++) {
+                        $ruleName = if ($i -eq 0) { "$($domainGroup.Name)-URL" } else { "$($domainGroup.Name)-URL-$($i + 1)" }
+
+                        [void]$allPolicies.Add([PSCustomObject]@{
+                            PolicyName       = $indicatorPolicyName
+                            PolicyType       = "WebContentFiltering"
+                            PolicyAction     = $action
+                            Description      = "Converted from MDE URL/Domain indicators ($action)"
+                            RuleType         = "URL"
+                            RuleDestinations = $splitGroups[$i] -join ";"
+                            RuleName         = $ruleName
+                            ReviewNeeded     = if ($group.HasReview) { "Yes" } else { "No" }
+                            ReviewDetails    = $uniqueReviewReasons -join "; "
+                            Provision        = if ($group.HasReview) { "no" } else { "yes" }
+                        })
+                    }
                 }
             }
 
@@ -763,7 +800,8 @@ function Convert-MDE2EIA {
             }
 
             $stats.PoliciesCreated++
-            Write-LogMessage "Created policy '$indicatorPolicyName' with $($group.FqdnEntries.Count) FQDN entries in $($grouped.Count) base-domain group(s) (scope: $scopeKey)" -Level "DEBUG" `
+            $totalEntries = $group.FqdnEntries.Count + $group.UrlEntries.Count
+            Write-LogMessage "Created policy '$indicatorPolicyName' with $totalEntries entries ($($group.FqdnEntries.Count) FQDN, $($group.UrlEntries.Count) URL) (scope: $scopeKey)" -Level "DEBUG" `
                 -Component "Convert-MDE2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
         }
 
