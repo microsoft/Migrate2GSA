@@ -58,15 +58,12 @@ function Write-ProgressUpdate {
             return
         }
         
-        # Get start time from parameter or parent scope
+        # Get start time from parameter or global ProvisioningStats
         $operationStartTime = $StartTime
         if ($operationStartTime -eq [datetime]::MinValue -or $null -eq $operationStartTime) {
-            # Try to get from parent scope ProvisioningStats
-            if (Get-Variable -Name 'ProvisioningStats' -Scope 1 -ErrorAction SilentlyContinue) {
-                $stats = (Get-Variable -Name 'ProvisioningStats' -Scope 1).Value
-                if ($stats.PSObject.Properties.Name -contains 'StartTime') {
-                    $operationStartTime = $stats.StartTime
-                }
+            # Try to get from global ProvisioningStats
+            if ($Global:ProvisioningStats -and $Global:ProvisioningStats.StartTime) {
+                $operationStartTime = $Global:ProvisioningStats.StartTime
             }
             
             # If still not found, use current time (won't have accurate ETA but won't fail)

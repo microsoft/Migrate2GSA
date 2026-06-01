@@ -129,15 +129,42 @@ function New-IntPrivateAccessApp {
                 } | ConvertTo-Json -Depth 99 -Compress
             }
 
-            # Set the Private Access app to be accessible via the ZTNA client
-            # Write-Verbose "Configuring application as Private Access (ZTNA) app"
-            $params = @{
+            # Brief delay to allow backend replication after template instantiation
+            Start-Sleep -Milliseconds 500
+
+            # Set the Private Access app to be accessible via the ZTNA client with retry logic
+            # The PATCH can fail with 500 due to replication lag after instantiation
+            $patchParams = @{
                 Method = 'PATCH'
                 Uri    = "https://graph.microsoft.com/beta/applications/$newAppId/"
                 Body   = $bodyJson
             }
 
-            Invoke-InternalGraphRequest @params
+            $maxPatchRetries = 5
+            $patchDelay = 500  # milliseconds, doubles each retry
+            $patchSuccess = $false
+
+            for ($patchAttempt = 1; $patchAttempt -le $maxPatchRetries; $patchAttempt++) {
+                try {
+                    Invoke-InternalGraphRequest @patchParams
+                    $patchSuccess = $true
+                    break
+                } catch {
+                    $is500 = $false
+                    if ($_.Exception -and $_.Exception.Response) {
+                        $is500 = ([int]$_.Exception.Response.StatusCode) -eq 500
+                    } elseif ($_.Exception.Message -match 'InternalServerError|status code 500') {
+                        $is500 = $true
+                    }
+
+                    if (-not $is500 -or $patchAttempt -eq $maxPatchRetries) {
+                        throw
+                    }
+                    Write-Verbose "PATCH attempt $patchAttempt/$maxPatchRetries failed with 500. Retrying in $($patchDelay)ms..."
+                    Start-Sleep -Milliseconds $patchDelay
+                    $patchDelay *= 2
+                }
+            }
 
             # Update service principal tags for Quick Access apps
             # The template instantiation only sets tags on the application object, not the service principal.
