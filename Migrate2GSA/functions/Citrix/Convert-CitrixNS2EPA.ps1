@@ -22,9 +22,11 @@ function Convert-CitrixNS2EPA {
 
     .PARAMETER GroupFilter
         Comma-separated list of wildcard patterns to include only matching AAA groups.
+        When specified, unbound policies are also excluded from the output.
 
     .PARAMETER ExcludeGroupFilter
         Comma-separated list of wildcard patterns to exclude matching AAA groups.
+        When specified, unbound policies are also excluded from the output.
 
     .PARAMETER EnableDebugLogging
         Enable verbose debug logging for detailed troubleshooting.
@@ -1052,7 +1054,8 @@ try {
 
     Write-LogMessage "Groups to process: $($groupsToProcess.Count)" -Level "INFO" -Component 'Resolve'
 
-    if ($groupsToProcess.Count -eq 0 -and $unboundPolicies.Count -eq 0) {
+    $willProcessUnbound = ($unboundPolicies.Count -gt 0) -and -not ($GroupFilter -or $ExcludeGroupFilter)
+    if ($groupsToProcess.Count -eq 0 -and -not $willProcessUnbound) {
         Write-LogMessage "No groups or unbound policies to process. Returning empty result." -Level "WARN" -Component 'Resolve'
         return @()
     }
@@ -1124,8 +1127,12 @@ try {
         }
     }
 
-    # Process unbound policies
-    if ($unboundPolicies.Count -gt 0) {
+    # Process unbound policies (skip when group filters are in effect — they target AAA groups, not unbound policies)
+    $skipUnboundDueToFilter = ($GroupFilter -or $ExcludeGroupFilter)
+    if ($unboundPolicies.Count -gt 0 -and $skipUnboundDueToFilter) {
+        Write-LogMessage "Skipping $($unboundPolicies.Count) unbound policies because -GroupFilter/-ExcludeGroupFilter is in effect" -Level "INFO" -Component 'Transform'
+    }
+    if ($unboundPolicies.Count -gt 0 -and -not $skipUnboundDueToFilter) {
         Write-LogMessage "Processing $($unboundPolicies.Count) unbound policies under GSA-UnboundPolicies" -Level "INFO" -Component 'Transform'
 
         foreach ($policyName in $unboundPolicies) {

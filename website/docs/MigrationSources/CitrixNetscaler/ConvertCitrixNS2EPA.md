@@ -59,13 +59,13 @@ Base directory for output files.
 - **Required**: No
 
 ### -GroupFilter
-Comma-separated list of wildcard patterns to include only matching AAA groups.
+Comma-separated list of wildcard patterns to include only matching AAA groups. When specified, unbound policies are also excluded from the output.
 
 - **Type**: String
 - **Required**: No
 
 ### -ExcludeGroupFilter
-Comma-separated list of wildcard patterns to exclude matching AAA groups.
+Comma-separated list of wildcard patterns to exclude matching AAA groups. When specified, unbound policies are also excluded from the output.
 
 - **Type**: String
 - **Required**: No
@@ -161,7 +161,7 @@ Reads the NetScaler config file and extracts:
 Rule expressions are parsed for `CLIENT.IP.DST.EQ`, `CLIENT.IP.DST.IN_SUBNET`, `CLIENT.TCP.DSTPORT.EQ`, and `CLIENT.UDP.DSTPORT.EQ` clauses.
 
 ### Phase 2: Resolve Bindings
-Consolidates bindings per group, merging TCP/UDP protocols for the same policy. ICMP bindings are skipped. Unbound ALLOW policies are collected separately under `GSA-UnboundPolicies`.
+Consolidates bindings per group, merging TCP/UDP protocols for the same policy. ICMP bindings are skipped. Unbound ALLOW policies are collected separately under `GSA-UnboundPolicies`. When `-GroupFilter` or `-ExcludeGroupFilter` is specified, unbound policies are excluded from the output (the filter scopes the run to specific AAA groups).
 
 ### Phase 3: Transform
 Converts each group's bound policies and intranet applications into EPA segment objects. Each AAA group becomes an Enterprise Application named `GSA-<GroupName>`.
