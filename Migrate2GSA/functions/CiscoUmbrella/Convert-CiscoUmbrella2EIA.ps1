@@ -35,9 +35,17 @@ function Convert-CiscoUmbrella2EIA {
         Default: CiscoUmbrella2EIA-CategoryMappings.csv in current directory
 
     .PARAMETER AppMappingsPath
-        Path to Umbrella to EIA application mappings CSV file. Required when WebPoliciesPath is provided.
+        Path to Umbrella to EIA application mappings CSV file. Required when WebPoliciesPath is provided,
+        or when DNS policies reference application settings (DNS-only Umbrella tier).
         The CSV must contain columns: UmbrellaAppId, UmbrellaAppName, GSAAppName, MatchType, GSAEndpoints.
         Default: CiscoUmbrella2EIA-AppMappings.csv in current directory
+
+    .PARAMETER ApplicationSettingsPath
+        Path to Cisco Umbrella Application Settings JSON export. Used when DNS policies reference
+        application settings (DNS-only Umbrella tier or DNS+SWG bundles with app controls).
+        If the file is not present and DNS policies reference app settings, app-rule generation is
+        skipped with a warning.
+        Default: application_settings.json in current directory
 
     .PARAMETER OutputBasePath
         Base directory for output CSV and log files.
@@ -100,8 +108,9 @@ function Convert-CiscoUmbrella2EIA {
         - At least one of dns_policies.json or web_policies.json
         - destination_lists.json
         - category_settings.json (when using DNS policies)
+        - application_settings.json (when DNS policies reference application settings)
         - CiscoUmbrella2EIA-CategoryMappings.csv
-        - CiscoUmbrella2EIA-AppMappings.csv (when using Web policies)
+        - CiscoUmbrella2EIA-AppMappings.csv (when using Web policies, or DNS policies with app settings)
 
         Known Limitations:
         - DNS policy identity assignment not available — all DNS policies assumed to apply to all users
@@ -153,6 +162,13 @@ function Convert-CiscoUmbrella2EIA {
             else { throw "File not found: $_" }
         })]
         [string]$AppMappingsPath = (Join-Path $PWD "CiscoUmbrella2EIA-AppMappings.csv"),
+
+        [Parameter(HelpMessage = "Path to Cisco Umbrella Application Settings JSON export")]
+        [ValidateScript({
+            if (Test-Path $_) { return $true }
+            else { throw "File not found: $_" }
+        })]
+        [string]$ApplicationSettingsPath = (Join-Path $PWD "application_settings.json"),
 
         [Parameter(HelpMessage = "Base directory for output files")]
         [ValidateScript({
@@ -342,6 +358,34 @@ function Convert-CiscoUmbrella2EIA {
         }
     }
 
+    function Resolve-DnsPolicyAppSetting {
+        param(
+            [Parameter(Mandatory = $true)]
+            [object]$DnsPolicy,
+
+            [Parameter(Mandatory = $true)]
+            [hashtable]$ApplicationSettingsHashtable
+        )
+
+        $appSettingId = $null
+
+        # Prefer embedded reference (synthesized DNS-only policies carry this)
+        if ($DnsPolicy.PSObject.Properties.Name -contains 'applicationSetting' -and $null -ne $DnsPolicy.applicationSetting) {
+            if ($DnsPolicy.applicationSetting.PSObject.Properties.Name -contains 'id' -and $null -ne $DnsPolicy.applicationSetting.id) {
+                $appSettingId = $DnsPolicy.applicationSetting.id
+            }
+        }
+
+        # Fall back to canonical link field on real DNS+SWG bundles
+        if ($null -eq $appSettingId -and $DnsPolicy.PSObject.Properties.Name -contains 'applicationAupSettingGroupId' -and $null -ne $DnsPolicy.applicationAupSettingGroupId) {
+            $appSettingId = $DnsPolicy.applicationAupSettingGroupId
+        }
+
+        if ($null -eq $appSettingId) { return $null }
+
+        return $ApplicationSettingsHashtable[$appSettingId]
+    }
+
     function Get-IdentityScopeKey {
         param(
             [array]$IdentityIds,
@@ -416,6 +460,9 @@ function Convert-CiscoUmbrella2EIA {
         AppsMatchedApproximate        = 0
         AppsUnmatched_NoMatch         = 0
         AppsUnmatched_NotInFile        = 0
+        DnsAppSettingsProcessed       = 0
+        DnsAppRulesGenerated          = 0
+        DnsAppCategoriesGenerated     = 0
         DestinationListsResolved      = 0
         TotalFqdnEntries              = 0
         IdentityScopesAll             = 0
@@ -523,9 +570,42 @@ function Convert-CiscoUmbrella2EIA {
         throw "Failed to load category mappings file '$CategoryMappingsPath': $($_.Exception.Message)"
     }
 
+    # Determine if any DNS policy references an application setting (drives optional app-mapping load)
+    $dnsHasAppSettings = $false
+    if ($hasDnsPolicies -and $null -ne $dnsPolicies) {
+        foreach ($p in @($dnsPolicies)) {
+            $hasEmbedded = ($p.PSObject.Properties.Name -contains 'applicationSetting' -and $null -ne $p.applicationSetting)
+            $hasLinkId = ($p.PSObject.Properties.Name -contains 'applicationAupSettingGroupId' -and $null -ne $p.applicationAupSettingGroupId)
+            if ($hasEmbedded -or $hasLinkId) { $dnsHasAppSettings = $true; break }
+        }
+    }
+
+    # Load Application Settings (when DNS policies reference them)
+    $applicationSettings = $null
+    if ($hasDnsPolicies -and $dnsHasAppSettings) {
+        if (Test-Path $ApplicationSettingsPath) {
+            try {
+                Write-LogMessage "Loading application settings from: $ApplicationSettingsPath" -Level "INFO" `
+                    -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                $applicationSettings = Get-Content -Path $ApplicationSettingsPath -Raw | ConvertFrom-Json
+                Write-LogMessage "Loaded $(@($applicationSettings).Count) application settings" -Level "INFO" `
+                    -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+            }
+            catch {
+                Write-LogMessage "Failed to load application settings: $_" -Level "WARN" `
+                    -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                $applicationSettings = $null
+            }
+        }
+        else {
+            Write-LogMessage "DNS policies reference application settings, but '$ApplicationSettingsPath' was not found. App-rule generation will be skipped." -Level "WARN" `
+                -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+        }
+    }
+
     # Load App Mappings (required when Web policies provided)
     $appMappings = $null
-    if ($hasWebPolicies) {
+    if ($hasWebPolicies -or ($dnsHasAppSettings -and $null -ne $applicationSettings)) {
         try {
             Write-LogMessage "Loading app mappings from: $AppMappingsPath" -Level "INFO" `
                 -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
@@ -580,7 +660,7 @@ function Convert-CiscoUmbrella2EIA {
 
     # App mappings: UmbrellaAppId (int) -> CSV row object
     $appMappingsHashtable = @{}
-    if ($hasWebPolicies -and $null -ne $appMappings) {
+    if ($null -ne $appMappings) {
         $appMappingRowNumber = 1
         foreach ($row in $appMappings) {
             $parsedAppId = 0
@@ -603,7 +683,17 @@ function Convert-CiscoUmbrella2EIA {
         }
     }
 
-    Write-LogMessage "Lookup tables built: $($destinationListsHashtable.Count) destination lists, $($categorySettingsHashtable.Count) category settings, $($categoryMappingsHashtable.Count) category mappings, $($appMappingsHashtable.Count) app mappings" -Level "INFO" `
+    # Application settings: id -> setting object
+    $applicationSettingsHashtable = @{}
+    if ($null -ne $applicationSettings) {
+        foreach ($asSetting in @($applicationSettings)) {
+            if ($null -ne $asSetting -and $asSetting.PSObject.Properties.Name -contains 'id') {
+                $applicationSettingsHashtable[$asSetting.id] = $asSetting
+            }
+        }
+    }
+
+    Write-LogMessage "Lookup tables built: $($destinationListsHashtable.Count) destination lists, $($categorySettingsHashtable.Count) category settings, $($categoryMappingsHashtable.Count) category mappings, $($appMappingsHashtable.Count) app mappings, $($applicationSettingsHashtable.Count) application settings" -Level "INFO" `
         -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
 
     # Validate that at least some policies were loaded
@@ -758,6 +848,209 @@ function Convert-CiscoUmbrella2EIA {
                     }
 
                     [void]$defaultScopePolicies.Add($policyName)
+                }
+            }
+
+            # Process applicationSetting (DNS-only tier and DNS+SWG bundles with app controls)
+            $dnsAppSetting = Resolve-DnsPolicyAppSetting -DnsPolicy $dnsPolicy -ApplicationSettingsHashtable $applicationSettingsHashtable
+            if ($null -ne $dnsAppSetting) {
+                $stats.DnsAppSettingsProcessed++
+                $policyNameClean = $dnsPolicy.name -replace '\s+', '' -replace '[^a-zA-Z0-9_-]', ''
+
+                # Group applications[] by action
+                $appsByAction = @{}
+                if ($dnsAppSetting.PSObject.Properties.Name -contains 'applications' -and $null -ne $dnsAppSetting.applications) {
+                    foreach ($app in @($dnsAppSetting.applications)) {
+                        $appAction = if ($app.PSObject.Properties.Name -contains 'action') { [string]$app.action } else { '' }
+                        $eiaAppAction = switch ($appAction.ToLower()) {
+                            'block'           { 'Block' }
+                            'allow'           { 'Allow' }
+                            'do_not_decrypt'  { 'Allow' }
+                            'warn'            { 'Block' }
+                            default           { $null }
+                        }
+                        if ($null -eq $eiaAppAction) {
+                            Write-LogMessage "DNS policy '$($dnsPolicy.name)': skipping app '$($app.applicationName)' with unsupported action '$appAction'" -Level "DEBUG" `
+                                -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                            continue
+                        }
+                        if (-not $appsByAction.ContainsKey($eiaAppAction)) {
+                            $appsByAction[$eiaAppAction] = [System.Collections.ArrayList]::new()
+                        }
+                        [void]$appsByAction[$eiaAppAction].Add(@{ App = $app; OriginalAction = $appAction })
+                    }
+                }
+
+                foreach ($actionKey in $appsByAction.Keys) {
+                    $allEndpoints = [System.Collections.ArrayList]::new()
+                    $unmappedApps = [System.Collections.ArrayList]::new()
+                    $appReviewReasons = [System.Collections.ArrayList]::new()
+                    $hasWarnAction = $false
+
+                    foreach ($entry in $appsByAction[$actionKey]) {
+                        $app = $entry.App
+                        if ($entry.OriginalAction.ToLower() -eq 'warn') { $hasWarnAction = $true }
+
+                        $appId = 0
+                        if (-not [int]::TryParse([string]$app.applicationId, [ref]$appId)) {
+                            Write-LogMessage "DNS policy '$($dnsPolicy.name)': skipping app with non-numeric applicationId '$($app.applicationId)'" -Level "WARN" `
+                                -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                            continue
+                        }
+                        $appName = [string]$app.applicationName
+                        $appMatch = Resolve-AppMapping -AppId $appId -AppName $appName -AppMappingsHashtable $appMappingsHashtable
+
+                        if ($appMatch.IsMapped) {
+                            if ($appMatch.Endpoints.Count -gt 0) {
+                                foreach ($endpoint in $appMatch.Endpoints) {
+                                    $dualEntries = ConvertTo-DualFqdnEntries -Domain $endpoint
+                                    foreach ($de in $dualEntries) {
+                                        [void]$allEndpoints.Add($de)
+                                    }
+                                }
+                            }
+                            else {
+                                Write-LogMessage "DNS policy '$($dnsPolicy.name)': app '$appName' mapped to '$($appMatch.GSAAppName)' but has no endpoints" -Level "WARN" `
+                                    -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                                [void]$unmappedApps.Add("UNMAPPED:$appName")
+                                [void]$appReviewReasons.Add("App '$appName' mapped to '$($appMatch.GSAAppName)' but has no endpoints")
+                            }
+
+                            if ($appMatch.MatchType -eq 'Exact') { $stats.AppsMatchedExact++ } else { $stats.AppsMatchedApproximate++ }
+                            Write-LogMessage $appMatch.LogMessage -Level "DEBUG" `
+                                -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                        }
+                        else {
+                            [void]$unmappedApps.Add("UNMAPPED:$appName")
+                            [void]$appReviewReasons.Add($appMatch.LogMessage)
+                            $appMatchLogLevel = if ($appMatch.MatchType -eq 'NoMatch') { 'DEBUG' } else { 'WARN' }
+                            Write-LogMessage $appMatch.LogMessage -Level $appMatchLogLevel `
+                                -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                            if ($appMatch.MatchType -eq 'NotInFile') { $stats.AppsUnmatched_NotInFile++ } else { $stats.AppsUnmatched_NoMatch++ }
+                        }
+                    }
+
+                    if ($allEndpoints.Count -eq 0 -and $unmappedApps.Count -eq 0) { continue }
+
+                    $appPolicyName = "DNS-$policyNameClean-Apps-$actionKey"
+                    if ($hasWarnAction) {
+                        [void]$appReviewReasons.Add("One or more apps had original action 'warn' - converted to Block")
+                    }
+                    $hasUnmappedApps = $unmappedApps.Count -gt 0
+                    $stats.TotalFqdnEntries += $allEndpoints.Count
+
+                    if ($allEndpoints.Count -gt 0) {
+                        $grouped = @($allEndpoints) | Group-Object -Property { Get-BaseDomain -Domain $_ }
+                        foreach ($group in $grouped | Sort-Object Name) {
+                            $epGroups = Split-ByCharacterLimit -Entries @($group.Group) -MaxLength 300
+                            if ($epGroups.Count -gt 1) { $stats.RulesSplitForCharLimit++ }
+                            for ($i = 0; $i -lt $epGroups.Count; $i++) {
+                                $ruleSuffix = if ($i -eq 0) { $group.Name } else { "$($group.Name)-$($i + 1)" }
+                                $policyEntry = [PSCustomObject]@{
+                                    PolicyName       = $appPolicyName
+                                    PolicyType       = "WebContentFiltering"
+                                    PolicyAction     = $actionKey
+                                    Description      = "Converted from Umbrella DNS policy app settings: $($dnsPolicy.name)"
+                                    RuleType         = "FQDN"
+                                    RuleDestinations = $epGroups[$i] -join ";"
+                                    RuleName         = $ruleSuffix
+                                    ReviewNeeded     = if ($hasUnmappedApps) { "Yes" } else { "No" }
+                                    ReviewDetails    = $appReviewReasons -join "; "
+                                    Provision        = if ($hasUnmappedApps) { "no" } else { "yes" }
+                                }
+                                [void]$allPolicies.Add($policyEntry)
+                                $stats.DnsAppRulesGenerated++
+                            }
+                        }
+                    }
+
+                    if ($unmappedApps.Count -gt 0) {
+                        $unmappedGroups = Split-ByCharacterLimit -Entries @($unmappedApps) -MaxLength 300
+                        if ($unmappedGroups.Count -gt 1) { $stats.RulesSplitForCharLimit++ }
+                        for ($i = 0; $i -lt $unmappedGroups.Count; $i++) {
+                            $ruleSuffix = if ($i -eq 0) { "Apps-Unmapped" } else { "Apps-Unmapped-$($i + 1)" }
+                            $policyEntry = [PSCustomObject]@{
+                                PolicyName       = $appPolicyName
+                                PolicyType       = "WebContentFiltering"
+                                PolicyAction     = $actionKey
+                                Description      = "Converted from Umbrella DNS policy app settings: $($dnsPolicy.name)"
+                                RuleType         = "FQDN"
+                                RuleDestinations = $unmappedGroups[$i] -join ";"
+                                RuleName         = $ruleSuffix
+                                ReviewNeeded     = "Yes"
+                                ReviewDetails    = $appReviewReasons -join "; "
+                                Provision        = "no"
+                            }
+                            [void]$allPolicies.Add($policyEntry)
+                            $stats.DnsAppRulesGenerated++
+                        }
+                    }
+
+                    [void]$defaultScopePolicies.Add($appPolicyName)
+                }
+
+                # Group applicationsCategories[] by action and emit webCategory rows
+                if ($dnsAppSetting.PSObject.Properties.Name -contains 'applicationsCategories' -and $null -ne $dnsAppSetting.applicationsCategories) {
+                    $catsByAction = @{}
+                    foreach ($appCat in @($dnsAppSetting.applicationsCategories)) {
+                        $catAction = if ($appCat.PSObject.Properties.Name -contains 'action') { [string]$appCat.action } else { '' }
+                        $eiaCatAction = switch ($catAction.ToLower()) {
+                            'block'           { 'Block' }
+                            'allow'           { 'Allow' }
+                            'do_not_decrypt'  { 'Allow' }
+                            'warn'            { 'Block' }
+                            default           { $null }
+                        }
+                        if ($null -eq $eiaCatAction) { continue }
+                        if (-not $catsByAction.ContainsKey($eiaCatAction)) {
+                            $catsByAction[$eiaCatAction] = [System.Collections.ArrayList]::new()
+                        }
+                        [void]$catsByAction[$eiaCatAction].Add(@{ Cat = $appCat; OriginalAction = $catAction })
+                    }
+
+                    foreach ($actionKey in $catsByAction.Keys) {
+                        $mappedCats = [System.Collections.ArrayList]::new()
+                        $catReviewReasons = [System.Collections.ArrayList]::new()
+                        $hasUnmappedCat = $false
+                        $hasWarnCat = $false
+
+                        foreach ($entry in $catsByAction[$actionKey]) {
+                            if ($entry.OriginalAction.ToLower() -eq 'warn') { $hasWarnCat = $true }
+                            $catName = [string]$entry.Cat.name
+                            $mappingResult = Resolve-CategoryMapping -CategoryName $catName -CategoryMappingsHashtable $categoryMappingsHashtable
+                            [void]$mappedCats.Add($mappingResult.GSACategory)
+                            if ($mappingResult.IsMapped) {
+                                $stats.CategoriesMapped++
+                            }
+                            else {
+                                $hasUnmappedCat = $true
+                                [void]$catReviewReasons.Add($mappingResult.LogMessage)
+                                if ($mappingResult.MappingType -eq 'NoMappingRow') { $stats.UnmappedCategories_MissingInFile++ } else { $stats.UnmappedCategories_NoGSAValue++ }
+                                Write-LogMessage "DNS policy '$($dnsPolicy.name)' (app categories): $($mappingResult.LogMessage)" -Level "WARN" `
+                                    -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+                            }
+                        }
+
+                        if ($mappedCats.Count -eq 0) { continue }
+                        if ($hasWarnCat) { [void]$catReviewReasons.Add("One or more app categories had original action 'warn' - converted to Block") }
+
+                        $catPolicyName = "DNS-$policyNameClean-AppCategories-$actionKey"
+                        $policyEntry = [PSCustomObject]@{
+                            PolicyName       = $catPolicyName
+                            PolicyType       = "WebContentFiltering"
+                            PolicyAction     = $actionKey
+                            Description      = "Converted from Umbrella DNS policy app categories: $($dnsPolicy.name)"
+                            RuleType         = "webCategory"
+                            RuleDestinations = $mappedCats -join ";"
+                            RuleName         = "AppCategories"
+                            ReviewNeeded     = if ($hasUnmappedCat -or $hasWarnCat) { "Yes" } else { "No" }
+                            ReviewDetails    = $catReviewReasons -join "; "
+                            Provision        = if ($hasUnmappedCat) { "no" } else { "yes" }
+                        }
+                        [void]$allPolicies.Add($policyEntry)
+                        [void]$defaultScopePolicies.Add($catPolicyName)
+                        $stats.DnsAppCategoriesGenerated++
+                    }
                 }
             }
 
@@ -1344,15 +1637,30 @@ function Convert-CiscoUmbrella2EIA {
             $stats.PoliciesMergedDedup += $candidates.Count - 1
         }
         elseif ($RuleType -eq "FQDN") {
-            # Merge all FQDN destinations
+            # Merge all FQDN destinations, separating real FQDNs from UNMAPPED:* placeholders
             $allFqdns = [System.Collections.ArrayList]::new()
+            $allUnmapped = [System.Collections.ArrayList]::new()
+            $allReviewReasons = [System.Collections.ArrayList]::new()
 
             foreach ($policy in $candidates) {
                 $fqdns = $policy.RuleDestinations -split ";"
-                foreach ($f in $fqdns) { [void]$allFqdns.Add($f) }
+                foreach ($f in $fqdns) {
+                    if ($f -like 'UNMAPPED:*') {
+                        [void]$allUnmapped.Add($f)
+                    }
+                    else {
+                        [void]$allFqdns.Add($f)
+                    }
+                }
+                if (-not [string]::IsNullOrWhiteSpace($policy.ReviewDetails)) {
+                    $reasons = $policy.ReviewDetails -split "; "
+                    foreach ($r in $reasons) { [void]$allReviewReasons.Add($r) }
+                }
             }
 
             $uniqueFqdns = @($allFqdns | Select-Object -Unique)
+            $uniqueUnmapped = @($allUnmapped | Select-Object -Unique)
+            $uniqueReviewReasons = @($allReviewReasons | Select-Object -Unique)
 
             # Remove individual candidate policies from allPolicies
             $candidatePolicyNames = @($candidates | ForEach-Object { $_.PolicyName } | Select-Object -Unique)
@@ -1399,6 +1707,27 @@ function Convert-CiscoUmbrella2EIA {
                         Provision        = "yes"
                     }
 
+                    [void]$AllPolicies.Add($policyEntry)
+                }
+            }
+
+            # Emit separate rows for UNMAPPED:* placeholders, flagged for review
+            if ($uniqueUnmapped.Count -gt 0) {
+                $unmappedGroups = Split-ByCharacterLimit -Entries @($uniqueUnmapped) -MaxLength 300
+                for ($i = 0; $i -lt $unmappedGroups.Count; $i++) {
+                    $ruleName = if ($i -eq 0) { "Apps-Unmapped" } else { "Apps-Unmapped-$($i + 1)" }
+                    $policyEntry = [PSCustomObject]@{
+                        PolicyName       = $MergedPolicyName
+                        PolicyType       = "WebContentFiltering"
+                        PolicyAction     = $PolicyAction
+                        Description      = $Description
+                        RuleType         = "FQDN"
+                        RuleDestinations = $unmappedGroups[$i] -join ";"
+                        RuleName         = $ruleName
+                        ReviewNeeded     = "Yes"
+                        ReviewDetails    = $uniqueReviewReasons -join "; "
+                        Provision        = "no"
+                    }
                     [void]$AllPolicies.Add($policyEntry)
                 }
             }
@@ -1631,6 +1960,10 @@ function Convert-CiscoUmbrella2EIA {
         -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "  - Missing from mapping file: $($stats.AppsUnmatched_NotInFile)" -Level "INFO" `
         -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "DNS app settings processed: $($stats.DnsAppSettingsProcessed)" -Level "INFO" `
+        -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
+    Write-LogMessage "DNS app rules generated: $($stats.DnsAppRulesGenerated) (categories: $($stats.DnsAppCategoriesGenerated))" -Level "INFO" `
+        -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "" -Level "INFO" `
         -Component "Convert-CiscoUmbrella2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
     Write-LogMessage "Destination lists resolved: $($stats.DestinationListsResolved)" -Level "INFO" `
@@ -1698,6 +2031,9 @@ function Convert-CiscoUmbrella2EIA {
             AppsMatchedApproximate         = $stats.AppsMatchedApproximate
             AppsUnmatched_NoMatch          = $stats.AppsUnmatched_NoMatch
             AppsUnmatched_NotInFile        = $stats.AppsUnmatched_NotInFile
+            DnsAppSettingsProcessed        = $stats.DnsAppSettingsProcessed
+            DnsAppRulesGenerated           = $stats.DnsAppRulesGenerated
+            DnsAppCategoriesGenerated      = $stats.DnsAppCategoriesGenerated
             DestinationListsResolved       = $stats.DestinationListsResolved
             TotalFqdnEntries               = $stats.TotalFqdnEntries
             PoliciesCreated                = $uniquePolicyCount

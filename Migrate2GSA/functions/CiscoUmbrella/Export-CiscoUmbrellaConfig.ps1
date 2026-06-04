@@ -319,6 +319,32 @@ function Export-CiscoUmbrellaConfig {
         return $null
     }
 
+    function Test-IsDnsOnlyOrg {
+        <#
+        .SYNOPSIS
+            Detects a legacy DNS-only Umbrella organization by the absence of SIG/SWG/FW dashboard
+            endpoints in the HAR. Such tenants don't expose /bundles, /rulesets/firewall, or
+            /bypassinspectiongroupsettings; their dashboard reads category/security/application
+            settings directly by id.
+        #>
+        param(
+            [Parameter(Mandatory = $true)]
+            [object[]]$Entries,
+            [Parameter(Mandatory = $true)]
+            [string]$OrgId
+        )
+
+        $hasSigEvidence = $Entries | Where-Object {
+            $url = [System.Uri]::UnescapeDataString($_.request.url)
+            $url -match "/organizations/$OrgId/bundles\?" -or
+            $url -match "/organizations/$OrgId/rulesets/firewall" -or
+            $url -match "/organizations/$OrgId/rulesets/bundle/" -or
+            $url -match "/organizations/$OrgId/bypassinspectiongroupsettings"
+        } | Select-Object -First 1
+
+        return ($null -eq $hasSigEvidence)
+    }
+
     function Get-DnsPolicies {
         <#
         .SYNOPSIS
@@ -326,7 +352,8 @@ function Export-CiscoUmbrellaConfig {
         #>
         param(
             [object[]]$Entries,
-            [string]$OrgId
+            [string]$OrgId,
+            [switch]$IsDnsOnlyOrg
         )
 
         Write-LogMessage "Extracting DNS Policies..." -Level INFO -Component "Export"
@@ -348,7 +375,12 @@ function Export-CiscoUmbrellaConfig {
         }
 
         if ($null -eq $bundleEntries -or @($bundleEntries).Count -eq 0) {
-            Write-LogMessage "No DNS Policies list response found in HAR — skipping" -Level WARN -Component "Export"
+            if ($IsDnsOnlyOrg) {
+                Write-LogMessage "No DNS Policies bundle response in HAR — synthesis from settings will be attempted (DNS-only Umbrella org)" -Level INFO -Component "Export"
+            }
+            else {
+                Write-LogMessage "No DNS Policies list response found in HAR — skipping" -Level WARN -Component "Export"
+            }
             return @()
         }
 
@@ -389,7 +421,8 @@ function Export-CiscoUmbrellaConfig {
         #>
         param(
             [object[]]$Entries,
-            [string]$OrgId
+            [string]$OrgId,
+            [switch]$IsDnsOnlyOrg
         )
 
         Write-LogMessage "Extracting Firewall Rules..." -Level INFO -Component "Export"
@@ -399,7 +432,12 @@ function Export-CiscoUmbrellaConfig {
         $fwResponses = Get-HARResponseByUrl -Entries $Entries -UrlPattern $fwPattern -All
 
         if ($null -eq $fwResponses -or @($fwResponses).Count -eq 0) {
-            Write-LogMessage "No Firewall Rules response found in HAR — skipping" -Level WARN -Component "Export"
+            if ($IsDnsOnlyOrg) {
+                Write-LogMessage "Firewall Rules not applicable for DNS-only Umbrella org — skipping" -Level INFO -Component "Export"
+            }
+            else {
+                Write-LogMessage "No Firewall Rules response found in HAR — skipping" -Level WARN -Component "Export"
+            }
             return $null
         }
 
@@ -447,7 +485,8 @@ function Export-CiscoUmbrellaConfig {
         #>
         param(
             [object[]]$Entries,
-            [string]$OrgId
+            [string]$OrgId,
+            [switch]$IsDnsOnlyOrg
         )
 
         Write-LogMessage "Extracting Web Policies..." -Level INFO -Component "Export"
@@ -468,7 +507,12 @@ function Export-CiscoUmbrellaConfig {
         }
 
         if ($null -eq $bundleEntries -or @($bundleEntries).Count -eq 0) {
-            Write-LogMessage "No Web Policies list response found in HAR — skipping" -Level WARN -Component "Export"
+            if ($IsDnsOnlyOrg) {
+                Write-LogMessage "Web Policies not applicable for DNS-only Umbrella org — skipping" -Level INFO -Component "Export"
+            }
+            else {
+                Write-LogMessage "No Web Policies list response found in HAR — skipping" -Level WARN -Component "Export"
+            }
             return @()
         }
 
@@ -610,46 +654,90 @@ function Export-CiscoUmbrellaConfig {
             $decodedUrl -match $listPattern -and $decodedUrl -notmatch "/categorysettings/\d+"
         }
 
-        if ($null -eq $listEntries -or @($listEntries).Count -eq 0) {
-            Write-LogMessage "No Category Settings list response found in HAR — skipping" -Level WARN -Component "Export"
-            return @()
+        $items = @()
+        if ($null -ne $listEntries -and @($listEntries).Count -gt 0) {
+            $entry = @($listEntries) | Select-Object -Last 1
+            try {
+                $response = $entry.response.content.text | ConvertFrom-Json
+                $items = if ($response.data) { @($response.data) } else { @($response) }
+            }
+            catch {
+                Write-LogMessage "Could not parse Category Settings list response — falling back to detail responses" -Level WARN -Component "Export"
+            }
+        }
+        else {
+            Write-LogMessage "No Category Settings list response in HAR — scanning detail responses" -Level INFO -Component "Export"
         }
 
-        $entry = @($listEntries) | Select-Object -Last 1
-        try {
-            $response = $entry.response.content.text | ConvertFrom-Json
-        }
-        catch {
-            Write-LogMessage "Could not parse Category Settings response — skipping" -Level WARN -Component "Export"
-            return @()
+        # Always also scan all /categorysettings/{id} detail responses (handles DNS-only orgs and
+        # MSP-inherited records not surfaced by the list call).
+        $listIds = @($items | ForEach-Object { $_.id })
+        $detailEntries = $Entries | Where-Object {
+            $decodedUrl = [System.Uri]::UnescapeDataString($_.request.url)
+            $decodedUrl -match "/organizations/$OrgId/categorysettings/\d+(\?|$)"
         }
 
-        $items = if ($response.data) { @($response.data) } else { @($response) }
+        $detailById = @{}
+        foreach ($detailEntry in @($detailEntries)) {
+            try {
+                $detailResp = $detailEntry.response.content.text | ConvertFrom-Json
+                $detailData = if ($detailResp.data) { $detailResp.data } else { $detailResp }
+                if ($detailData.id) {
+                    $detailById["$($detailData.id)"] = $detailData
+                }
+            }
+            catch { }
+        }
 
-        # Prefer detail responses where available
+        # Build result: prefer detail data over list data; include detail-only ids not in list
         $detailCount = 0
+        $inheritedCount = 0
         $result = @()
+        $emittedIds = @{}
+
         foreach ($item in $items) {
-            $itemId = $item.id
-            if ($itemId) {
-                $detailResponse = Get-HARResponseByUrl -Entries $Entries -UrlPattern "/organizations/$OrgId/categorysettings/$itemId(\?|$)"
-                if ($detailResponse) {
-                    $detailData = if ($detailResponse.data) { $detailResponse.data } else { $detailResponse }
-                    $result += $detailData
-                    $detailCount++
-                }
-                else {
-                    Write-LogMessage "No detail response for categorysettings id=$itemId — using list data" -Level WARN -Component "Export"
-                    $result += $item
-                }
+            $itemId = "$($item.id)"
+            if ($detailById.ContainsKey($itemId)) {
+                $merged = $detailById[$itemId]
+                $detailCount++
             }
             else {
-                $result += $item
+                $merged = $item
+                Write-LogMessage "No detail response for categorysettings id=$itemId — using list data" -Level WARN -Component "Export"
+            }
+            if ($merged.organizationId -and "$($merged.organizationId)" -ne "$OrgId") {
+                $merged | Add-Member -NotePropertyName '_isInherited' -NotePropertyValue $true -Force
+                $inheritedCount++
+            }
+            $result += $merged
+            $emittedIds[$itemId] = $true
+        }
+
+        # Detail-only entries (not in list response)
+        foreach ($key in $detailById.Keys) {
+            if (-not $emittedIds.ContainsKey($key)) {
+                $merged = $detailById[$key]
+                if ($merged.organizationId -and "$($merged.organizationId)" -ne "$OrgId") {
+                    $merged | Add-Member -NotePropertyName '_isInherited' -NotePropertyValue $true -Force
+                    $inheritedCount++
+                }
+                Write-LogMessage "Found categorysettings id=$key in detail responses but not in list — including" -Level INFO -Component "Export"
+                $result += $merged
+                $detailCount++
             }
         }
 
-        $names = ($result | ForEach-Object { "         - $($_.name)" }) -join "`n"
-        Write-LogMessage "Extracted $($result.Count) category settings ($detailCount with full category details):`n$names" -Level SUCCESS -Component "Export"
+        if ($result.Count -eq 0) {
+            Write-LogMessage "No Category Settings found in HAR — skipping" -Level WARN -Component "Export"
+            return @()
+        }
+
+        $inheritedNote = if ($inheritedCount -gt 0) { " ($inheritedCount MSP-inherited)" } else { "" }
+        $names = ($result | ForEach-Object {
+            $inh = if ($_.PSObject.Properties.Name -contains '_isInherited' -and $_._isInherited) { " (inherited)" } else { "" }
+            "         - $($_.name)$inh"
+        }) -join "`n"
+        Write-LogMessage "Extracted $($result.Count) category settings ($detailCount with full category details)$inheritedNote`:`n$names" -Level SUCCESS -Component "Export"
         return $result
     }
 
@@ -672,66 +760,86 @@ function Export-CiscoUmbrellaConfig {
             $decodedUrl -match $listPattern -and $decodedUrl -notmatch "/applicationsettings/\d+"
         }
 
-        if ($null -eq $listEntries -or @($listEntries).Count -eq 0) {
-            Write-LogMessage "No Application Settings list response found in HAR — skipping" -Level WARN -Component "Export"
-            return @()
-        }
-
-        $entry = @($listEntries) | Select-Object -Last 1
-        try {
-            $response = $entry.response.content.text | ConvertFrom-Json
-        }
-        catch {
-            Write-LogMessage "Could not parse Application Settings response — skipping" -Level WARN -Component "Export"
-            return @()
-        }
-
-        $items = if ($response.data) { @($response.data) } else { @($response) }
-        $listIds = @($items | ForEach-Object { $_.id })
-
-        # Prefer detail responses where available
-        $detailCount = 0
-        $result = @()
-        foreach ($item in $items) {
-            $itemId = $item.id
-            if ($itemId) {
-                $detailResponse = Get-HARResponseByUrl -Entries $Entries -UrlPattern "/organizations/$OrgId/applicationsettings/$itemId(\?|$)"
-                if ($detailResponse) {
-                    $detailData = if ($detailResponse.data) { $detailResponse.data } else { $detailResponse }
-                    $result += $detailData
-                    $detailCount++
-                }
-                else {
-                    Write-LogMessage "No detail response for applicationsettings id=$itemId — using list data" -Level WARN -Component "Export"
-                    $result += $item
-                }
+        $items = @()
+        if ($null -ne $listEntries -and @($listEntries).Count -gt 0) {
+            $entry = @($listEntries) | Select-Object -Last 1
+            try {
+                $response = $entry.response.content.text | ConvertFrom-Json
+                $items = if ($response.data) { @($response.data) } else { @($response) }
             }
-            else {
-                $result += $item
+            catch {
+                Write-LogMessage "Could not parse Application Settings list response — falling back to detail responses" -Level WARN -Component "Export"
             }
         }
+        else {
+            Write-LogMessage "No Application Settings list response in HAR — scanning detail responses" -Level INFO -Component "Export"
+        }
 
-        # Special case: scan for system-inherited settings not in the list
-        $allDetailEntries = $Entries | Where-Object {
+        # Always also scan all /applicationsettings/{id} detail responses
+        $detailEntries = $Entries | Where-Object {
             $decodedUrl = [System.Uri]::UnescapeDataString($_.request.url)
             $decodedUrl -match "/organizations/$OrgId/applicationsettings/\d+(\?|$)"
         }
-        foreach ($detailEntry in @($allDetailEntries)) {
+
+        $detailById = @{}
+        foreach ($detailEntry in @($detailEntries)) {
             try {
                 $detailResp = $detailEntry.response.content.text | ConvertFrom-Json
                 $detailData = if ($detailResp.data) { $detailResp.data } else { $detailResp }
-                if ($detailData.id -and $detailData.id -notin $listIds -and $detailData.id -notin ($result | ForEach-Object { $_.id })) {
-                    Write-LogMessage "Found system-inherited application setting id=$($detailData.id) (organizationId=$($detailData.organizationId)) not in list — including" -Level INFO -Component "Export"
-                    $result += $detailData
+                if ($detailData.id) {
+                    $detailById["$($detailData.id)"] = $detailData
                 }
             }
-            catch {
-                # Skip unparseable entries
+            catch { }
+        }
+
+        $detailCount = 0
+        $inheritedCount = 0
+        $result = @()
+        $emittedIds = @{}
+
+        foreach ($item in $items) {
+            $itemId = "$($item.id)"
+            if ($detailById.ContainsKey($itemId)) {
+                $merged = $detailById[$itemId]
+                $detailCount++
+            }
+            else {
+                $merged = $item
+                Write-LogMessage "No detail response for applicationsettings id=$itemId — using list data" -Level WARN -Component "Export"
+            }
+            if ($merged.organizationId -and "$($merged.organizationId)" -ne "$OrgId") {
+                $merged | Add-Member -NotePropertyName '_isInherited' -NotePropertyValue $true -Force
+                $inheritedCount++
+            }
+            $result += $merged
+            $emittedIds[$itemId] = $true
+        }
+
+        foreach ($key in $detailById.Keys) {
+            if (-not $emittedIds.ContainsKey($key)) {
+                $merged = $detailById[$key]
+                if ($merged.organizationId -and "$($merged.organizationId)" -ne "$OrgId") {
+                    $merged | Add-Member -NotePropertyName '_isInherited' -NotePropertyValue $true -Force
+                    $inheritedCount++
+                }
+                Write-LogMessage "Found applicationsettings id=$key in detail responses but not in list — including" -Level INFO -Component "Export"
+                $result += $merged
+                $detailCount++
             }
         }
 
-        $names = ($result | ForEach-Object { "         - $($_.name)" }) -join "`n"
-        Write-LogMessage "Extracted $($result.Count) application settings ($detailCount with full app details):`n$names" -Level SUCCESS -Component "Export"
+        if ($result.Count -eq 0) {
+            Write-LogMessage "No Application Settings found in HAR — skipping" -Level WARN -Component "Export"
+            return @()
+        }
+
+        $inheritedNote = if ($inheritedCount -gt 0) { " ($inheritedCount MSP-inherited)" } else { "" }
+        $names = ($result | ForEach-Object {
+            $inh = if ($_.PSObject.Properties.Name -contains '_isInherited' -and $_._isInherited) { " (inherited)" } else { "" }
+            "         - $($_.name)$inh"
+        }) -join "`n"
+        Write-LogMessage "Extracted $($result.Count) application settings ($detailCount with full app details)$inheritedNote`:`n$names" -Level SUCCESS -Component "Export"
         return $result
     }
 
@@ -754,62 +862,81 @@ function Export-CiscoUmbrellaConfig {
             $decodedUrl -match $listPattern -and $decodedUrl -notmatch "/securitysettings/\d+"
         }
 
-        if ($null -eq $listEntries -or @($listEntries).Count -eq 0) {
-            Write-LogMessage "No Security Settings list response found in HAR — skipping" -Level WARN -Component "Export"
-            return @()
+        $items = @()
+        if ($null -ne $listEntries -and @($listEntries).Count -gt 0) {
+            # Prefer the response with optionalFields=categories if available
+            $enrichedEntry = @($listEntries) | Where-Object {
+                $decodedUrl = [System.Uri]::UnescapeDataString($_.request.url)
+                $decodedUrl -match 'optionalFields.*categories'
+            } | Select-Object -Last 1
+
+            $entry = if ($enrichedEntry) { $enrichedEntry } else { @($listEntries) | Select-Object -Last 1 }
+
+            try {
+                $response = $entry.response.content.text | ConvertFrom-Json
+                $items = if ($response.data) { @($response.data) } else { @($response) }
+            }
+            catch {
+                Write-LogMessage "Could not parse Security Settings list response — falling back to detail responses" -Level WARN -Component "Export"
+            }
+        }
+        else {
+            Write-LogMessage "No Security Settings list response in HAR — scanning detail responses" -Level INFO -Component "Export"
         }
 
-        # Prefer the response with optionalFields=categories if available
-        $enrichedEntry = @($listEntries) | Where-Object {
+        # Always also scan all /securitysettings/{id} detail responses
+        $detailEntries = $Entries | Where-Object {
             $decodedUrl = [System.Uri]::UnescapeDataString($_.request.url)
-            $decodedUrl -match 'optionalFields.*categories'
-        } | Select-Object -Last 1
-
-        $entry = if ($enrichedEntry) { $enrichedEntry } else { @($listEntries) | Select-Object -Last 1 }
-
-        try {
-            $response = $entry.response.content.text | ConvertFrom-Json
-        }
-        catch {
-            Write-LogMessage "Could not parse Security Settings response — skipping" -Level WARN -Component "Export"
-            return @()
+            $decodedUrl -match "/organizations/$OrgId/securitysettings/\d+(\?|$)"
         }
 
-        $items = if ($response.data) { @($response.data) } else { @($response) }
+        $detailById = @{}
+        foreach ($detailEntry in @($detailEntries)) {
+            try {
+                $detailResp = $detailEntry.response.content.text | ConvertFrom-Json
+                $detailData = if ($detailResp.data) { $detailResp.data } else { $detailResp }
+                if ($detailData.id) {
+                    $detailById["$($detailData.id)"] = $detailData
+                }
+            }
+            catch { }
+        }
 
-        # Prefer detail responses where available
         $inheritedCount = 0
         $result = @()
+        $emittedIds = @{}
+
         foreach ($item in $items) {
-            $itemId = $item.id
-            if ($itemId) {
-                $detailResponse = Get-HARResponseByUrl -Entries $Entries -UrlPattern "/organizations/$OrgId/securitysettings/$itemId(\?|$)"
-                if ($detailResponse) {
-                    $detailData = if ($detailResponse.data) { $detailResponse.data } else { $detailResponse }
-                    # Tag MSP-inherited records
-                    if ($detailData.organizationId -and "$($detailData.organizationId)" -ne "$OrgId") {
-                        $detailData | Add-Member -NotePropertyName '_isInherited' -NotePropertyValue $true -Force
-                        $inheritedCount++
-                    }
-                    $result += $detailData
-                }
-                else {
-                    # Tag MSP-inherited records from list data
-                    if ($item.organizationId -and "$($item.organizationId)" -ne "$OrgId") {
-                        $item | Add-Member -NotePropertyName '_isInherited' -NotePropertyValue $true -Force
-                        $inheritedCount++
-                    }
-                    $result += $item
-                }
+            $itemId = "$($item.id)"
+            $merged = if ($detailById.ContainsKey($itemId)) { $detailById[$itemId] } else { $item }
+            if ($merged.organizationId -and "$($merged.organizationId)" -ne "$OrgId") {
+                $merged | Add-Member -NotePropertyName '_isInherited' -NotePropertyValue $true -Force
+                $inheritedCount++
             }
-            else {
-                $result += $item
+            $result += $merged
+            $emittedIds[$itemId] = $true
+        }
+
+        foreach ($key in $detailById.Keys) {
+            if (-not $emittedIds.ContainsKey($key)) {
+                $merged = $detailById[$key]
+                if ($merged.organizationId -and "$($merged.organizationId)" -ne "$OrgId") {
+                    $merged | Add-Member -NotePropertyName '_isInherited' -NotePropertyValue $true -Force
+                    $inheritedCount++
+                }
+                Write-LogMessage "Found securitysettings id=$key in detail responses but not in list — including" -Level INFO -Component "Export"
+                $result += $merged
             }
+        }
+
+        if ($result.Count -eq 0) {
+            Write-LogMessage "No Security Settings found in HAR — skipping" -Level WARN -Component "Export"
+            return @()
         }
 
         $inheritedNote = if ($inheritedCount -gt 0) { " ($inheritedCount MSP-inherited)" } else { "" }
         $names = ($result | ForEach-Object {
-            $inherited = if ($_._isInherited) { " (inherited)" } else { "" }
+            $inherited = if ($_.PSObject.Properties.Name -contains '_isInherited' -and $_._isInherited) { " (inherited)" } else { "" }
             "         - $($_.name)$inherited"
         }) -join "`n"
         Write-LogMessage "Extracted $($result.Count) security settings$inheritedNote`:`n$names" -Level SUCCESS -Component "Export"
@@ -823,7 +950,8 @@ function Export-CiscoUmbrellaConfig {
         #>
         param(
             [object[]]$Entries,
-            [string]$OrgId
+            [string]$OrgId,
+            [switch]$IsDnsOnlyOrg
         )
 
         Write-LogMessage "Extracting Selective Decryption Lists..." -Level INFO -Component "Export"
@@ -836,7 +964,12 @@ function Export-CiscoUmbrellaConfig {
         }
 
         if ($null -eq $listEntries -or @($listEntries).Count -eq 0) {
-            Write-LogMessage "No Selective Decryption Lists response found in HAR — skipping" -Level WARN -Component "Export"
+            if ($IsDnsOnlyOrg) {
+                Write-LogMessage "Selective Decryption Lists not applicable for DNS-only Umbrella org — skipping" -Level INFO -Component "Export"
+            }
+            else {
+                Write-LogMessage "No Selective Decryption Lists response found in HAR — skipping" -Level WARN -Component "Export"
+            }
             return @()
         }
 
@@ -942,17 +1075,25 @@ function Export-CiscoUmbrellaConfig {
 
         Write-LogMessage "" -Level INFO
 
+        # Detect legacy DNS-only Umbrella org (no SIG/SWG/FW endpoints in HAR).
+        # Tenants in this tier expose category/security/application settings via direct id reads
+        # rather than through /bundles, and have no firewall or selective-decryption surfaces.
+        $isDnsOnlyOrg = Test-IsDnsOnlyOrg -Entries $relevantEntries -OrgId $organizationId
+        if ($isDnsOnlyOrg) {
+            Write-LogMessage "Detected legacy DNS-only Umbrella organization (no /bundles, /rulesets/firewall, or /bypassinspectiongroupsettings endpoints in HAR). A DNS policy will be synthesized from category/destination settings." -Level INFO -Component "Export"
+        }
+
         # Step 6: Extract each object type
         $warnings = [System.Collections.Generic.List[string]]::new()
 
         # 6a: DNS Policies
-        $dnsPolicies = Get-DnsPolicies -Entries $relevantEntries -OrgId $organizationId
+        $dnsPolicies = Get-DnsPolicies -Entries $relevantEntries -OrgId $organizationId -IsDnsOnlyOrg:$isDnsOnlyOrg
 
         # 6b: Firewall Rules
-        $firewallRules = Get-FirewallRules -Entries $relevantEntries -OrgId $organizationId
+        $firewallRules = Get-FirewallRules -Entries $relevantEntries -OrgId $organizationId -IsDnsOnlyOrg:$isDnsOnlyOrg
 
         # 6c: Web Policies
-        $webPolicies = Get-WebPolicies -Entries $relevantEntries -OrgId $organizationId
+        $webPolicies = Get-WebPolicies -Entries $relevantEntries -OrgId $organizationId -IsDnsOnlyOrg:$isDnsOnlyOrg
 
         # 6d: Destination Lists
         $destinationLists = Get-DestinationLists -Entries $relevantEntries -OrgId $organizationId
@@ -967,7 +1108,50 @@ function Export-CiscoUmbrellaConfig {
         $securitySettings = Get-SecuritySettings -Entries $relevantEntries -OrgId $organizationId
 
         # 6h: Selective Decryption Lists
-        $selectiveDecryptionLists = Get-SelectiveDecryptionLists -Entries $relevantEntries -OrgId $organizationId
+        $selectiveDecryptionLists = Get-SelectiveDecryptionLists -Entries $relevantEntries -OrgId $organizationId -IsDnsOnlyOrg:$isDnsOnlyOrg
+
+        # 6i: For DNS-only orgs with no DNS policy bundles, synthesize a DNS policy from the
+        # extracted DNS-tier settings + destination lists. The synthesized record matches the shape
+        # the converter expects (name, priority, identityCount, categorySetting.id, domainlists[]),
+        # so no converter changes are required.
+        if ($isDnsOnlyOrg -and @($dnsPolicies).Count -eq 0) {
+            $dnsCatSettings = @($categorySettings | Where-Object { $_.bundleTypeId -eq 1 })
+            $dnsAppSettings = @($applicationSettings | Where-Object { $_.bundleTypeId -eq 1 })
+            $dnsDestLists = @($destinationLists | Where-Object { $_.bundleTypeId -eq 1 })
+
+            if ($dnsCatSettings.Count -gt 0 -or $dnsDestLists.Count -gt 0 -or $dnsAppSettings.Count -gt 0) {
+                $catSetting = $dnsCatSettings | Select-Object -First 1
+                $appSetting = $dnsAppSettings | Select-Object -First 1
+                $domainListRefs = @($dnsDestLists | ForEach-Object {
+                    [PSCustomObject]@{
+                        id     = $_.id
+                        name   = $_.name
+                        access = $_.access
+                    }
+                })
+
+                $synthesized = [PSCustomObject]@{
+                    name                          = "DNS Policy (synthesized from DNS-only Umbrella)"
+                    priority                      = 1
+                    identityCount                 = 0
+                    organizationId                = $organizationId
+                    bundleTypeId                  = 1
+                    categorySetting               = if ($catSetting) { [PSCustomObject]@{ id = $catSetting.id; name = $catSetting.name } } else { $null }
+                    applicationAupSettingGroupId  = if ($appSetting) { $appSetting.id } else { $null }
+                    applicationSetting            = if ($appSetting) { [PSCustomObject]@{ id = $appSetting.id; name = $appSetting.name } } else { $null }
+                    domainlists                   = $domainListRefs
+                    _synthesized                  = $true
+                    _dnsOnly                      = $true
+                }
+
+                $dnsPolicies = @($synthesized)
+                $appLink = if ($appSetting) { ", applicationSetting id=$($appSetting.id)" } else { "" }
+                Write-LogMessage "Synthesized 1 DNS policy from DNS-only Umbrella settings (categorySetting id=$($catSetting.id)$appLink, $($domainListRefs.Count) domain list refs)" -Level SUCCESS -Component "Export"
+            }
+            else {
+                Write-LogMessage "DNS-only Umbrella org detected but no DNS-tier settings or destination lists available for synthesis" -Level WARN -Component "Export"
+            }
+        }
 
         Write-LogMessage "" -Level INFO
 
@@ -1022,6 +1206,7 @@ function Export-CiscoUmbrellaConfig {
             sourceHARFile  = Split-Path $HARFilePath -Leaf
             organizationId = $organizationId
             exportType     = "CiscoUmbrella_HAR_Extract"
+            dnsOnlyMode    = [bool]$isDnsOnlyOrg
             objectCounts   = [PSCustomObject]$objectCounts
             warnings       = @($warnings)
         }
