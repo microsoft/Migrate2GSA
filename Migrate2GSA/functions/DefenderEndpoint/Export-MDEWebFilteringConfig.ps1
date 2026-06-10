@@ -117,12 +117,12 @@ function Export-MDEWebFilteringConfig {
         92 = "Professional networking"
     }
 
-    # Indicator action enum
+    # Indicator action enum (verified against MDE portal: 0=Allow, 3=Warn, 4=Block, 11=Audit)
     $IndicatorActionMap = @{
-        0 = "AlertOnly"
-        1 = "Allow"
-        2 = "Block"
-        4 = "Warn"
+        0  = "Allow"
+        3  = "Warn"
+        4  = "Block"
+        11 = "Audit"
     }
 
     # Indicator severity enum
@@ -561,19 +561,39 @@ function Export-MDEWebFilteringConfig {
 
         # Resolve enums and device group names
         foreach ($indicator in $indicators) {
+            $indicatorLabel = if ($indicator.indicatorValue) { $indicator.indicatorValue } else { "id $($indicator.indicatorId)" }
+
             # Resolve action enum
-            if ($null -ne $indicator.action -and $IndicatorActionMap.ContainsKey([int]$indicator.action)) {
-                $indicator.action = $IndicatorActionMap[[int]$indicator.action]
+            if ($null -ne $indicator.action) {
+                $actionInt = [int]$indicator.action
+                if ($IndicatorActionMap.ContainsKey($actionInt)) {
+                    $indicator.action = $IndicatorActionMap[$actionInt]
+                }
+                else {
+                    Write-LogMessage "Unknown indicator action value '$actionInt' on '$indicatorLabel' — exported as raw integer" -Level WARN -Component "Export"
+                }
             }
 
             # Resolve severity enum
-            if ($null -ne $indicator.severity -and $IndicatorSeverityMap.ContainsKey([int]$indicator.severity)) {
-                $indicator.severity = $IndicatorSeverityMap[[int]$indicator.severity]
+            if ($null -ne $indicator.severity) {
+                $severityInt = [int]$indicator.severity
+                if ($IndicatorSeverityMap.ContainsKey($severityInt)) {
+                    $indicator.severity = $IndicatorSeverityMap[$severityInt]
+                }
+                else {
+                    Write-LogMessage "Unknown indicator severity value '$severityInt' on '$indicatorLabel' — exported as raw integer" -Level WARN -Component "Export"
+                }
             }
 
             # Resolve indicatorType enum
-            if ($null -ne $indicator.indicatorType -and $IndicatorTypeMap.ContainsKey([int]$indicator.indicatorType)) {
-                $indicator.indicatorType = $IndicatorTypeMap[[int]$indicator.indicatorType]
+            if ($null -ne $indicator.indicatorType) {
+                $typeInt = [int]$indicator.indicatorType
+                if ($IndicatorTypeMap.ContainsKey($typeInt)) {
+                    $indicator.indicatorType = $IndicatorTypeMap[$typeInt]
+                }
+                else {
+                    Write-LogMessage "Unknown indicatorType value '$typeInt' on '$indicatorLabel' — exported as raw integer" -Level WARN -Component "Export"
+                }
             }
 
             # Resolve RbacGroupIds to device group names

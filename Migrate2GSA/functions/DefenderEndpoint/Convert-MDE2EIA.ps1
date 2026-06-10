@@ -821,7 +821,7 @@ function Convert-MDE2EIA {
         -Component "Convert-MDE2EIA" -LogPath $logPath -EnableDebugLogging:$EnableDebugLogging
 
     # Create Default Security Profile
-    $uniqueDefaultPolicies = $defaultScopePolicies | Select-Object -Unique
+    $uniqueDefaultPolicies = @($defaultScopePolicies | Select-Object -Unique)
 
     if ($uniqueDefaultPolicies.Count -gt 0) {
         $linkPriority = 100
@@ -856,7 +856,7 @@ function Convert-MDE2EIA {
     foreach ($scopeKey in $scopedPolicyBuckets.Keys) {
         $scopeData = $scopedPolicyBuckets[$scopeKey]
 
-        $uniquePolicies = $scopeData.Policies | Select-Object -Unique
+        $uniquePolicies = @($scopeData.Policies | Select-Object -Unique)
 
         # Build SecurityProfileLinks
         $linkPriority = 100
