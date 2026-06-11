@@ -4,7 +4,8 @@
 RootModule = 'Migrate2GSA.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.0'
+# Format: YYYY.M.D.N (auto-bumped by .githooks/pre-commit on changes to Migrate2GSA/**).
+ModuleVersion = '2026.6.11.1'
 
 # Supported PSEditions
 CompatiblePSEditions = @('Core')

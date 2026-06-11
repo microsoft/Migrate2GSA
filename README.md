@@ -17,6 +17,15 @@ If you have a migration project and need assistance with Migrate2GSA, or you can
 ## How to contribute
 Please create a GitHub Issue to discuss the changes you are planning to make, then send us a PR.
 
+### One-time setup for module contributors
+The PowerShell module version is auto-bumped on commit using a repo-managed Git hook. After cloning, run once:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+Any commit that touches `Migrate2GSA/**` will rewrite `ModuleVersion` in `Migrate2GSA/Migrate2GSA.psd1` to `YYYY.M.D.N` and stage the change automatically. PRs that change the module without bumping `ModuleVersion` are blocked by the `Module version guard` workflow.
+
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a

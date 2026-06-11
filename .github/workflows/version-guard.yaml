@@ -1,0 +1,57 @@
+name: Module version guard
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'Migrate2GSA/**'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Verify ModuleVersion was bumped
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare ModuleVersion against base
+        shell: pwsh
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Get-ModuleVersion([string]$content) {
+              $match = [regex]::Match($content, "(?m)^\s*ModuleVersion\s*=\s*'([^']+)'")
+              if (-not $match.Success) { throw "ModuleVersion not found in manifest." }
+              return $match.Groups[1].Value
+          }
+
+          $manifest = 'Migrate2GSA/Migrate2GSA.psd1'
+
+          $headContent = Get-Content $manifest -Raw
+          $headVersion = Get-ModuleVersion $headContent
+
+          $baseContent = & git show "$env:BASE_SHA`:$manifest" | Out-String
+          if ($LASTEXITCODE -ne 0 -or -not $baseContent) {
+              Write-Host "Manifest does not exist on base ($env:BASE_REF). Treating as new -- pass."
+              exit 0
+          }
+          $baseVersion = Get-ModuleVersion $baseContent
+
+          Write-Host "Base ($env:BASE_REF): $baseVersion"
+          Write-Host "Head:                  $headVersion"
+
+          if ($headVersion -eq $baseVersion) {
+              Write-Host "::error file=$manifest::ModuleVersion was not bumped. Install the pre-commit hook with 'git config core.hooksPath .githooks' and re-commit, or update ModuleVersion manually."
+              exit 1
+          }
+
+          Write-Host "ModuleVersion bumped correctly."
