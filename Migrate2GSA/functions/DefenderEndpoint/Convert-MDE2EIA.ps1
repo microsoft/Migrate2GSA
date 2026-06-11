@@ -63,7 +63,7 @@ function Convert-MDE2EIA {
 
     .NOTES
         Author: Andres Canello
-        Version: 1.0
+        Version: 1.1
         Date: 2026-03-16
 
         Requirements:
