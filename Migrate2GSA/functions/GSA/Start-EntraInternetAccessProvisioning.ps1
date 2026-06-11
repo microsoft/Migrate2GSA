@@ -177,6 +177,10 @@ function Start-EntraInternetAccessProvisioning {
     }
     
     PROCESS {
+        # Track outcome for telemetry. Stays 'cancelled' if the script is
+        # aborted (Ctrl+C / runspace termination) without entering the catch.
+        $runOutcome = 'cancelled'
+
         try {
             #region Pre-Flight Validation
             Write-LogMessage "=== PRE-FLIGHT VALIDATION ===" -Level SUMMARY -Component "Validation"
@@ -518,37 +522,54 @@ function Start-EntraInternetAccessProvisioning {
             Write-LogMessage "===============================================" -Level SUMMARY -Component "Summary"
             #endregion
 
-            # Send usage telemetry
-            $stats = $Global:ProvisioningStats
-            Send-UsageTelemetry -EventName 'Start-EntraInternetAccessProvisioning' `
-                -Properties @{
-                    TenantId                 = (Get-MgContext).TenantId
-                    WhatIf                   = $WhatIfPreference.ToString()
-                    IncludesSecurityProfiles  = $PSBoundParameters.ContainsKey('SecurityProfilesCsvPath').ToString()
-                    IncludesCAPolicies       = ($stats.TotalCAPolicies -gt 0).ToString()
-                    HasFailures              = ($stats.FailedPolicies -gt 0 -or $stats.FailedRules -gt 0 -or $stats.FailedSecurityProfiles -gt 0 -or $stats.FailedCAPolicies -gt 0).ToString()
-                } `
-                -Metrics @{
-                    TotalPolicies            = $stats.TotalPolicies
-                    CreatedPolicies          = $stats.CreatedPolicies
-                    FailedPolicies           = $stats.FailedPolicies
-                    TotalRules               = $stats.TotalRules
-                    CreatedRules             = $stats.CreatedRules
-                    FailedRules              = $stats.FailedRules
-                    TotalSecurityProfiles    = $stats.TotalSecurityProfiles
-                    CreatedSecurityProfiles  = $stats.CreatedSecurityProfiles
-                    FailedSecurityProfiles   = $stats.FailedSecurityProfiles
-                    TotalCAPolicies          = $stats.TotalCAPolicies
-                    CreatedCAPolicies        = $stats.CreatedCAPolicies
-                    FailedCAPolicies         = $stats.FailedCAPolicies
-                }
+            # Mark run as completed BEFORE telemetry; finally block will emit it.
+            $runOutcome = 'completed'
         }
         catch {
             # Error already logged by the throwing function, just log the location
+            $runOutcome = 'failed'
             Write-LogMessage "Provisioning terminated due to validation error. See details above." -Level ERROR -Component "Main"
-            
+
             # Exit gracefully without rethrowing (avoids duplicate error messages)
             return
+        }
+        finally {
+            # Telemetry is fire-and-forget and lives in finally so that we
+            # capture partial counters even if the run failed or was cancelled
+            # (Ctrl+C). Wrapped in its own try/catch so it can never throw
+            # past the cmdlet boundary.
+            try {
+                $stats = $Global:ProvisioningStats
+                $tenantIdForTelemetry = ''
+                try { $tenantIdForTelemetry = (Get-MgContext).TenantId } catch { $tenantIdForTelemetry = '' }
+
+                Send-UsageTelemetry -EventName 'Start-EntraInternetAccessProvisioning' `
+                    -Properties @{
+                        TenantId                 = $tenantIdForTelemetry
+                        WhatIf                   = $WhatIfPreference.ToString()
+                        IncludesSecurityProfiles = $PSBoundParameters.ContainsKey('SecurityProfilesCsvPath').ToString()
+                        IncludesCAPolicies       = ($stats.TotalCAPolicies -gt 0).ToString()
+                        HasFailures              = ($stats.FailedPolicies -gt 0 -or $stats.FailedRules -gt 0 -or $stats.FailedSecurityProfiles -gt 0 -or $stats.FailedCAPolicies -gt 0).ToString()
+                        RunOutcome               = $runOutcome
+                    } `
+                    -Metrics @{
+                        TotalPolicies            = $stats.TotalPolicies
+                        CreatedPolicies          = $stats.CreatedPolicies
+                        FailedPolicies           = $stats.FailedPolicies
+                        TotalRules               = $stats.TotalRules
+                        CreatedRules             = $stats.CreatedRules
+                        FailedRules              = $stats.FailedRules
+                        TotalSecurityProfiles    = $stats.TotalSecurityProfiles
+                        CreatedSecurityProfiles  = $stats.CreatedSecurityProfiles
+                        FailedSecurityProfiles   = $stats.FailedSecurityProfiles
+                        TotalCAPolicies          = $stats.TotalCAPolicies
+                        CreatedCAPolicies        = $stats.CreatedCAPolicies
+                        FailedCAPolicies         = $stats.FailedCAPolicies
+                    }
+            }
+            catch {
+                # never let telemetry break the caller
+            }
         }
     }
     

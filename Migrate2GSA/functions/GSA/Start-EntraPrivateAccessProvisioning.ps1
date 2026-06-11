@@ -1434,7 +1434,11 @@ function Invoke-ProvisioningProcess {
     #>
     [CmdletBinding()]
     param()
-    
+
+    # Track outcome for telemetry. Stays 'cancelled' if the script is
+    # aborted (Ctrl+C / runspace termination) without entering the catch.
+    $runOutcome = 'cancelled'
+
     try {
         Write-LogMessage "Starting Entra Private Access provisioning process..." -Level INFO -Component "Main"
         Write-LogMessage "WhatIf Mode: $WhatIfPreference" -Level INFO -Component "Main"
@@ -1768,31 +1772,49 @@ function Invoke-ProvisioningProcess {
         
         # Show summary
         Show-ExecutionSummary
-        
-        # Send usage telemetry
-        $stats = $Global:ProvisioningStats
-        Send-UsageTelemetry -EventName 'Start-EntraPrivateAccessProvisioning' `
-            -Properties @{
-                TenantId          = (Get-MgContext).TenantId
-                WhatIf            = $WhatIfPreference.ToString()
-                QuickAccessResult = $stats.QuickAccessApp ?? 'None'
-                HasFailures       = ($stats.FailedApps -gt 0 -or $stats.FailedSegments -gt 0).ToString()
-            } `
-            -Metrics @{
-                TotalSegments      = $stats.TotalRecords
-                SuccessfulApps     = $stats.SuccessfulApps
-                FailedApps         = $stats.FailedApps
-                SuccessfulSegments = $stats.SuccessfulSegments
-                FailedSegments     = $stats.FailedSegments
-            }
 
         Write-LogMessage "Provisioning process completed successfully" -Level SUCCESS -Component "Main"
         Write-LogMessage "Results exported to: $outputPath" -Level INFO -Component "Main"
         Write-LogMessage "Log file written to: $LogPath" -Level INFO -Component "Main"
+
+        # Mark run as completed BEFORE telemetry; finally block will emit it.
+        $runOutcome = 'completed'
     }
     catch {
+        $runOutcome = 'failed'
         Write-LogMessage "Provisioning process failed: $_" -Level ERROR -Component "Main"
         throw
+    }
+    finally {
+        # Telemetry is fire-and-forget and lives in finally so that we
+        # capture partial counters even if the run failed or was cancelled
+        # (Ctrl+C). Wrapped in its own try/catch so it can never throw
+        # past the cmdlet boundary.
+        try {
+            $stats = $Global:ProvisioningStats
+            $tenantIdForTelemetry = ''
+            try { $tenantIdForTelemetry = (Get-MgContext).TenantId } catch { $tenantIdForTelemetry = '' }
+            $quickAccessForTelemetry = if ($null -ne $stats.QuickAccessApp) { $stats.QuickAccessApp } else { 'None' }
+
+            Send-UsageTelemetry -EventName 'Start-EntraPrivateAccessProvisioning' `
+                -Properties @{
+                    TenantId          = $tenantIdForTelemetry
+                    WhatIf            = $WhatIfPreference.ToString()
+                    QuickAccessResult = $quickAccessForTelemetry
+                    HasFailures       = ($stats.FailedApps -gt 0 -or $stats.FailedSegments -gt 0).ToString()
+                    RunOutcome        = $runOutcome
+                } `
+                -Metrics @{
+                    TotalSegments      = $stats.TotalRecords
+                    SuccessfulApps     = $stats.SuccessfulApps
+                    FailedApps         = $stats.FailedApps
+                    SuccessfulSegments = $stats.SuccessfulSegments
+                    FailedSegments     = $stats.FailedSegments
+                }
+        }
+        catch {
+            # never let telemetry break the caller
+        }
     }
 }
 
