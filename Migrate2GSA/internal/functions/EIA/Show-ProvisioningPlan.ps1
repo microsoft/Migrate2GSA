@@ -42,12 +42,13 @@ function Show-ProvisioningPlan {
         Write-LogMessage "" -Level INFO
         
         # Analyze policies
-        $policyGroups = $PoliciesConfig | Group-Object -Property PolicyName, PolicyType
+        # Wrap in @() so .Count reflects the number of policy groups even when only one group is returned
+        $policyGroups = @($PoliciesConfig | Group-Object -Property PolicyName, PolicyType)
         $totalPolicies = $policyGroups.Count
         $totalRules = $PoliciesConfig.Count
         
-        $webContentPolicies = ($policyGroups | Where-Object { $_.Name -match 'WebContentFiltering' }).Count
-        $tlsPolicies = ($policyGroups | Where-Object { $_.Name -match 'TLSInspection' }).Count
+        $webContentPolicies = @($policyGroups | Where-Object { $_.Name -match 'WebContentFiltering' }).Count
+        $tlsPolicies = @($policyGroups | Where-Object { $_.Name -match 'TLSInspection' }).Count
         
         Write-LogMessage "✅ Web Content Filtering Policies: $webContentPolicies policies" -Level SUCCESS -Component $component
         foreach ($group in ($policyGroups | Where-Object { $_.Name -match 'WebContentFiltering' })) {

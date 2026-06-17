@@ -296,7 +296,8 @@ function Start-EntraInternetAccessProvisioning {
             Write-LogMessage "=== PROVISIONING POLICIES AND RULES ===" -Level SUMMARY -Component "PolicyProvisioning"
             
             # Group policy rules by PolicyName and PolicyType
-            $policyGroups = $policiesConfig | Group-Object -Property PolicyName, PolicyType
+            # Wrap in @() so .Count reflects the number of policy groups even when only one group is returned
+            $policyGroups = @($policiesConfig | Group-Object -Property PolicyName, PolicyType)
             $Global:ProvisioningStats.TotalPolicies = $policyGroups.Count
             $currentPolicyNumber = 0
             

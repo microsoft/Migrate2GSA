@@ -356,7 +356,8 @@ function Show-ProvisioningPlan {
     }
 
     # Group by application (regular rows only)
-    $appGroups = $regularRows | Group-Object -Property EnterpriseAppName
+    # Wrap in @() so .Count reflects the number of applications even when only one group is returned
+    $appGroups = @($regularRows | Group-Object -Property EnterpriseAppName)
     
     Write-LogMessage "Applications to provision: $($appGroups.Count)" -Level SUMMARY -Component "Plan"
     Write-LogMessage "Total segments to create: $($ConfigData.Count)" -Level SUMMARY -Component "Plan"
@@ -1630,7 +1631,8 @@ function Invoke-ProvisioningProcess {
 
         # --- Regular app provisioning (existing flow) ---
         # Group configuration by application (now using only regular rows)
-        $appGroups = $regularRows | Group-Object -Property EnterpriseAppName
+        # Wrap in @() so .Count reflects the number of applications even when only one group is returned
+        $appGroups = @($regularRows | Group-Object -Property EnterpriseAppName)
         $currentAppNumber = 0
         
         foreach ($appGroup in $appGroups) {

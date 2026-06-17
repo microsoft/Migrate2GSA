@@ -1042,7 +1042,8 @@ function Convert-NSWG2EIA {
     $originalPolicyCount = $policies.Count
     
     # Group policies by PolicyName to get unique policy names
-    $policyGroups = $policies | Group-Object -Property PolicyName
+    # Wrap in @() so .Count reflects the number of policy groups even when only one group is returned
+    $policyGroups = @($policies | Group-Object -Property PolicyName)
     
     # Filter to keep only policies that are referenced
     $referencedPolicyNames = @{}
