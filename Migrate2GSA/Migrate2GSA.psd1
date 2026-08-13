@@ -12,7 +12,7 @@
 RootModule = 'Migrate2GSA.psm1'
 
 # Version number of this module.
-ModuleVersion = '2026.6.18.1'
+ModuleVersion = '2026.8.13.1'
 
 # Supported PSEditions
 CompatiblePSEditions = 'Core'

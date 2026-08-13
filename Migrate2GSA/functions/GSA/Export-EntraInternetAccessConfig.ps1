@@ -144,15 +144,21 @@ function Export-EntraInternetAccessConfig {
     Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.onboardingStatus)" -Level SUCCESS -Component "Validation"
 
     # Validate Internet Access feature is enabled
+    # A tenant can have multiple Internet Access forwarding profiles; the feature counts as
+    # enabled when at least one of them is enabled.
     Write-LogMessage "Validating Internet Access feature is enabled..." -Level INFO -Component "Validation"
-    $iaProfile = Get-IntNetworkAccessForwardingProfile -ProfileType 'internet'
+    $iaProfiles = @(Get-IntNetworkAccessForwardingProfile -ProfileType 'internet')
     $graphApiCalls++
-    if (-not $iaProfile -or $iaProfile.state -ne 'enabled') {
-        $currentState = if ($iaProfile) { $iaProfile.state } else { 'not found' }
+    $enabledIaProfiles = @($iaProfiles | Where-Object { $_.state -eq 'enabled' })
+    if ($enabledIaProfiles.Count -eq 0) {
+        $currentState = if ($iaProfiles.Count -gt 0) {
+            ($iaProfiles | ForEach-Object { "$($_.name): $($_.state)" }) -join '; '
+        }
+        else { 'not found' }
         Write-LogMessage "Internet Access is not enabled on this tenant. Current state: $currentState" -Level ERROR -Component "Validation"
         throw "Internet Access feature validation failed. Please enable Internet Access before exporting."
     }
-    Write-LogMessage "Internet Access feature validated: enabled" -Level SUCCESS -Component "Validation"
+    Write-LogMessage "Internet Access feature validated: enabled ($($enabledIaProfiles.Count) of $($iaProfiles.Count) forwarding profile(s) enabled)" -Level SUCCESS -Component "Validation"
     #endregion
 
     #region Export Web Content Filtering Policies
