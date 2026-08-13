@@ -1,10 +1,12 @@
 # Multiple Traffic Forwarding Profiles (MTFP) — coverage gaps and fix ideas
 
 > **Status:** Proposal / not scheduled.
+> **Tracking issue:** [#83](https://github.com/microsoft/Migrate2GSA/issues/83)
 > **Scope:** `Export-EntraPrivateAccessConfig`, `Export-EntraPrivateAccessAppDiscovery`,
 > `Export-EntraInternetAccessConfig`, `Start-EntraPrivateAccessProvisioning`.
-> **Related fix:** the feature-enablement validation fix (multiple profiles per
-> `trafficForwardingType` no longer throws a false "not enabled" error).
+> **Related fix:** [#82](https://github.com/microsoft/Migrate2GSA/pull/82) — the feature-enablement
+> validation fix (multiple profiles per `trafficForwardingType` no longer throw a false
+> "not enabled" error).
 
 ---
 
