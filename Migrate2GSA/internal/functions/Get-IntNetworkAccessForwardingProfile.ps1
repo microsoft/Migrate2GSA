@@ -14,6 +14,8 @@ function Get-IntNetworkAccessForwardingProfile {
 
     .OUTPUTS
         Returns the forwarding profile object(s) matching the specified criteria.
+        A tenant can have more than one profile per traffic forwarding type, so callers
+        must wrap the result in @() and evaluate every returned profile.
 
     .EXAMPLE
         Get-IntNetworkAccessForwardingProfile
@@ -21,7 +23,7 @@ function Get-IntNetworkAccessForwardingProfile {
 
     .EXAMPLE
         Get-IntNetworkAccessForwardingProfile -ProfileType 'private'
-        Retrieves the Private Access forwarding profile.
+        Retrieves the Private Access forwarding profile(s).
     #>
     [CmdletBinding()]
     param (

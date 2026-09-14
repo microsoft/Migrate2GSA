@@ -115,15 +115,21 @@ function Export-EntraPrivateAccessConfig {
     Write-LogMessage "Global Secure Access tenant status validated: $($tenantStatus.onboardingStatus)" -Level SUCCESS -Component "Validation"
 
     # Validate Private Access feature is enabled
+    # A tenant can have multiple Private Access forwarding profiles; the feature counts as
+    # enabled when at least one of them is enabled.
     Write-LogMessage "Validating Private Access feature is enabled..." -Level INFO -Component "Validation"
-    $paProfile = Get-IntNetworkAccessForwardingProfile -ProfileType 'private'
+    $paProfiles = @(Get-IntNetworkAccessForwardingProfile -ProfileType 'private')
     $graphApiCalls++
-    if (-not $paProfile -or $paProfile.state -ne 'enabled') {
-        $currentState = if ($paProfile) { $paProfile.state } else { 'not found' }
+    $enabledPaProfiles = @($paProfiles | Where-Object { $_.state -eq 'enabled' })
+    if ($enabledPaProfiles.Count -eq 0) {
+        $currentState = if ($paProfiles.Count -gt 0) {
+            ($paProfiles | ForEach-Object { "$($_.name): $($_.state)" }) -join '; '
+        }
+        else { 'not found' }
         Write-LogMessage "Private Access is not enabled on this tenant. Current state: $currentState" -Level ERROR -Component "Validation"
         throw "Private Access feature validation failed. Please enable Private Access before exporting."
     }
-    Write-LogMessage "Private Access feature validated: enabled" -Level SUCCESS -Component "Validation"
+    Write-LogMessage "Private Access feature validated: enabled ($($enabledPaProfiles.Count) of $($paProfiles.Count) forwarding profile(s) enabled)" -Level SUCCESS -Component "Validation"
 
     # Check connector groups availability and build cache
     Write-LogMessage "Checking connector groups availability..." -Level INFO -Component "Validation"
