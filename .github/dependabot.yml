@@ -10,3 +10,12 @@ updates:
       # Track: https://github.com/mermaid-js/mermaid/issues
       - dependency-name: "lodash-es"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    groups:
+      github-actions:
+        patterns: ["*"]
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
