@@ -7,6 +7,12 @@ keywords: [Netskope, NSWG, Entra Internet Access, EIA, web gateway, URL filterin
 
 ## Overview
 
+For experimental Destination Profile support, explicitly use
+[`Convert-NSWG2EIAV2`](NetskopeV2Preview.md). It is a best-effort implementation,
+not yet validated against real exports; community validation and contributions
+are welcome. The original command documented here is
+unchanged; V2 does not refer to GSA Filtering Policy Model V2.
+
 `Convert-NSWG2EIA` is a PowerShell function that converts Netskope Secure Web Gateway (NSWG) configuration to Microsoft Entra Internet Access (EIA) format. It transforms Real-time Protection policies, custom categories, and URL lists into Microsoft Global Secure Access (GSA) web content filtering policies and security profiles compatible with `Start-EntraInternetAccessProvisioning`.
 
 The function performs comprehensive processing including URL classification, category mapping, policy aggregation by user/group assignment, and automated conflict resolution.

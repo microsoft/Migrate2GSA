@@ -23,6 +23,13 @@ Sample files use the `.rename_to_json` or `.rename_to_csv` extension to prevent 
 
 ## Sample Files
 
+For source-backed synthetic Destination Profile fixtures and a complete local
+walkthrough, see [DestinationProfiles/README.md](DestinationProfiles/README.md).
+Use the separate experimental `Convert-NSWG2EIAV2` cmdlet for those fixtures;
+the original `Convert-NSWG2EIA` remains unchanged. That preview disables provisioning
+of Destination Profile rules and affected security profiles until tenant data and
+matching semantics are validated.
+
 ### 1. sample_real_time_protection_policies.rename_to_json
 
 Contains representative Real-time Protection policies showing:

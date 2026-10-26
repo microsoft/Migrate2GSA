@@ -7,6 +7,12 @@ keywords: [Netskope, export, backup, migration, NPA, NSWG, Global Secure Access]
 
 ## Overview
 
+For experimental paginated Destination Profile export, explicitly use
+[`Export-NetskopeConfigV2`](NetskopeV2Preview.md). It is a best-effort implementation,
+not yet validated against live tenants; community validation and contributions
+are welcome. The original command documented here is
+unchanged.
+
 `Export-NetskopeConfig` is a PowerShell function that exports Netskope configurations to JSON files for backup and migration purposes. It connects to the Netskope API using an API token and exports various configuration types including Private Access applications, publishers, URL lists, policies, and custom profiles.
 
 ## Prerequisites
