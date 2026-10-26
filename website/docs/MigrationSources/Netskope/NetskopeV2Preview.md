@@ -1,19 +1,27 @@
 ---
 sidebar_position: 4
-title: Netskope V2 (Experimental)
-description: Help validate experimental Destination Profile export and conversion without replacing the original Netskope cmdlets.
+title: Netskope Secure Web Gateway V2 (Experimental)
+description: Help validate experimental Destination Profile export and conversion from Netskope Secure Web Gateway to Entra Internet Access.
 ---
+
+This preview covers **Netskope Secure Web Gateway (NSWG) to Entra Internet Access
+(EIA)** migration. It does not add Netskope Private Access (NPA) to Entra Private
+Access (EPA) conversion support.
 
 ## Status and choosing a command
 
-:::warning Best-effort implementation - community validation needed
+:::warning[Experimental - community validation needed]
+
 `Export-NetskopeConfigV2` and `Convert-NSWG2EIAV2` are **best-effort experimental
 implementations, not yet validated against real Netskope tenants/exports**.
+
 They are based on public documentation and API models, with local automated checks
 using synthetic fixtures and mocked API responses. Those checks are not evidence
 of real-tenant compatibility or end-to-end migration correctness.
+
 Community validation, corrections, and contributions are welcome.
 These commands are not a production-ready replacement for the original commands.
+
 :::
 
 **V2 refers to these experimental cmdlets, not GSA Filtering Policy Model V2.**
