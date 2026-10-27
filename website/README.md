@@ -42,16 +42,20 @@ If you are using GitHub pages for hosting, this command is a convenient way to b
 
 ## Pull Request Build Check
 
-The **Website build check** workflow runs `npm ci` and `npm run build` for pull
-requests targeting `main` that change `website/`, the build-check workflow, or
-the GitHub Pages deployment workflow. It checks the proposed merge with the
-base branch, uses npm caching, and cancels superseded runs for the same PR.
+The **Website build check** workflow runs for every pull request targeting `main`.
+It runs `npm ci` and `npm run build` when the PR changes `website/`, the build-check
+workflow, or the GitHub Pages deployment workflow. It checks the proposed merge
+with the base branch, uses npm caching, and cancels superseded runs for the same PR.
 It does not deploy the site, use deployment secrets, or require write permissions.
 
+For PRs without matching file changes, the **Validate website build** check reports
+success with "Website build not needed" and skips Node.js setup, installation, and
+the build. This lets the check be required without blocking PowerShell-only PRs.
+
 Once the workflow is on `main`, you can also select **Actions > Website build
-check > Run workflow** and choose a branch for a build-only check. PRs without
-matching file changes do not run this workflow. A successful build does not
-replace visual or browser-interaction testing.
+check > Run workflow** and choose a branch for a build-only check. Manual runs
+always build the website. A successful build does not replace visual or
+browser-interaction testing.
 
 ### Reproduce the CI Check Locally
 

@@ -4,10 +4,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'website/**'
-      - '.github/workflows/website-build.yaml'
-      - '.github/workflows/deploy-site.yaml'
   workflow_dispatch:
 
 permissions:
@@ -32,7 +28,38 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Detect website changes
+        id: changes
+        working-directory: .
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git diff --name-only --no-renames -z "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/website-changed-files"
+          build=false
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              website/*|.github/workflows/website-build.yaml|.github/workflows/deploy-site.yaml)
+                build=true
+                break
+                ;;
+            esac
+          done < "$RUNNER_TEMP/website-changed-files"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+      - name: Website build not needed
+        if: steps.changes.outputs.build == 'false'
+        run: echo "Website build not needed - no website-related files changed." >> "$GITHUB_STEP_SUMMARY"
+        working-directory: .
+
       - name: Set up Node.js
+        if: steps.changes.outputs.build == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '20'
@@ -40,7 +67,9 @@ jobs:
           cache-dependency-path: './website/package-lock.json'
 
       - name: Install dependencies
+        if: steps.changes.outputs.build == 'true'
         run: npm ci
 
       - name: Build website
+        if: steps.changes.outputs.build == 'true'
         run: npm run build
