@@ -42,7 +42,20 @@ function Invoke-EIAV2Provisioning {
             $actual = $matchingLinks[0]
         }
         else {
-            $actual = Invoke-InternalGraphRequest -Method GET -Uri "$Uri/$([uri]::EscapeDataString($created.id))"
+            $readUri = "$Uri/$([uri]::EscapeDataString($created.id))"
+            for ($attempt = 0; ; $attempt++) {
+                try {
+                    $actual = Invoke-InternalGraphRequest -Method GET -Uri $readUri
+                    break
+                }
+                catch {
+                    $statusCode = $_.Exception.Response.StatusCode
+                    if ($Kind -ne 'ConditionalAccess' -or $statusCode -ne 404 -or $attempt -ge 5) { throw }
+                    $delaySeconds = [int][math]::Pow(2, $attempt + 1)
+                    Write-LogMessage "Created CA policy '$($created.id)' is not yet readable (404). Retrying GET in ${delaySeconds}s ($($attempt + 1)/5); creation will not be repeated." -Level WARN -LogPath $LogPath
+                    Start-Sleep -Seconds $delaySeconds
+                }
+            }
         }
         if (-not $actual.id) { throw "Unable to read back the created $Kind at '$Uri'." }
         Assert-EIAV2Equivalent -Expected $Body -Actual $actual -Kind $Kind -Name $created.id

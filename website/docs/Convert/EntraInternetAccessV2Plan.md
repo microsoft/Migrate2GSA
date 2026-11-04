@@ -106,6 +106,11 @@ status, profile settings, links, and requested CA configuration. Destination set
 can be reordered without causing a conflict; URL path case is preserved.
 Service IDs/timestamps and null optional fields do not create false differences.
 Unsupported non-empty settings are not silently ignored.
+For Conditional Access, an additional `networkAccessSecurity` control is normalized
+only when it exactly duplicates the `globalSecureAccessFilteringProfile` binding
+(same profile ID and Boolean enabled state, with no additional fields). Differing
+or unfamiliar controls still stop simplified provisioning; full CA imports reject
+ambiguous bindings rather than rebinding only one of them.
 
 The CSV describes the complete desired rule set of each selected policy. A row
 with `Provision=No` can serve as an existing-object reference during retry, but
@@ -116,6 +121,10 @@ After successful operations, retry CSV rows become `Provision=No`. Failed or
 unattempted selected rows remain `Yes`. Keep both result files together so
 profile retries can validate already-created policy/rule dependencies. Errors
 remain terminating even when retry files are written.
+If a newly created CA policy returns 404 during immediate readback, provisioning
+retries that GET up to five times with delays of 2, 4, 8, 16, and 32 seconds.
+It does not repeat the POST. Other errors and exhausted readback retries remain
+fatal; the policy may already exist, so inspect it with `-WhatIf` before retrying.
 
 `-WhatIf` performs authenticated read-only preflight; it makes no Graph writes
 and writes no retry CSVs. `-Force` suppresses confirmation, **not validation or

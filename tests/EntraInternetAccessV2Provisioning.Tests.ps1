@@ -19,9 +19,11 @@ Describe 'OMv2 provisioning and export' {
         }
         $calls = [System.Collections.Generic.List[object]]::new()
         $failure = @{ Pattern = ''; Method = 'POST' }
+        $caReadFailure = @{ Remaining = 0; StatusCode = 404 }
         Mock -ModuleName Migrate2GSA Test-RequiredModules {}
         Mock -ModuleName Migrate2GSA Test-GraphConnection { $true }
         Mock -ModuleName Migrate2GSA Write-LogMessage {}
+        Mock -ModuleName Migrate2GSA Start-Sleep {}
         Mock -ModuleName Migrate2GSA Invoke-InternalGraphRequest {
             param($Method, $Uri, $Body)
             $calls.Add([pscustomobject]@{ Method = $Method; Uri = $Uri; Body = $Body })
@@ -33,6 +35,12 @@ Describe 'OMv2 provisioning and export' {
                 if ($path -eq '/beta/identity/conditionalAccess/policies' -and -not $item.conditions.Contains('clientAppTypes')) {
                     $item.conditions.clientAppTypes = @('all')
                 }
+                if ($path -eq '/beta/identity/conditionalAccess/policies') {
+                    $binding = $item.sessionControls.globalSecureAccessFilteringProfile
+                    $item.sessionControls.networkAccessSecurity = @{
+                        isEnabled = $binding.isEnabled; policyId = $binding.profileId
+                    }
+                }
                 $item.id = [guid]::NewGuid().ToString()
                 $store[$path].Add($item)
                 if ($path -eq "$baseUri/webFilteringPolicies") { $store["$path/$($item.id)/policyRules"] = [System.Collections.Generic.List[object]]::new() }
@@ -40,6 +48,11 @@ Describe 'OMv2 provisioning and export' {
                 return ($item | ConvertTo-Json -Depth 50 | ConvertFrom-Json)
             }
             if ($Method -ne 'GET') { throw "Unexpected mutation $Method $Uri" }
+            if ($path -like '/beta/identity/conditionalAccess/policies/*' -and $caReadFailure.Remaining -gt 0) {
+                $caReadFailure.Remaining--
+                $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode]$caReadFailure.StatusCode)
+                throw [Microsoft.PowerShell.Commands.HttpResponseException]::new('Simulated CA readback failure', $response)
+            }
             if ($path -in @('/beta/users', '/beta/groups')) { return [pscustomobject]@{ id = 'synthetic-assignment' } }
             if ($store.ContainsKey($path)) {
                 foreach ($item in $store[$path]) { $item | ConvertTo-Json -Depth 50 | ConvertFrom-Json }
@@ -314,6 +327,7 @@ EIA-OMv2/1.0,Finance,,1000,Disabled,Enabled,Finance web,ContinueEvaluation,,,,,N
         $exportedPolicies = @(Import-Csv $export.PoliciesCsvPath)
         $exportedProfiles = @(Import-Csv $export.SecurityProfilesCsvPath)
         $exportedProfiles[0].ConditionalAccessPoliciesJson | Should -Match 'excluded-user'
+        $exportedProfiles[0].ConditionalAccessPoliciesJson | Should -Not -Match 'networkAccessSecurity'
         $exportedPolicies | ForEach-Object { $_.ReviewNeeded = 'No'; $_.Provision = 'Yes' }
         $exportedProfiles | ForEach-Object { $_.ReviewNeeded = 'No'; $_.Provision = 'Yes' }
         $exportedPolicies | Export-Csv $policiesPath -NoTypeInformation
@@ -323,6 +337,100 @@ EIA-OMv2/1.0,Finance,,1000,Disabled,Enabled,Finance web,ContinueEvaluation,,,,,N
         @($calls | Where-Object Method -NE GET).Count | Should -Be 0
         $ca.sessionControls.signInFrequency.Remove('isEnabled')
         { Start-EntraInternetAccessProvisioning @parameters } | Should -Throw '*sessionControls*'
+        @($calls | Where-Object Method -NE GET).Count | Should -Be 0
+    }
+
+    It 'rejects a non-equivalent networkAccessSecurity control: <Change>' -ForEach @(
+        @{ Change = 'different profile' }
+        @{ Change = 'different enabled state' }
+        @{ Change = 'additional setting' }
+        @{ Change = 'missing primary binding' }
+    ) {
+        $parameters.SkipCAPoliciesProvisioning = $false
+        $profiles.CADisplayName = 'Finance CA'
+        $profiles.EntraUsers = 'user@example.com'
+        $profiles | Export-Csv $profilesPath -NoTypeInformation
+        Start-EntraInternetAccessProvisioning @parameters | Out-Null
+        $ca = $store['/beta/identity/conditionalAccess/policies'][0]
+        switch ($Change) {
+            'different profile' { $ca.sessionControls.networkAccessSecurity.policyId = 'other-profile' }
+            'different enabled state' { $ca.sessionControls.networkAccessSecurity.isEnabled = $false }
+            'additional setting' { $ca.sessionControls.networkAccessSecurity.extraSetting = $true }
+            'missing primary binding' { $ca.sessionControls.Remove('globalSecureAccessFilteringProfile') }
+        }
+        $calls.Clear()
+        { Start-EntraInternetAccessProvisioning @parameters } | Should -Throw '*sessionControls*'
+        @($calls | Where-Object Method -NE GET).Count | Should -Be 0
+        $profiles.ConditionalAccessPoliciesJson = ConvertTo-Json -InputObject @($ca) -Depth 50 -Compress
+        $profiles | Export-Csv $profilesPath -NoTypeInformation
+        { Start-EntraInternetAccessProvisioning @parameters } | Should -Throw
+        @($calls | Where-Object Method -NE GET).Count | Should -Be 0
+    }
+
+    It 'rebinds an exported duplicate CA profile binding without retaining the source profile ID' {
+        $parameters.SkipCAPoliciesProvisioning = $false
+        $profiles.CADisplayName = 'Finance CA'
+        $profiles.EntraUsers = 'user@example.com'
+        $profiles | Export-Csv $profilesPath -NoTypeInformation
+        Start-EntraInternetAccessProvisioning @parameters | Out-Null
+        $ca = $store['/beta/identity/conditionalAccess/policies'][0]
+        $sourceProfileId = $ca.sessionControls.globalSecureAccessFilteringProfile.profileId
+        $caCopy = $ca | ConvertTo-Json -Depth 50 | ConvertFrom-Json -AsHashtable
+        $caCopy.displayName = 'Copied CA'
+        $profiles.ConditionalAccessPoliciesJson = ConvertTo-Json -InputObject @($caCopy) -Depth 50 -Compress
+        $profiles.SecurityProfileName = 'Copied profile'
+        $profiles.Priority = '1001'
+        $profiles | Export-Csv $profilesPath -NoTypeInformation
+        $calls.Clear()
+        $result = Start-EntraInternetAccessProvisioning @parameters
+        $result.Completed | Should -BeTrue
+        $newCA = $store['/beta/identity/conditionalAccess/policies'][1]
+        $newProfileId = $store["$baseUri/filteringProfiles"][1].id
+        $newCA.sessionControls.globalSecureAccessFilteringProfile.profileId | Should -Be $newProfileId
+        $newCA.sessionControls.networkAccessSecurity.policyId | Should -Be $newProfileId
+        $caPost = $calls | Where-Object { $_.Method -eq 'POST' -and $_.Uri -eq '/beta/identity/conditionalAccess/policies' }
+        $caPost.Body | Should -Not -Match $sourceProfileId
+        $caPost.Body | Should -Not -Match 'networkAccessSecurity'
+    }
+
+    It 'retries only CA readback after transient 404s without repeating creation' {
+        $parameters.SkipCAPoliciesProvisioning = $false
+        $profiles.CADisplayName = 'Finance CA'
+        $profiles.EntraUsers = 'user@example.com'
+        $profiles | Export-Csv $profilesPath -NoTypeInformation
+        $caReadFailure.Remaining = 2
+        $result = Start-EntraInternetAccessProvisioning @parameters
+        $result.Completed | Should -BeTrue
+        @($calls | Where-Object { $_.Method -eq 'POST' -and $_.Uri -eq '/beta/identity/conditionalAccess/policies' }).Count | Should -Be 1
+        @($calls | Where-Object { $_.Method -eq 'GET' -and $_.Uri -like '/beta/identity/conditionalAccess/policies/*' }).Count | Should -Be 3
+        Should -Invoke Start-Sleep -ModuleName Migrate2GSA -Times 2 -Exactly
+        $calls.Clear()
+        Start-EntraInternetAccessProvisioning @parameters | Out-Null
+        @($calls | Where-Object Method -NE GET).Count | Should -Be 0
+    }
+
+    It 'keeps failed CA verification retryable for HTTP <StatusCode>' -ForEach @(
+        @{ StatusCode = 404; ReadCount = 6; SleepCount = 5 }
+        @{ StatusCode = 403; ReadCount = 1; SleepCount = 0 }
+    ) {
+        $parameters.SkipCAPoliciesProvisioning = $false
+        $profiles.CADisplayName = 'Finance CA'
+        $profiles.EntraUsers = 'user@example.com'
+        $profiles | Export-Csv $profilesPath -NoTypeInformation
+        $caReadFailure.Remaining = 10
+        $caReadFailure.StatusCode = $StatusCode
+        { Start-EntraInternetAccessProvisioning @parameters } | Should -Throw '*Simulated CA readback failure*'
+        @($calls | Where-Object { $_.Method -eq 'POST' -and $_.Uri -eq '/beta/identity/conditionalAccess/policies' }).Count | Should -Be 1
+        @($calls | Where-Object { $_.Method -eq 'GET' -and $_.Uri -like '/beta/identity/conditionalAccess/policies/*' }).Count | Should -Be $ReadCount
+        Should -Invoke Start-Sleep -ModuleName Migrate2GSA -Times $SleepCount -Exactly
+        $folder = Get-ChildItem $casePath -Directory -Filter 'EIA-OMv2-Results*'
+        $retryProfile = Import-Csv (Join-Path $folder.FullName 'EIA_OMv2_SecurityProfiles.csv')
+        $retryProfile.Provision | Should -Be 'Yes'
+        $retryProfile.ProvisioningResult | Should -BeLike 'Failed:*'
+        $caReadFailure.Remaining = 0
+        $calls.Clear()
+        $result = Start-EntraInternetAccessProvisioning @parameters
+        $result.Completed | Should -BeTrue
         @($calls | Where-Object Method -NE GET).Count | Should -Be 0
     }
 

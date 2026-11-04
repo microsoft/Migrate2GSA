@@ -20,5 +20,19 @@ function Get-EIAV2WritableBody {
     if ($Kind -eq 'Link' -and $body.policy) {
         $body.policy = @{ id = $body.policy.id }
     }
+    if ($Kind -eq 'ConditionalAccess') {
+        $profile = $body.sessionControls.globalSecureAccessFilteringProfile
+        $network = $body.sessionControls.networkAccessSecurity
+        # Canary can return both representations of the same profile binding.
+        if ($profile -is [System.Collections.IDictionary] -and
+            $network -is [System.Collections.IDictionary] -and
+            $profile.Count -eq 2 -and $network.Count -eq 2 -and
+            $profile.profileId -is [string] -and -not [string]::IsNullOrWhiteSpace($profile.profileId) -and
+            $profile.profileId -ceq $network.policyId -and
+            $profile.isEnabled -is [bool] -and $network.isEnabled -is [bool] -and
+            $profile.isEnabled -eq $network.isEnabled) {
+            $body.sessionControls.Remove('networkAccessSecurity')
+        }
+    }
     return $body
 }

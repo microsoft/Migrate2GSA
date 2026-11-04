@@ -14,6 +14,9 @@ function Get-EIAV2ConditionalAccessBody {
             if (-not $body.sessionControls.globalSecureAccessFilteringProfile) {
                 throw 'Conditional Access definitions must reference a Global Secure Access filtering profile.'
             }
+            if ($null -ne $body.sessionControls.networkAccessSecurity) {
+                throw 'Unsupported networkAccessSecurity control: expected an exact duplicate of the Global Secure Access profile binding.'
+            }
             $bodies += $body
         }
     }
