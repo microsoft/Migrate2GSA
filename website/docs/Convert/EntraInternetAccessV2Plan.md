@@ -16,6 +16,57 @@ establish production availability, service limits, URL-matching equivalence, or
 effective enforcement. An unavailable endpoint or unsupported feature fails
 explicitly; the toolkit never falls back to OMv1 or substitutes another default.
 
+## Roadmap: native OMv2 conversion, one vendor at a time
+
+**Keep the current workflow; evolve vendor converters incrementally.** Today,
+existing vendor converters produce OMv1-format CSVs, and
+`ConvertTo-EntraInternetAccessV2Plan` converts those files into OMv2 review CSVs.
+This shared bridge remains available for existing migration files and converters
+that have not yet gained native OMv2 support. It does not require deploying OMv1
+to a tenant first.
+
+The proposed architecture shares source parsing **within each vendor converter**
+and separates the target-model mappings:
+
+```text
+Vendor export
+     |
+Parse source configuration
+(preserve order, actions, conditions, references)
+     |
+     +--> OMv1 mapping --> OMv1 review CSVs --> OMv1 provisioning
+     |
+     +--> OMv2 mapping --> OMv2 review CSVs --> OMv2 provisioning
+```
+
+The branch must occur before OMv1-specific grouping, ordering, or destination
+transformations. Native OMv2 mapping must not merely call the existing bridge
+after producing OMv1 CSVs: that cannot recover source information already lost.
+Preserving source information does not imply the target supports every feature;
+each mapper must map supported conditions and retain unsupported ones for review,
+not silently discard them.
+
+**This is a proposed direction, not functionality available in the vendor
+converters today.** OMv1 remains the default. Each vendor can gain native OMv2
+output independently, reusing the OMv2 CSV contract and provisioning path
+documented below. A universal cross-vendor parser is not required.
+
+For each vendor, the proposed rollout is:
+
+1. Establish representative, sanitized source fixtures and expected OMv1 outputs.
+2. Separate source parsing from OMv1 mapping, with regression coverage to preserve
+   the existing workflow.
+3. Add a source-aware OMv2 mapping and review CSV output, with explicit defaults,
+   ordering, assignments, and unsupported-feature diagnostics.
+4. Validate both mappings against source semantics and validate OMv2 provisioning
+   and traffic behavior in an authorized test environment before declaring that
+   vendor's native OMv2 path ready.
+
+Vendor order and delivery dates are not committed. Sample coverage is incomplete,
+and the current bridge has not been validated end-to-end for every vendor.
+Converters can therefore adopt the new architecture one at a time without
+blocking other vendors or removing the compatibility bridge.
+
 ## Convert and review
 
 ```powershell
