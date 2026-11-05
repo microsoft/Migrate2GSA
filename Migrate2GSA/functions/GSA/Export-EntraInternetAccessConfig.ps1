@@ -30,6 +30,10 @@
 .PARAMETER LogPath
     Path for the log file. Defaults to the timestamped backup folder.
 
+.PARAMETER PolicyModel
+    OMv1 (default) exports the existing format. OMv2 exports web-filtering policies,
+    rules and their security profiles using the EIA-OMv2/1.0 reviewable CSV contract.
+
 .EXAMPLE
     Export-EntraInternetAccessConfig
 
@@ -71,8 +75,18 @@ function Export-EntraInternetAccessConfig {
         [switch]$IncludeConditionalAccessPolicies,
 
         [Parameter(HelpMessage = "Path for the log file")]
-        [string]$LogPath
+        [string]$LogPath,
+
+        [Parameter()]
+        [ValidateSet('OMv1', 'OMv2')]
+        [string]$PolicyModel = 'OMv1'
     )
+
+    if ($PolicyModel -eq 'OMv2') {
+        Export-EIAV2Configuration -OutputPath $OutputPath -LogPath $LogPath `
+            -IncludeConditionalAccessPolicies:$IncludeConditionalAccessPolicies
+        return
+    }
 
     #region Initialization
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"

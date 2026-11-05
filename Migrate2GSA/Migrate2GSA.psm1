@@ -31,6 +31,7 @@ Export-ModuleMember -Function @(
     'Export-EntraPrivateAccessConfig',
     'Export-EntraPrivateAccessAppDiscovery',
     'Export-EntraInternetAccessConfig',
+    'ConvertTo-EntraInternetAccessV2Plan',
     'Export-CiscoUmbrellaConfig',
     'Convert-CiscoUmbrella2EIA',
     'Export-MDEWebFilteringConfig',

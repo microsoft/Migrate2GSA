@@ -13,6 +13,12 @@ The `Export-EntraInternetAccessConfig` function is now available. Use it to expo
 
 ## Overview
 
+This page describes the default OMv1 export. For web-filtering OMv2, use
+`Export-EntraInternetAccessConfig -PolicyModel OMv2` and follow the separate
+[OMv2 CSV and provisioning guide](../../Convert/EntraInternetAccessV2Plan.md).
+The OMv2 path preserves rule actions, order, states, and policy defaults; it does
+not export the other policy families as provisionable OMv2 objects.
+
 The `Export-EntraInternetAccessConfig` function exports your complete Microsoft Entra Internet Access (EIA) configuration to CSV format, enabling backup, disaster recovery, tenant-to-tenant migrations, and configuration replication scenarios.
 
 Similar to the [EPA Export](./EPAExport.md) functionality, this exports directly from your existing Global Secure Access tenant, creating CSV files compatible with the provisioning function for seamless restoration.

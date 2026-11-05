@@ -10,6 +10,12 @@ keywords: [EIA provisioning, Entra Internet Access, filtering policies, security
 
 The `Start-EntraInternetAccessProvisioning` function provisions Microsoft Entra Internet Access filtering policies, security profiles, and Conditional Access policies from CSV configuration files into a target Entra tenant.
 
+This page describes the default **OMv1 web-content-filtering model**.
+Use `-PolicyModel OMv2` for the explicit OMv2 conversion/provisioning/export
+workflow documented in [OMv2 Web Filtering](../Convert/EntraInternetAccessV2Plan.md).
+OMv2 uses a separate versioned CSV contract and stricter conflict checking;
+do not pass OMv2 CSVs to the default OMv1 path.
+
 This function automates the deployment of:
 - **Web Content Filtering Policies** and their rules (FQDN, URL, webCategory)
 - **TLS Inspection Policies** and their rules (bypass, inspect)
@@ -326,4 +332,3 @@ Output CSVs can be used as input for re-runs to retry only failed items.
 5. **Use Provision field for selective provisioning**: Set `Provision=no` for rows you don't want to provision
 
 6. **Keep output CSVs for re-runs**: Output CSVs automatically update Provision field for idempotent re-runs
-
