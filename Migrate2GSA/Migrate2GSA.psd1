@@ -12,7 +12,7 @@
 RootModule = 'Migrate2GSA.psm1'
 
 # Version number of this module.
-ModuleVersion = '2026.10.26.1'
+ModuleVersion = '2026.11.16.1'
 
 # Supported PSEditions
 CompatiblePSEditions = 'Core'
@@ -70,8 +70,8 @@ PowerShellVersion = '7.0'
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
 FunctionsToExport = 'Export-ZPAConfig', 'Export-ZPAConfigOneAPI', 'Convert-ZPA2EPA', 
-               'Export-ZIAConfig', 'Convert-ZIA2EIA', 'Export-NetskopeConfig', 'Export-NetskopeConfigV2',
-               'Convert-NPA2EPA', 'Convert-NSWG2EIA', 'Convert-NSWG2EIAV2', 'Convert-ForcepointWS2EIA',
+               'Export-ZIAConfig', 'Convert-ZIA2EIA', 'Export-NetskopeConfig', 'Export-NetskopeConfigPreview',
+               'Convert-NPA2EPA', 'Convert-NSWG2EIA', 'Convert-NSWG2EIAPreview', 'Convert-ForcepointWS2EIA',
                'Convert-PANW2EIA', 'Convert-CitrixNS2EPA', 
                'Start-EntraPrivateAccessProvisioning', 
                'Start-EntraInternetAccessProvisioning', 

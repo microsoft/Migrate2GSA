@@ -1,4 +1,4 @@
-function Export-NetskopeConfigV2 {
+function Export-NetskopeConfigPreview {
     <#
     .SYNOPSIS
         EXPERIMENTAL: Exports Netskope configuration with paginated Destination Profile collections.
@@ -7,8 +7,8 @@ function Export-NetskopeConfigV2 {
         Best-effort experimental implementation based on public documentation and API models.
         Not yet validated against live Netskope tenants; community validation and contributions welcome.
         Invoke Export-NetskopeConfig for the unchanged original exporter.
-        V2 identifies this experimental cmdlet, NOT GSA Filtering Policy Model V2.
-        Uses read-only API calls and writes a separate backup_v2_preview directory.
+        Preview identifies validation status, not a GSA object model or traffic forwarding version.
+        Uses read-only API calls and writes a separate backup_preview directory.
         Does not export the Real-time Protection policies required by the converter.
 
         This PowerShell function connects to the Netskope API using an API token and exports 
@@ -36,25 +36,25 @@ function Export-NetskopeConfigV2 {
     
     .EXAMPLE
         $token = Read-Host "Enter API Token" -AsSecureString
-        Export-NetskopeConfigV2 -ApiToken $token -TenantUrl "https://contoso.goskope.com"
+        Export-NetskopeConfigPreview -ApiToken $token -TenantUrl "https://contoso.goskope.com"
         
         Basic usage with interactive token input.
     
     .EXAMPLE
         $token = ConvertTo-SecureString "your-token" -AsPlainText -Force
-        Export-NetskopeConfigV2 -ApiToken $token -TenantUrl "https://contoso.goskope.com" -OutputDirectory "C:\Backups\Netskope"
+        Export-NetskopeConfigPreview -ApiToken $token -TenantUrl "https://contoso.goskope.com" -OutputDirectory "C:\Backups\Netskope"
         
         Export with custom output directory.
     
     .EXAMPLE
         $token = Read-Host "Enter API Token" -AsSecureString
-        Export-NetskopeConfigV2 -ApiToken $token -TenantUrl "https://contoso.goskope.com" -RequestDelay 2
+        Export-NetskopeConfigPreview -ApiToken $token -TenantUrl "https://contoso.goskope.com" -RequestDelay 2
         
         Export with custom delay between API requests.
     
     .EXAMPLE
         $token = Read-Host "Enter API Token" -AsSecureString
-        Export-NetskopeConfigV2 -ApiToken $token -TenantUrl "https://contoso.goskope.com" -Debug
+        Export-NetskopeConfigPreview -ApiToken $token -TenantUrl "https://contoso.goskope.com" -Debug
         
         Export with debug mode to see raw API responses.
     
@@ -95,7 +95,7 @@ function Export-NetskopeConfigV2 {
         [int]$RequestDelay = 1
     )
     
-    Write-Warning "EXPERIMENTAL: Export-NetskopeConfigV2 is a best-effort implementation, not yet validated against live Netskope tenants. Community validation and contributions welcome. Validate API contracts and completeness; use Export-NetskopeConfig for the original behavior."
+    Write-Warning "EXPERIMENTAL: Export-NetskopeConfigPreview is a best-effort implementation, not yet validated against live Netskope tenants. Community validation and contributions welcome. Validate API contracts and completeness; use Export-NetskopeConfig for the original behavior."
 
     # Set strict error handling
     $ErrorActionPreference = 'Stop'
@@ -631,7 +631,7 @@ function Export-NetskopeConfigV2 {
             $completeBackup = @{
                 "timestamp" = Get-Date -Format "yyyyMMdd_HHmmss"
                 "tenant_url" = $script:NetskopeTenantUrl
-                "backup_type" = "Netskope_Configuration_V2_Preview"
+                "backup_type" = "Netskope_Configuration_Preview"
                 "configurations" = $configs
             }
             
@@ -695,13 +695,13 @@ function Export-NetskopeConfigV2 {
         }
         
         # Create timestamped backup folder
-        $backupDir = Join-Path $OutputDirectory "backup_v2_preview_$timestamp"
+        $backupDir = Join-Path $OutputDirectory "backup_preview_$timestamp"
         if (-not (Test-Path $backupDir)) {
             New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
         }
         
         # Set log path for Write-LogMessage (both script and local scope for compatibility)
-        $LogPath = Join-Path $backupDir "Export-NetskopeConfigV2.log"
+        $LogPath = Join-Path $backupDir "Export-NetskopeConfigPreview.log"
         $script:LogPath = $LogPath
         
         # Initialize log file
@@ -714,7 +714,7 @@ function Export-NetskopeConfigV2 {
         }
         
         Write-LogMessage "Netskope Configuration Export" -Level SUMMARY -Component "Main"
-        Write-LogMessage "EXPERIMENTAL V2: best-effort implementation, not yet validated against live tenants; community validation and contributions welcome." -Level WARN -Component "Main"
+        Write-LogMessage "EXPERIMENTAL PREVIEW: best-effort implementation, not yet validated against live tenants; community validation and contributions welcome." -Level WARN -Component "Main"
         Write-LogMessage "Started at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level INFO -Component "Main"
         Write-LogMessage "" -Level INFO
         
@@ -747,7 +747,7 @@ function Export-NetskopeConfigV2 {
             Write-LogMessage "Finished at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Level INFO -Component "Main"
 
             # Send usage telemetry
-            Send-UsageTelemetry -EventName 'Export-NetskopeConfigV2'
+            Send-UsageTelemetry -EventName 'Export-NetskopeConfigPreview'
 
             return $true
         }

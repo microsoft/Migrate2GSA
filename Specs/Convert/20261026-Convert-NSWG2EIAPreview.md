@@ -1,4 +1,4 @@
-# Convert-NSWG2EIAV2 preview specification
+# Convert-NSWG2EIAPreview specification
 
 ## Document Information
 
@@ -6,14 +6,15 @@
 - Date: 2026-10-26
 - Status: Best-effort experimental implementation; not yet validated against real Netskope exports
 - Target module: Migrate2GSA
-- Function: Convert-NSWG2EIAV2
+- Function: Convert-NSWG2EIAPreview
 - Author: Migrate2GSA contributors
 
 ## Overview
 
 Expose the best-effort Destination Profile implementation as a separate, explicitly invoked public
 cmdlet. Preserve `Convert-NSWG2EIA` byte-for-byte; do not delegate either command
-to the other. V2 is a cmdlet version, not GSA Filtering Policy Model V2.
+to the other. Preview denotes validation status, not a GSA object model or
+traffic forwarding version.
 Retain the existing converter architecture and shared helpers without altering
 their behavior. The original [conversion specification](20251112-Convert-NSWG2EIA.md)
 describes the inherited URL List algorithm; differences are specified here.
@@ -51,19 +52,25 @@ generated legacy policy names and CSV link delimiters are rejected.
 - Destination Profiles: direct array or complete `elements`/`total_count`
   envelope. Require unique `id`, `name`, `type` (`sensitive`, `insensitive`,
   `regex`), and `values` array. Preserve source `status` in review details.
+  An empty array remains a review placeholder. Validate every entry in nonempty
+  arrays before conversion: reject null, non-string, empty, and whitespace-only
+  entries with a logged error. This preview boundary needs tenant confirmation
+  for exported blank/comment lines; do not silently discard source entries.
 - Categories: legacy structures or modern `elements`/`total_count` envelope.
   Modern fields are `included_url_lists`, `excluded_url_lists`,
   `included_destination_profiles`, `excluded_destination_profiles`,
-  and `included_predefined_categories`. Validate typed ID arrays.
+  and `included_predefined_categories`. Validate nonempty string IDs in these
+  arrays per the public SDK; do not infer numeric array support from legacy
+  URL List object IDs.
 - Mapping CSV: unchanged name-based mapping; numeric category IDs remain unmapped.
 
 ## Output Files
 
-Exactly three artifacts: `<timestamp>_V2_PREVIEW_EIA_Policies.csv`,
-`<timestamp>_V2_PREVIEW_EIA_SecurityProfiles.csv`, and
-`<timestamp>_Convert-NSWG2EIAV2.log`. Return the existing summary/path properties.
+Exactly three artifacts: `<timestamp>_PREVIEW_EIA_Policies.csv`,
+`<timestamp>_PREVIEW_EIA_SecurityProfiles.csv`, and
+`<timestamp>_Convert-NSWG2EIAPreview.log`. Return the existing summary/path properties.
 Emit a PowerShell warning and a log warning identifying experimental status.
-Use a distinct telemetry event `Convert-NSWG2EIAV2`.
+Use a distinct telemetry event `Convert-NSWG2EIAPreview`.
 
 ## Processing Logic
 
@@ -72,6 +79,9 @@ Keep source ID namespaces separate. Reject missing references, incomplete
 collections, invalid/duplicate profiles, and ambiguous category names.
 
 Plain domains produce FQDN candidates; PQDN candidates include root and wildcard.
+Domains are lowercased for both exact-match types: Netskope case sensitivity
+applies only to paths/queries, not domains. Preserve original values in review
+details.
 Other values produce placeholders with unchanged source strings in `ReviewDetails`.
 Do not use legacy cleaning or case-insensitive deduplication on profiles.
 Keep empty/pending profiles visible. Inclusions follow the source action;
@@ -92,4 +102,4 @@ Optional: `OutputBasePath` (existing directory, defaults to current directory),
 
 The original command's parameters, logs, filenames, and behavior stay unchanged.
 Synthetic regression checks and community reports do not establish production
-readiness; see the [validation guide](../../website/docs/MigrationSources/Netskope/NetskopeV2Preview.md).
+readiness; see the [validation guide](../../website/docs/MigrationSources/Netskope/NetskopeDestinationProfilesPreview.md).

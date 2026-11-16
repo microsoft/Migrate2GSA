@@ -1,6 +1,6 @@
 ---
 sidebar_position: 4
-title: Netskope Secure Web Gateway V2 (Experimental)
+title: Netskope Destination Profile support (Preview)
 description: Help validate experimental Destination Profile export and conversion from Netskope Secure Web Gateway to Entra Internet Access.
 ---
 
@@ -12,7 +12,7 @@ Access (EPA) conversion support.
 
 :::warning[Experimental - community validation needed]
 
-`Export-NetskopeConfigV2` and `Convert-NSWG2EIAV2` are **best-effort experimental
+`Export-NetskopeConfigPreview` and `Convert-NSWG2EIAPreview` are **best-effort experimental
 implementations, not yet validated against real Netskope tenants/exports**.
 
 They are based on public documentation and API models, with local automated checks
@@ -24,27 +24,31 @@ These commands are not a production-ready replacement for the original commands.
 
 :::
 
-**V2 refers to these experimental cmdlets, not GSA Filtering Policy Model V2.**
+**Preview denotes validation status, not a GSA object model or traffic forwarding version.**
 The converter still generates the existing GSA V1 CSV contract.
 
 | Existing command (unchanged) | Experimental command (explicit opt-in) |
 |---|---|
-| `Export-NetskopeConfig` | `Export-NetskopeConfigV2` |
-| `Convert-NSWG2EIA` | `Convert-NSWG2EIAV2` |
+| `Export-NetskopeConfig` | `Export-NetskopeConfigPreview` |
+| `Convert-NSWG2EIA` | `Convert-NSWG2EIAPreview` |
 
 Both pairs are exported by the same module. No aliases, forwarding wrappers, or
 automatic upgrades redirect existing scripts to the preview. The original commands
 retain their current behavior and limitations, including the original converter's
-exact `Enabled` status comparison. The V2 converter additionally trims status
+exact `Enabled` status comparison. The preview converter additionally trims status
 whitespace. The original converter does **not** gain Destination Profile support.
 
 Use matching export/conversion pairs and separate input/output directories.
-V2 export envelopes are not guaranteed to work with the original converter.
+Preview export envelopes are not guaranteed to work with the original converter.
 Switching back means invoking the original names with their original inputs.
+
+The preview converter accepts URL Lists, Destination Profiles, or both for a
+tenant in transition. Choose one converter for each migration run; do not
+independently provision overlapping outputs from both converters.
 
 ## What the experimental implementation adds
 
-`Export-NetskopeConfigV2` keeps URL Lists and Destination Profiles distinct,
+`Export-NetskopeConfigPreview` keeps URL Lists and Destination Profiles distinct,
 retaining `url_lists.json` and `destinations.json`. It requests modern Custom
 Categories and Destination Profiles using `limit=100` and increasing `offset`,
 and saves their combined `elements`/`total_count` envelopes with returned fields,
@@ -57,7 +61,7 @@ their existing best-effort behavior; this is not proof of a complete tenant back
 Export against a stable configuration; pagination does not provide a transactional
 snapshot. The exporter performs GET requests only, not Netskope apply/migrate actions.
 
-`Convert-NSWG2EIAV2` accepts `-DestinationProfilesPath` in addition to URL Lists.
+`Convert-NSWG2EIAPreview` accepts `-DestinationProfilesPath` in addition to URL Lists.
 It supports modern category inclusion/exclusion arrays with separate source ID
 namespaces. Missing references and incomplete modern collections stop conversion.
 Its existing RTP input still resolves categories by name; duplicate category names
@@ -69,6 +73,19 @@ subdomains. More complex entries use placeholders, preserving their original
 strings in `ReviewDetails` instead of passing through legacy URL cleanup.
 Empty and pending profiles remain visible for review.
 
+For both `sensitive` and `insensitive` profiles, plain domain candidates are
+lowercased: [Netskope documents domain matching as always case-insensitive](https://docs.netskope.com/en/adding-network-targets-to-destination-profiles).
+Case sensitivity applies to paths and queries, which remain placeholders with
+their original case preserved in `ReviewDetails`.
+
+The preview accepts an empty `values` array as an empty profile, but rejects null,
+non-string, empty-string, or whitespace-only entries inside a nonempty array.
+This is a strict converter input boundary, not a claim that the Netskope editor
+rejects blank lines (its documentation treats those as comments). If such entries
+appear in an actual export, report the shape rather than silently discarding them.
+Modern category reference arrays still require nonempty strings, as specified by
+the public SDK; integer IDs on legacy URL List objects are a separate contract.
+
 Security profiles involving modern categories or Destination Profiles also have
 `Provision=No`. **Other legacy rules/profiles can still have `Provision=Yes`; do
 not feed preview output into production provisioning without independent validation.**
@@ -78,13 +95,13 @@ Changing `Provision` alone does not make placeholders or changed semantics safe.
 
 If you already have an export, skip to
 [testing the converter with your own export](#test-the-converter-with-your-own-export).
-Otherwise use PowerShell 7 from a repository checkout containing the V2 commands.
+Otherwise use PowerShell 7 from a repository checkout containing the preview commands.
 Keep export files outside the repository in a protected folder.
 
 ```powershell
 Import-Module ./Migrate2GSA/Migrate2GSA.psd1 -Force
 $token = Read-Host 'Netskope read-only API token' -AsSecureString
-Export-NetskopeConfigV2 `
+Export-NetskopeConfigPreview `
     -ApiToken $token `
     -TenantUrl 'https://your-test-tenant.goskope.com' `
     -OutputDirectory (Join-Path $HOME 'netskope-validation/exports')
@@ -94,9 +111,9 @@ Use the read permissions listed in [the original export guide](NetskopeExportCon
 Confirm availability, schemas, and pagination against **your tenant Swagger**.
 The public SDK informs this implementation; it does not guarantee tenant compatibility.
 
-The exporter writes `backup_v2_preview_<timestamp>/` with
-`Export-NetskopeConfigV2.log`. Its complete-backup metadata identifies the output
-as `Netskope_Configuration_V2_Preview`. Original backups remain separate.
+The exporter writes `backup_preview_<timestamp>/` with
+`Export-NetskopeConfigPreview.log`. Its complete-backup metadata identifies the output
+as `Netskope_Configuration_Preview`. Original backups remain separate.
 
 ## Test the converter with your own export
 
@@ -105,7 +122,7 @@ as `Netskope_Configuration_V2_Preview`. Original backups remain separate.
 Use **PowerShell 7**, with the current directory set to the repository root, and a
 checkout containing these experimental commands. Do not assume the installed
 PowerShell Gallery version includes them. The explicit module import below loads
-your local checkout. If `Get-Command Convert-NSWG2EIAV2` fails after importing,
+your local checkout. If `Get-Command Convert-NSWG2EIAPreview` fails after importing,
 check the checkout/version rather than substituting the original converter.
 
 **Conversion is offline:** it needs no Netskope token or GSA login, does not modify
@@ -140,12 +157,12 @@ that exercises legacy compatibility, not Destination Profile support.
 ```powershell
 $env:MIGRATE2GSA_TELEMETRY_OPTOUT = '1'
 Import-Module ./Migrate2GSA/Migrate2GSA.psd1 -Force
-Get-Command Convert-NSWG2EIAV2
+Get-Command Convert-NSWG2EIAPreview
 
 $inputDir = Join-Path $HOME 'netskope-validation/input' # Change to your export folder.
 $outputDir = Join-Path $HOME ("netskope-validation/output-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
-$result = Convert-NSWG2EIAV2 `
+$result = Convert-NSWG2EIAPreview `
     -RealTimeProtectionPoliciesPath "$inputDir/real_time_protection_policies.json" `
     -UrlListsPath "$inputDir/url_lists.json" `
     -DestinationProfilesPath "$inputDir/destinations.json" `
@@ -175,9 +192,9 @@ Modern categories use `included_url_lists`, `excluded_url_lists`,
 `included_destination_profiles`, `excluded_destination_profiles`, and
 `included_predefined_categories`.
 
-Outputs are `<timestamp>_V2_PREVIEW_EIA_Policies.csv`,
-`<timestamp>_V2_PREVIEW_EIA_SecurityProfiles.csv`, and
-`<timestamp>_Convert-NSWG2EIAV2.log`. Return properties remain `PoliciesCsvPath`,
+Outputs are `<timestamp>_PREVIEW_EIA_Policies.csv`,
+`<timestamp>_PREVIEW_EIA_SecurityProfiles.csv`, and
+`<timestamp>_Convert-NSWG2EIAPreview.log`. Return properties remain `PoliciesCsvPath`,
 `SecurityProfilesCsvPath`, `LogFilePath`, `PoliciesCreated` (rule-row count), and
 `SecurityProfilesCreated`.
 
@@ -231,9 +248,9 @@ These fixtures are **not actual customer exports**.
 Community validation and contributions are welcome, including reports from
 existing authorized exports without live tenant access. Use authorized data and
 [open a GitHub issue](https://github.com/microsoft/Migrate2GSA/issues) with
-**Netskope V2 validation** in the title. Report:
+**Netskope Destination Profile preview validation** in the title. Report:
 
-1. Module version/commit, PowerShell version, Netskope release, and which V2 command ran.
+1. Module version/commit, PowerShell version, Netskope release, and which preview command ran.
 2. Expected versus actual behavior, including object counts across pages.
 3. Whether the tenant uses legacy lists, profiles, or both; applied/pending states;
    and category inclusion/exclusion or direct RTP references.

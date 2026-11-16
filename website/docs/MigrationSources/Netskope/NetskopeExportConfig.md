@@ -8,7 +8,7 @@ keywords: [Netskope, export, backup, migration, NPA, NSWG, Global Secure Access]
 ## Overview
 
 For experimental paginated Destination Profile export, explicitly use
-[`Export-NetskopeConfigV2`](NetskopeV2Preview.md). It is a best-effort implementation,
+[`Export-NetskopeConfigPreview`](NetskopeDestinationProfilesPreview.md). It is a best-effort implementation,
 not yet validated against live tenants; community validation and contributions
 are welcome. The original command documented here is
 unchanged.

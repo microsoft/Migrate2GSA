@@ -1,15 +1,15 @@
-# Export-NetskopeConfigV2 preview specification
+# Export-NetskopeConfigPreview specification
 
 - Date: 2026-10-26
 - Status: Best-effort experimental implementation; not yet validated against live Netskope tenants
-- Function: Export-NetskopeConfigV2
+- Function: Export-NetskopeConfigPreview
 
 ## Isolation and compatibility
 
 Expose the best-effort Destination Profile export implementation separately from
 `Export-NetskopeConfig`, which remains byte-for-byte unchanged.
-Do not redirect existing callers. V2 refers to the cmdlet, not GSA Filtering
-Policy Model V2. Retain the original parameters (`ApiToken`, `TenantUrl`,
+Do not redirect existing callers. Preview denotes validation status, not a GSA
+object model or traffic forwarding version. Retain the original parameters (`ApiToken`, `TenantUrl`,
 `OutputDirectory`, `RequestDelay`) and the read-only API operations.
 
 ## Export contract
@@ -32,16 +32,16 @@ migrate Netskope objects.
 
 ## Output and disclosure
 
-Write `backup_v2_preview_<timestamp>/`, keeping internal JSON filenames unchanged.
-Use `Export-NetskopeConfigV2.log`, complete-backup type
-`Netskope_Configuration_V2_Preview`, and telemetry event `Export-NetskopeConfigV2`.
+Write `backup_preview_<timestamp>/`, keeping internal JSON filenames unchanged.
+Use `Export-NetskopeConfigPreview.log`, complete-backup type
+`Netskope_Configuration_Preview`, and telemetry event `Export-NetskopeConfigPreview`.
 Emit an experimental warning on the PowerShell warning stream and in the log.
 Successful completion does not certify a complete snapshot or tenant compatibility.
 
 ## Validation
 
-Use mocked pagination/failure cases and side-by-side original/V2 regression tests.
+Use mocked pagination/failure cases and side-by-side original/preview regression tests.
 Community validation with authorized test tenants is required; do not present
 synthetic tests as live acceptance. See the
-[community validation guide](../../website/docs/MigrationSources/Netskope/NetskopeV2Preview.md)
+[community validation guide](../../website/docs/MigrationSources/Netskope/NetskopeDestinationProfilesPreview.md)
 for safe reporting and remaining gaps.

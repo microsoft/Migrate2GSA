@@ -14,12 +14,24 @@ BeforeAll {
 
     function Invoke-TestConversion {
         param([hashtable]$Parameters)
-        $result = Convert-NSWG2EIAV2 @Parameters
+        $result = Convert-NSWG2EIAPreview @Parameters
         [PSCustomObject]@{
             Result = $result
             Policies = @(Import-Csv $result.PoliciesCsvPath)
             Profiles = @(Import-Csv $result.SecurityProfilesCsvPath)
         }
+    }
+}
+
+Describe 'Netskope preview public command contract' {
+    It 'exports the original and Preview commands without the ambiguous V2 names' {
+        $commands = (Get-Module Migrate2GSA).ExportedCommands
+        foreach ($name in @('Export-NetskopeConfig', 'Convert-NSWG2EIA',
+                'Export-NetskopeConfigPreview', 'Convert-NSWG2EIAPreview')) {
+            $commands.ContainsKey($name) | Should -BeTrue
+        }
+        $commands.ContainsKey('Export-NetskopeConfigV2') | Should -BeFalse
+        $commands.ContainsKey('Convert-NSWG2EIAV2') | Should -BeFalse
     }
 }
 
@@ -66,10 +78,13 @@ Describe 'Netskope Destination Profile review conversion' {
 
         $original = Convert-NSWG2EIA @parameters -WarningVariable originalWarnings
         $originalCsv = Get-Content $original.PoliciesCsvPath -Raw
-        $preview = Convert-NSWG2EIAV2 @parameters -WarningVariable previewWarnings -WarningAction SilentlyContinue
+        $preview = Convert-NSWG2EIAPreview @parameters -WarningVariable previewWarnings -WarningAction SilentlyContinue
         $original.PoliciesCsvPath | Should -Not -Be $preview.PoliciesCsvPath
         $original.SecurityProfilesCsvPath | Should -Not -Be $preview.SecurityProfilesCsvPath
         $original.LogFilePath | Should -Not -Be $preview.LogFilePath
+        (Split-Path $preview.PoliciesCsvPath -Leaf) | Should -Be '20261026_120000_PREVIEW_EIA_Policies.csv'
+        (Split-Path $preview.SecurityProfilesCsvPath -Leaf) | Should -Be '20261026_120000_PREVIEW_EIA_SecurityProfiles.csv'
+        (Split-Path $preview.LogFilePath -Leaf) | Should -Be '20261026_120000_Convert-NSWG2EIAPreview.log'
         (Get-Content $original.PoliciesCsvPath -Raw) | Should -BeExactly $originalCsv
         $originalWarnings | Should -BeNullOrEmpty
         ($previewWarnings -join ' ') | Should -Match 'EXPERIMENTAL.*not yet validated'
@@ -144,16 +159,55 @@ Describe 'Netskope Destination Profile review conversion' {
         $rows[0].Provision | Should -Be 'No'
     }
 
+    It 'rejects invalid entries in a nonempty Destination Profile values array: <Kind>' -ForEach @(
+        @{ Kind = 'null'; InvalidValue = $null },
+        @{ Kind = 'empty string'; InvalidValue = '' },
+        @{ Kind = 'whitespace'; InvalidValue = " `t`r`n" },
+        @{ Kind = 'number'; InvalidValue = 42 },
+        @{ Kind = 'boolean'; InvalidValue = $true },
+        @{ Kind = 'object'; InvalidValue = @{ value = 'example.com' } }
+    ) {
+        $destinations.elements[0].values = @('valid.example.com', $InvalidValue)
+        Write-TestJson $destinations $parameters.DestinationProfilesPath
+        { Convert-NSWG2EIAPreview @parameters } | Should -Throw '*each values entry must be a nonempty string*'
+        @(Get-ChildItem $work -Filter '*_EIA_*.csv').Count | Should -Be 0
+        Should -Invoke Write-LogMessage -ModuleName Migrate2GSA -Times 1 -Exactly -ParameterFilter {
+            $Level -eq 'ERROR' -and $Message -like '*each values entry must be a nonempty string*'
+        }
+    }
+
+    It 'retains valid domain candidates and original path case after value validation: <MatchType>' -ForEach @(
+        @{ MatchType = 'sensitive' },
+        @{ MatchType = 'insensitive' }
+    ) {
+        $destinations.elements[0].type = $MatchType
+        $destinations.elements[0].values = @('Example.COM', '*.Example.COM', 'Example.COM/Finance?Key=Value')
+        Write-TestJson $destinations $parameters.DestinationProfilesPath
+        $output = Invoke-TestConversion $parameters
+        $rows = @($output.Policies | Where-Object PolicyName -eq "DestinationProfile-$profileId-Block" |
+            Sort-Object RuleName)
+        $rows.Count | Should -Be 3
+        $rows[0].RuleDestinations | Should -BeExactly 'example.com'
+        $rows[1].RuleDestinations | Should -BeExactly 'example.com;*.example.com'
+        $rows[2].RuleDestinations | Should -BeExactly 'PLACEHOLDER_DESTINATION_PROFILE'
+        for ($i = 0; $i -lt $rows.Count; $i++) {
+            $sourceValue = ConvertTo-Json -InputObject $destinations.elements[0].values[$i] -Compress
+            $rows[$i].ReviewDetails.Contains("value=$sourceValue") | Should -BeTrue
+            $rows[$i].ReviewNeeded | Should -Be 'Yes'
+            $rows[$i].Provision | Should -Be 'No'
+        }
+    }
+
     It 'does not fall back to a URL List when a typed Destination Profile ID is missing' {
         $categories.elements[0].included_destination_profiles = @('2')
         Write-TestJson $categories $parameters.CustomCategoriesPath
-        { Convert-NSWG2EIAV2 @parameters } | Should -Throw '*missing Destination Profile*'
+        { Convert-NSWG2EIAPreview @parameters } | Should -Throw '*missing Destination Profile*'
         @(Get-ChildItem $work -Filter '*_EIA_*.csv').Count | Should -Be 0
     }
 
     It 'fails when Destination Profiles were not supplied for typed category references' {
         $parameters.Remove('DestinationProfilesPath')
-        { Convert-NSWG2EIAV2 @parameters } | Should -Throw '*DestinationProfilesPath*'
+        { Convert-NSWG2EIAPreview @parameters } | Should -Throw '*DestinationProfilesPath*'
     }
 
     It 'fails instead of dropping an unresolved URL List inclusion or exclusion' -ForEach @(
@@ -162,19 +216,19 @@ Describe 'Netskope Destination Profile review conversion' {
     ) {
         $categories.elements[0].$Field = @('missing')
         Write-TestJson $categories $parameters.CustomCategoriesPath
-        { Convert-NSWG2EIAV2 @parameters } | Should -Throw '*missing URL List*'
+        { Convert-NSWG2EIAPreview @parameters } | Should -Throw '*missing URL List*'
     }
 
     It 'rejects a partial Destination Profile collection' {
         $destinations.total_count = 4
         Write-TestJson $destinations $parameters.DestinationProfilesPath
-        { Convert-NSWG2EIAV2 @parameters } | Should -Throw '*complete elements/total_count*'
+        { Convert-NSWG2EIAPreview @parameters } | Should -Throw '*complete elements/total_count*'
     }
 
     It 'rejects a partial modern category collection' {
         $categories.total_count = 3
         Write-TestJson $categories $parameters.CustomCategoriesPath
-        { Convert-NSWG2EIAV2 @parameters } | Should -Throw '*collection is incomplete*'
+        { Convert-NSWG2EIAPreview @parameters } | Should -Throw '*collection is incomplete*'
     }
 
     It 'rejects duplicate profile IDs and undocumented match types' -ForEach @(
@@ -184,7 +238,7 @@ Describe 'Netskope Destination Profile review conversion' {
         if ($Invalid -eq 'duplicate') { $destinations.elements[1].id = $profileId }
         else { $destinations.elements[0].type = 'exact' }
         Write-TestJson $destinations $parameters.DestinationProfilesPath
-        { Convert-NSWG2EIAV2 @parameters } | Should -Throw '*Invalid or duplicate Destination Profile*'
+        { Convert-NSWG2EIAPreview @parameters } | Should -Throw '*Invalid or duplicate Destination Profile*'
     }
 
     It 'keeps overlapping source IDs in separate namespaces' {
@@ -200,17 +254,17 @@ Describe 'Netskope Destination Profile review conversion' {
     It 'rejects malformed typed references instead of discarding them' {
         $categories.elements[0].included_destination_profiles = 'not-an-array'
         Write-TestJson $categories $parameters.CustomCategoriesPath
-        { Convert-NSWG2EIAV2 @parameters } | Should -Throw '*expected an array of nonempty string IDs*'
+        { Convert-NSWG2EIAPreview @parameters } | Should -Throw '*expected an array of nonempty string IDs*'
     }
 
     It 'rejects ambiguous category name joins' {
         $categories.elements[1].name = $categories.elements[0].name
         Write-TestJson $categories $parameters.CustomCategoriesPath
-        { Convert-NSWG2EIAV2 @parameters } | Should -Throw '*names must be nonempty and unique*'
+        { Convert-NSWG2EIAPreview @parameters } | Should -Throw '*names must be nonempty and unique*'
     }
 }
 
-Describe 'Netskope V2 fixture export-to-conversion integration' {
+Describe 'Netskope preview fixture export-to-conversion integration' {
     It 'round-trips the supplied examples through paginated export files and produces the same review output' {
         Mock Invoke-RestMethod -ModuleName Migrate2GSA {
             param($Uri, $Method)
@@ -249,8 +303,8 @@ Describe 'Netskope V2 fixture export-to-conversion integration' {
             OutputDirectory = "$work/export"
             RequestDelay = 0
         }
-        Export-NetskopeConfigV2 @exportParameters 6>$null | Should -BeTrue
-        $backup = @(Get-ChildItem "$work/export" -Directory -Filter 'backup_v2_preview_*')
+        Export-NetskopeConfigPreview @exportParameters 6>$null | Should -BeTrue
+        $backup = @(Get-ChildItem "$work/export" -Directory -Filter 'backup_preview_*')
         $backup.Count | Should -Be 1
         $backupDir = $backup[0].FullName
         foreach ($file in @('destinations', 'custom_categories')) {
@@ -262,7 +316,7 @@ Describe 'Netskope V2 fixture export-to-conversion integration' {
         $exportedLists = Get-Content "$backupDir/url_lists.json" -Raw | ConvertFrom-Json
         (ConvertTo-Json -InputObject $exportedLists -Depth 20) |
             Should -BeExactly (ConvertTo-Json -InputObject $sourceLists.data -Depth 20)
-        (Get-Content "$backupDir/Export-NetskopeConfigV2.log" -Raw) | Should -Match 'EXPERIMENTAL'
+        (Get-Content "$backupDir/Export-NetskopeConfigPreview.log" -Raw) | Should -Match 'EXPERIMENTAL'
         Should -Invoke Invoke-RestMethod -ModuleName Migrate2GSA -Times 3 -Exactly -ParameterFilter {
             $Uri -match '/profiles/destinations\?'
         }
@@ -335,7 +389,7 @@ Describe 'Netskope paginated profile export' {
     }
 
     It 'exports all pages of profiles and categories under existing filenames, retaining pending data' {
-        Export-NetskopeConfigV2 @exportParameters | Should -BeTrue
+        Export-NetskopeConfigPreview @exportParameters | Should -BeTrue
         foreach ($file in @('destinations.json', 'custom_categories.json')) {
             $path = Get-ChildItem $work -Recurse -Filter $file
             $saved = Get-Content $path.FullName -Raw | ConvertFrom-Json
@@ -357,8 +411,8 @@ Describe 'Netskope paginated profile export' {
         Export-NetskopeConfig @exportParameters -WarningVariable originalWarnings | Should -BeTrue
         $originalPath = "$work/backup_20261026_120000/destinations.json"
         $originalJson = Get-Content $originalPath -Raw
-        Export-NetskopeConfigV2 @exportParameters -WarningVariable previewWarnings -WarningAction SilentlyContinue | Should -BeTrue
-        $previewPath = "$work/backup_v2_preview_20261026_120000/destinations.json"
+        Export-NetskopeConfigPreview @exportParameters -WarningVariable previewWarnings -WarningAction SilentlyContinue | Should -BeTrue
+        $previewPath = "$work/backup_preview_20261026_120000/destinations.json"
         (Get-Content $originalPath -Raw) | Should -BeExactly $originalJson
         (Get-Content $previewPath -Raw | ConvertFrom-Json).elements.Count | Should -Be 101
         $originalWarnings | Should -BeNullOrEmpty
@@ -375,7 +429,7 @@ Describe 'Netskope paginated profile export' {
         Mock Invoke-RestMethod -ModuleName Migrate2GSA -ParameterFilter { $Uri -match '/profiles/' } {
             [PSCustomObject]@{ total_count = 0; elements = @() }
         }
-        Export-NetskopeConfigV2 @exportParameters | Should -BeTrue
+        Export-NetskopeConfigPreview @exportParameters | Should -BeTrue
         $path = Get-ChildItem $work -Recurse -Filter 'destinations.json'
         $saved = Get-Content $path.FullName -Raw | ConvertFrom-Json
         $saved.total_count | Should -Be 0
@@ -401,7 +455,7 @@ Describe 'Netskope paginated profile export' {
             }
         }
         try {
-            { Export-NetskopeConfigV2 @exportParameters } | Should -Throw '*Backup process failed*'
+            { Export-NetskopeConfigPreview @exportParameters } | Should -Throw '*Backup process failed*'
             @(Get-ChildItem $work -Recurse -Filter 'destinations.json').Count | Should -Be 0
             Should -Invoke Invoke-RestMethod -ModuleName Migrate2GSA -Times 1 -Exactly -ParameterFilter { $Uri -match '/destinations\?.*offset=100$' }
         } finally {

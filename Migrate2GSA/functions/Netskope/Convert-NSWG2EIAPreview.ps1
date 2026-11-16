@@ -1,4 +1,4 @@
-function Convert-NSWG2EIAV2 {
+function Convert-NSWG2EIAPreview {
     <#
     .SYNOPSIS
         EXPERIMENTAL: Converts Netskope URL Lists and Destination Profiles to EIA review candidates.
@@ -7,7 +7,7 @@ function Convert-NSWG2EIAV2 {
         Best-effort experimental implementation based on public documentation and API models.
         Not yet validated against real Netskope exports; community validation and contributions welcome.
         Invoke Convert-NSWG2EIA for the unchanged original converter.
-        V2 identifies this experimental cmdlet, NOT GSA Filtering Policy Model V2.
+        Preview identifies validation status, not a GSA object model or traffic forwarding version.
         Destination Profile rows and affected security profiles are non-provisioning review candidates.
         Other legacy rows may retain Provision=Yes; do not provision preview output without independent validation.
         Direct RTP Destination Profile targets are not supported.
@@ -49,7 +49,7 @@ function Convert-NSWG2EIAV2 {
         Enable verbose debug logging.
     
     .EXAMPLE
-        Convert-NSWG2EIAV2 -RealTimeProtectionPoliciesPath "real_time_protection_policies.json" `
+        Convert-NSWG2EIAPreview -RealTimeProtectionPoliciesPath "real_time_protection_policies.json" `
                          -UrlListsPath "url_lists.json" `
                          -CustomCategoriesPath "custom_categories.json" `
                          -CategoryMappingsPath "NSWG2EIA-CategoryMappings.csv"
@@ -57,7 +57,7 @@ function Convert-NSWG2EIAV2 {
         Converts Netskope configuration using files in current directory with default output path.
     
     .EXAMPLE
-        Convert-NSWG2EIAV2 -RealTimeProtectionPoliciesPath "C:\Netskope\policies.json" `
+        Convert-NSWG2EIAPreview -RealTimeProtectionPoliciesPath "C:\Netskope\policies.json" `
                          -UrlListsPath "C:\Netskope\url_lists.json" `
                          -CustomCategoriesPath "C:\Netskope\custom_categories.json" `
                          -CategoryMappingsPath "C:\Mappings\NSWG2EIA-CategoryMappings.csv" `
@@ -70,7 +70,7 @@ function Convert-NSWG2EIAV2 {
         Status: Best-effort experimental implementation; tenant compatibility and policy semantics remain unvalidated.
         Validation feedback: https://github.com/microsoft/Migrate2GSA/issues
         Share only sanitized, authorized examples; never tokens or real customer configuration.
-        Version: 2.0-preview
+        Version: Preview
         Author: Andres Canello
         Date: 2025-11-12
     #>
@@ -122,19 +122,19 @@ function Convert-NSWG2EIAV2 {
         [string]$DestinationProfilesPath
     )
     
-    Write-Warning "EXPERIMENTAL: Convert-NSWG2EIAV2 is a best-effort implementation, not yet validated against real Netskope exports. Community validation and contributions welcome. Review output only; use Convert-NSWG2EIA for the original behavior. V2 does not mean GSA Filtering Policy Model V2."
+    Write-Warning "EXPERIMENTAL: Convert-NSWG2EIAPreview is a best-effort implementation, not yet validated against real Netskope exports. Community validation and contributions welcome. Review output only; use Convert-NSWG2EIA for the original behavior. Preview identifies validation status, not a GSA object model or traffic forwarding version."
 
     #region Initialize Logging
     
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $script:logPath = Join-Path $OutputBasePath "${timestamp}_Convert-NSWG2EIAV2.log"
+    $script:logPath = Join-Path $OutputBasePath "${timestamp}_Convert-NSWG2EIAPreview.log"
     $logPath = $script:logPath  # For backwards compatibility
     
     # Set log level and debug flag at script scope for internal functions
     $script:LogLevel = if ($EnableDebugLogging) { "DEBUG" } else { "INFO" }
     $script:EnableDebugLogging = $EnableDebugLogging
     
-    Write-LogMessage -Message "===== Convert-NSWG2EIAV2 Started =====" -Level "INFO" -LogPath $logPath
+    Write-LogMessage -Message "===== Convert-NSWG2EIAPreview Started =====" -Level "INFO" -LogPath $logPath
     Write-LogMessage -Message "EXPERIMENTAL: best-effort implementation; community validation and contributions welcome. Output is not production-validated." -Level "WARN" -LogPath $logPath
     Write-LogMessage -Message "Timestamp: $timestamp" -Level "INFO" -LogPath $logPath
     Write-LogMessage -Message "Log Level: $script:LogLevel" -Level "INFO" -LogPath $logPath
@@ -431,6 +431,13 @@ function Convert-NSWG2EIAV2 {
             Write-LogMessage -Message $message -Level ERROR -LogPath $logPath
             throw $message
         }
+        foreach ($value in $destinationProfile.values) {
+            if ($value -isnot [string] -or [string]::IsNullOrWhiteSpace($value)) {
+                $message = "Destination Profile '$($destinationProfile.name)' contains an invalid value; each values entry must be a nonempty string, not null or whitespace."
+                Write-LogMessage -Message $message -Level ERROR -LogPath $logPath
+                throw $message
+            }
+        }
         $destinationProfilesById[[string]$destinationProfile.id] = $destinationProfile
     }
     
@@ -616,12 +623,10 @@ function Convert-NSWG2EIAV2 {
             if ($values.Count -eq 0) { $values = @('') }
             $ruleIndex = 0
             foreach ($value in $values) {
-                if ($null -ne $value -and $value -isnot [string]) {
-                    throw "Destination Profile '$($destinationProfile.name)' contains a non-string value."
-                }
                 $ruleIndex++
                 $candidate = 'PLACEHOLDER_DESTINATION_PROFILE'
                 $reason = 'Destination Profile matching requires manual validation (ports, paths/queries, case, regex, IP resolution, and wildcards are not URL List semantics).'
+                # Netskope domains are always case-insensitive; sensitive applies only to paths/queries.
                 if ($destinationProfile.type -ne 'regex' -and $value -match '^(\*\.)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,63}$') {
                     $candidate = $value.ToLowerInvariant()
                     if ($candidate.StartsWith('*.')) {
@@ -1253,7 +1258,7 @@ function Convert-NSWG2EIAV2 {
     #region Phase 4.1: Export Policies CSV
     
     try {
-        $policiesCsvPath = Join-Path $OutputBasePath "${timestamp}_V2_PREVIEW_EIA_Policies.csv"
+        $policiesCsvPath = Join-Path $OutputBasePath "${timestamp}_PREVIEW_EIA_Policies.csv"
         $policies | Export-Csv -Path $policiesCsvPath -NoTypeInformation -Encoding utf8BOM
         Write-LogMessage -Message "Exported $($policies.Count) policy rules to: $policiesCsvPath" -Level "INFO" -LogPath $logPath
     }
@@ -1268,7 +1273,7 @@ function Convert-NSWG2EIAV2 {
     #region Phase 4.2: Export Security Profiles CSV with Priority Suffixes
     
     try {
-        $spCsvPath = Join-Path $OutputBasePath "${timestamp}_V2_PREVIEW_EIA_SecurityProfiles.csv"
+        $spCsvPath = Join-Path $OutputBasePath "${timestamp}_PREVIEW_EIA_SecurityProfiles.csv"
         
         # Add priority suffixes to policy links during export
         $securityProfilesForExport = $securityProfiles | ForEach-Object {
@@ -1336,14 +1341,14 @@ function Convert-NSWG2EIAV2 {
     Write-LogMessage -Message "  - Security Profiles: $spCsvPath" -Level "INFO" -LogPath $logPath
     Write-LogMessage -Message "  - Log File: $logPath" -Level "INFO" -LogPath $logPath
     Write-LogMessage -Message "" -Level "INFO" -LogPath $logPath
-    Write-LogMessage -Message "===== Convert-NSWG2EIAV2 Completed Successfully =====" -Level "INFO" -LogPath $logPath
+    Write-LogMessage -Message "===== Convert-NSWG2EIAPreview Completed Successfully =====" -Level "INFO" -LogPath $logPath
     
     #endregion Phase 4.3: Generate Summary Statistics
     
     #endregion Phase 4: Export and Summary
 
     # Send usage telemetry
-    Send-UsageTelemetry -EventName 'Convert-NSWG2EIAV2' `
+    Send-UsageTelemetry -EventName 'Convert-NSWG2EIAPreview' `
         -Properties @{
             EnableDebugLogging = $EnableDebugLogging.ToString()
         } `

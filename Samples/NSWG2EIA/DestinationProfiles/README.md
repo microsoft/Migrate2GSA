@@ -4,18 +4,18 @@ These are **synthetic fixtures**, not customer data or captured Netskope respons
 They support offline development of the category-to-Destination-Profile path.
 They do not establish live-tenant compatibility or GSA matching equivalence.
 
-Use **`Export-NetskopeConfigV2` / `Convert-NSWG2EIAV2`** for this best-effort
+Use **`Export-NetskopeConfigPreview` / `Convert-NSWG2EIAPreview`** for this best-effort
 experimental implementation, not yet validated against real Netskope exports.
 Community validation and contributions are welcome.
 The original `Export-NetskopeConfig` / `Convert-NSWG2EIA` commands remain unchanged.
-V2 is a cmdlet version label, **not GSA Filtering Policy Model V2 support**.
-See the [V2 community validation guide](../../../website/docs/MigrationSources/Netskope/NetskopeV2Preview.md)
+Preview denotes validation status, **not a GSA object model or traffic forwarding version**.
+See the [community validation guide](../../../website/docs/MigrationSources/Netskope/NetskopeDestinationProfilesPreview.md)
 for limitations and how to submit sanitized feedback. Do not publish raw exports,
 tokens, customer data, or unsanitized debug logs.
 
 ## Test with your own export
 
-Follow the [own-export walkthrough](../../../website/docs/MigrationSources/Netskope/NetskopeV2Preview.md#test-the-converter-with-your-own-export)
+Follow the [own-export walkthrough](../../../website/docs/MigrationSources/Netskope/NetskopeDestinationProfilesPreview.md#test-the-converter-with-your-own-export)
 for prerequisites, required files, a copy/paste conversion command, output checks,
 and troubleshooting. Conversion runs locally without Netskope or GSA credentials
 and does not provision anything. Keep your exports and generated files outside
@@ -64,7 +64,7 @@ Import-Module ./Migrate2GSA/Migrate2GSA.psd1 -Force
 $sample = './Samples/NSWG2EIA'
 $output = Join-Path ([IO.Path]::GetTempPath()) ("netskope-profiles-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $output | Out-Null
-$result = Convert-NSWG2EIAV2 `
+$result = Convert-NSWG2EIAPreview `
     -RealTimeProtectionPoliciesPath "$sample/DestinationProfiles/real_time_protection_policies.rename_to_json" `
     -UrlListsPath "$sample/sample_url_lists.rename_to_json" `
     -DestinationProfilesPath "$sample/DestinationProfiles/destinations.rename_to_json" `
@@ -79,7 +79,7 @@ Import-Csv $result.SecurityProfilesCsvPath |
 ```
 
 The converter reads JSON content, so copying/renaming the fixtures is optional.
-Output CSV filenames contain `_V2_PREVIEW_` to separate them from original runs.
+Output CSV filenames contain `_PREVIEW_` to separate them from original runs.
 Expected output: **17 rule rows and 2 security profiles**:
 
 - Six legacy `Whitelist URLs-Block` rows remain distinct from the same-named
