@@ -126,6 +126,12 @@ commands, **not** real API authentication, tenant schemas, or policy equivalence
 
 ## Still required before production support
 
+An explicit [numeric reference-array confirmation checklist](../../../website/docs/MigrationSources/Netskope/NetskopeDestinationProfilesPreview.md#pending-community-confirmation-numeric-reference-arrays)
+tracks the unconfirmed possibility of JSON number arrays in modern Custom
+Categories. This is awaiting community export/Swagger evidence, not a confirmed
+bug. Keep the published string-ID contract until evidence supports a change;
+the checklist defines the follow-up implementation and regression checks if needed.
+
 Obtain sanitized complete exports and the tenant Swagger contract from an
 authorized Netskope tenant. Validate applied versus pending
 objects, pagination, migrated category references, and destination matching in

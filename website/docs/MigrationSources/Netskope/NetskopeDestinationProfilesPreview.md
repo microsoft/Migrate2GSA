@@ -243,6 +243,28 @@ These fixtures are **not actual customer exports**.
 - No GSA Filtering Policy Model V2, delta reconciliation, or NPA converter changes
   are included.
 
+## Pending community confirmation: numeric reference arrays
+
+**Status: awaiting evidence; not a confirmed bug or a commitment to add numeric-array support.**
+The published modern SDK specifies string IDs. The converter continues to require
+nonempty string reference arrays and fails explicitly on unsupported shapes.
+
+- [ ] Obtain an authorized, sanitized response or tenant Swagger schema for
+  `/api/v2/profiles/customcategories`, together with the Netskope release. Confirm
+  the JSON item types of `included_url_lists`, `excluded_url_lists`, and
+  `included_predefined_categories`: for example, `["22"]` versus `[22]`.
+- [ ] Record the evidence in a GitHub validation issue using the
+  [reporting guidance below](#help-validate). If it confirms strings only, document
+  that result and close the question for the verified release; no code change is needed.
+- [ ] If numeric arrays are confirmed, add narrowly scoped compatibility handling
+  and regression fixtures/tests for the affected fields before relaxing validation.
+  Preserve separate Destination Profile identities and rejection of malformed
+  references; verify export-to-conversion behavior and update the supported-input docs.
+
+Do not implement speculative coercion while evidence is missing. This question is
+separate from mapping predefined-category IDs to GSA category names, which remains
+a known conversion gap regardless of whether IDs arrive as strings or numbers.
+
 ## Help validate
 
 Community validation and contributions are welcome, including reports from
