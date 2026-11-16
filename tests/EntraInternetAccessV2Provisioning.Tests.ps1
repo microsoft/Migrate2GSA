@@ -23,6 +23,7 @@ Describe 'OMv2 provisioning and export' {
         Mock -ModuleName Migrate2GSA Test-RequiredModules {}
         Mock -ModuleName Migrate2GSA Test-GraphConnection { $true }
         Mock -ModuleName Migrate2GSA Write-LogMessage {}
+        Mock -ModuleName Migrate2GSA Send-UsageTelemetry {}
         Mock -ModuleName Migrate2GSA Start-Sleep {}
         Mock -ModuleName Migrate2GSA Invoke-InternalGraphRequest {
             param($Method, $Uri, $Body)
@@ -107,6 +108,9 @@ EIA-OMv2/1.0,Finance,,1000,Disabled,Enabled,Finance web,ContinueEvaluation,,,,,N
         $link.'@odata.type' | Should -Be "${prefix}webFilteringPolicyLink"
         $link.Contains('priority') | Should -BeFalse
         @($calls | Where-Object Method -EQ POST).Count | Should -Be 5
+        Should -Invoke Send-UsageTelemetry -ModuleName Migrate2GSA -Times 1 -Exactly -ParameterFilter {
+            $EventName -eq 'Start-EntraInternetAccessProvisioning' -and $Properties.PolicyModel -eq 'OMv2'
+        }
         $calls.Clear()
         $rules[0].matchingConditions.destinations.targets[0].values = @('https://example.com/Other', 'https://example.com/Reports')
         $rules[0].action.headerSettings = $null
@@ -192,6 +196,70 @@ EIA-OMv2/1.0,Finance,,1000,Disabled,Enabled,Finance web,ContinueEvaluation,,,,,N
         @($calls | Where-Object Method -EQ GET).Count | Should -BeGreaterThan 0
         @($calls | Where-Object Method -NE GET).Count | Should -Be 0
         @(Get-ChildItem $casePath -Directory -Filter 'EIA-OMv2-Results*').Count | Should -Be 0
+        Should -Invoke Write-LogMessage -ModuleName Migrate2GSA -Times 0 -Exactly -ParameterFilter { $Component -eq 'WhatIf' }
+        Should -Invoke Send-UsageTelemetry -ModuleName Migrate2GSA -Times 1 -Exactly -ParameterFilter {
+            $EventName -eq 'Start-EntraInternetAccessProvisioning' -and
+            $Properties.PolicyModel -eq 'OMv2' -and $Properties.WhatIf -eq 'True'
+        }
+    }
+
+    It 'does not initialize OMv1 provisioning state during OMv2 preflight' {
+        InModuleScope Migrate2GSA -Parameters @{ Parameters = $parameters } {
+            param($Parameters)
+            $previousStats = Get-Variable ProvisioningStats -Scope Global -ErrorAction SilentlyContinue
+            $previousWhatIfLog = Get-Variable WhatIfLogPath -Scope Script -ErrorAction SilentlyContinue
+            $previousStatsValue = $previousStats.Value
+            $previousWhatIfLogValue = $previousWhatIfLog.Value
+            try {
+                $sentinel = @{ Marker = 'Existing OMv1 state' }
+                $Global:ProvisioningStats = $sentinel
+                $script:WhatIfLogPath = 'existing-v1-whatif.log'
+                Start-EntraInternetAccessProvisioning @Parameters -WhatIf | Out-Null
+                [object]::ReferenceEquals($Global:ProvisioningStats, $sentinel) | Should -BeTrue
+                $script:WhatIfLogPath | Should -Be 'existing-v1-whatif.log'
+            }
+            finally {
+                if ($previousStats) { $Global:ProvisioningStats = $previousStatsValue }
+                else { Remove-Variable ProvisioningStats -Scope Global }
+                if ($previousWhatIfLog) { $script:WhatIfLogPath = $previousWhatIfLogValue }
+                else { Remove-Variable WhatIfLogPath -Scope Script }
+            }
+        }
+    }
+
+    It 'declines real confirmation without Graph writes or retry CSVs' {
+        $declineScript = Join-Path $casePath 'decline.ps1'
+        @'
+param($ModulePath, $PoliciesPath, $LogPath)
+$ErrorActionPreference = 'Stop'
+$env:MIGRATE2GSA_TELEMETRY_OPTOUT = '1'
+$module = Import-Module $ModulePath -Force -PassThru
+& $module {
+    param($PoliciesPath, $LogPath)
+    function Test-RequiredModules {}
+    function Test-GraphConnection {}
+    function Write-LogMessage {
+        param($Message)
+        Write-Host $Message
+    }
+    function Invoke-InternalGraphRequest {
+        param($Method, $Uri)
+        if ($Method -ne 'GET' -or $Uri -ne '/beta/networkAccess/webFilteringPolicies') {
+            throw "Unexpected Graph request: $Method $Uri"
+        }
+        return @()
+    }
+    Start-EntraInternetAccessProvisioning -PolicyModel OMv2 -PoliciesCsvPath $PoliciesPath -LogPath $LogPath -Confirm
+} $PoliciesPath $LogPath
+'@ | Set-Content $declineScript
+        $before = (Get-FileHash $policiesPath).Hash
+        $pwsh = (Get-Process -Id $PID).Path
+        $output = 'n' | & $pwsh -NoProfile -File $declineScript `
+            "$PSScriptRoot/../Migrate2GSA/Migrate2GSA.psd1" $policiesPath $parameters.LogPath 2>&1
+        $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
+        ($output -join "`n") | Should -Match 'OMv2 preflight passed'
+        @(Get-ChildItem $casePath -Directory -Filter 'EIA-OMv2-Results*').Count | Should -Be 0
+        (Get-FileHash $policiesPath).Hash | Should -Be $before
     }
 
     It 'stops on unavailable endpoints without falling back or claiming success' {
@@ -200,6 +268,10 @@ EIA-OMv2/1.0,Finance,,1000,Disabled,Enabled,Finance web,ContinueEvaluation,,,,,N
         { Start-EntraInternetAccessProvisioning @parameters } | Should -Throw '*Simulated Graph failure*'
         @($calls | Where-Object Method -NE GET).Count | Should -Be 0
         @($calls | Where-Object Uri -Match '/filteringPolicies').Count | Should -Be 0
+        @(Get-ChildItem $casePath -Directory -Filter 'EIA-OMv2-Results*').Count | Should -Be 0
+        Should -Invoke Send-UsageTelemetry -ModuleName Migrate2GSA -Times 1 -Exactly -ParameterFilter {
+            $EventName -eq 'Start-EntraInternetAccessProvisioning' -and $Properties.PolicyModel -eq 'OMv2'
+        }
     }
 
     It 'does not replace unsupported ContinueEvaluation with another default' {
@@ -249,6 +321,13 @@ EIA-OMv2/1.0,Finance,,1000,Disabled,Enabled,Finance web,ContinueEvaluation,,,,,N
         $exportedPolicies = @(Import-Csv $export.PoliciesCsvPath)
         $exportedProfiles = @(Import-Csv $export.SecurityProfilesCsvPath)
         $exportedPolicies.Count | Should -Be 2
+        $exportedPolicies[0].RuleStatus | Should -BeExactly 'Enabled'
+        $exportedPolicies[1].RuleStatus | Should -BeExactly 'Disabled'
+        $exportedProfiles[0].ProfileState | Should -BeExactly 'Disabled'
+        $exportedProfiles[0].LinkState | Should -BeExactly 'Enabled'
+        Should -Invoke Send-UsageTelemetry -ModuleName Migrate2GSA -Times 1 -Exactly -ParameterFilter {
+            $EventName -eq 'Export-EntraInternetAccessConfig' -and $Properties.PolicyModel -eq 'OMv2'
+        }
         @($exportedPolicies | Where-Object { $_.UnsupportedDetails }).Count | Should -Be 0
         $exportedProfiles[0].UnsupportedDetails | Should -BeNullOrEmpty
         $exportedPolicies | ForEach-Object { $_.ReviewNeeded = 'No'; $_.Provision = 'Yes' }
@@ -286,6 +365,7 @@ EIA-OMv2/1.0,Finance,,1000,Disabled,Enabled,Finance web,ContinueEvaluation,,,,,N
         $export = Export-EntraInternetAccessConfig -PolicyModel OMv2 -OutputPath $TestDrive
         $row = Import-Csv $export.PoliciesCsvPath
         $row.RuleType | Should -Be 'None'
+        $row.RuleStatus | Should -BeNullOrEmpty
         $row.UnsupportedDetails | Should -BeNullOrEmpty
         $row.PolicyDefaultAction | Should -Be 'ContinueEvaluation'
     }
@@ -457,6 +537,32 @@ EIA-OMv2/1.0,Finance,,1000,Disabled,Enabled,Finance web,ContinueEvaluation,,,,,N
         @($policies) + @($extra) | Export-Csv $policiesPath -NoTypeInformation
         Start-EntraInternetAccessProvisioning @parameters | Out-Null
         $store["$baseUri/webFilteringPolicies"].Count | Should -Be 1
+    }
+
+    It 'rejects unreviewed Provision=No rules within a selected policy' {
+        $policies[1].ReviewNeeded = 'Yes'
+        $policies[1].Provision = 'No'
+        $policies[1].RuleType = 'Unsupported'
+        $policies | Export-Csv $policiesPath -NoTypeInformation
+        { Start-EntraInternetAccessProvisioning @parameters } | Should -Throw '*Review the complete policy*'
+        $calls.Count | Should -Be 0
+    }
+
+    It 'retains unknown exported states for review instead of substituting valid states' {
+        Start-EntraInternetAccessProvisioning @parameters | Out-Null
+        $policy = $store["$baseUri/webFilteringPolicies"][0]
+        $store["$baseUri/webFilteringPolicies/$($policy.id)/policyRules"][0].settings.status = 'futureState'
+        $profile = $store["$baseUri/filteringProfiles"][0]
+        $profile.state = 'futureState'
+        $store["$baseUri/filteringProfiles/$($profile.id)/policies"][0].state = 'futureState'
+        $export = Export-EntraInternetAccessConfig -PolicyModel OMv2 -OutputPath $TestDrive
+        $rule = @(Import-Csv $export.PoliciesCsvPath)[0]
+        $exportedProfile = @(Import-Csv $export.SecurityProfilesCsvPath)[0]
+        $rule.RuleStatus | Should -BeExactly 'futureState'
+        $rule.UnsupportedDetails | Should -Not -BeNullOrEmpty
+        $exportedProfile.ProfileState | Should -BeExactly 'futureState'
+        $exportedProfile.LinkState | Should -BeExactly 'futureState'
+        $exportedProfile.UnsupportedDetails | Should -Not -BeNullOrEmpty
     }
 
     It 'preflights all selected policies before making the first write' {

@@ -34,6 +34,7 @@ Research,100,Block categories:100,Research CA,,Research,No
             OutputPath = $outputPath
         }
         Mock -ModuleName Migrate2GSA Test-GraphConnection { throw 'Offline plans must not connect to Graph.' }
+        Mock -ModuleName Migrate2GSA Send-UsageTelemetry {}
     }
 
     It 'combines policies per profile in link-priority order and preserves source provenance' {
@@ -68,6 +69,10 @@ Research,100,Block categories:100,Research CA,,Research,No
         (Get-FileHash $policiesPath).Hash | Should -Be $before
         Test-Path $result.LogPath | Should -BeTrue
         Should -Invoke Test-GraphConnection -ModuleName Migrate2GSA -Times 0 -Exactly
+        Should -Invoke Send-UsageTelemetry -ModuleName Migrate2GSA -Times 1 -Exactly -ParameterFilter {
+            $EventName -eq 'ConvertTo-EntraInternetAccessV2Plan' -and
+            $Properties.PolicyModel -eq 'OMv2' -and $Metrics.RuleCount -eq 4 -and $Metrics.ProfileCount -eq 2
+        }
     }
 
     It 'retains unsupported actions, IP rules and empty destinations as explicit review rows' {

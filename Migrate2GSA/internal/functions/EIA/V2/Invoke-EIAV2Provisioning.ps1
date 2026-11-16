@@ -18,6 +18,7 @@ function Invoke-EIAV2Provisioning {
     $baseUri = '/beta/networkAccess'
     $prefix = '#microsoft.graph.networkaccess.'
     $completed = $false
+    $provisioningStarted = $false
     $selectedRows = @($configuration.Policies | ForEach-Object { $_.Rows }) +
         @($configuration.Profiles | ForEach-Object { $_.Row })
 
@@ -179,6 +180,7 @@ function Invoke-EIAV2Provisioning {
         if (-not $PSCmdlet.ShouldProcess('Reviewed OMv2 configuration in the connected Graph tenant', 'Create missing objects; reuse equivalent objects; never update/delete')) {
             return
         }
+        $provisioningStarted = $true
 
         foreach ($policy in $configuration.Policies) {
             $uri = "$baseUri/webFilteringPolicies"
@@ -222,8 +224,8 @@ function Invoke-EIAV2Provisioning {
         throw
     }
     finally {
-        # WhatIf must not change retry selection or emit success-shaped result files.
-        if (-not $WhatIfPreference) {
+        # Only an approved provisioning attempt needs retry files.
+        if ($provisioningStarted -and -not $WhatIfPreference) {
             New-Item -Path $resultFolder -ItemType Directory -ErrorAction Stop | Out-Null
             $configuration.PolicyRows | Export-Csv -LiteralPath (Join-Path $resultFolder 'EIA_OMv2_Policies.csv') -NoTypeInformation -Encoding utf8BOM -ErrorAction Stop
             if ($configuration.ProfileRows.Count -gt 0) {

@@ -23,6 +23,16 @@ function Export-EIAV2Configuration {
     }
     $policyRows = [System.Collections.Generic.List[object]]::new()
     $profileRows = [System.Collections.Generic.List[object]]::new()
+
+    function ConvertTo-ExportState {
+        param([string]$State)
+        switch ($State) {
+            'enabled' { 'Enabled' }
+            'disabled' { 'Disabled' }
+            default { $State }
+        }
+    }
+
     try {
         Test-RequiredModules -RequiredModules @('Microsoft.Graph.Authentication') | Out-Null
         $scopes = @('NetworkAccess.Read.All')
@@ -49,7 +59,7 @@ function Export-EIAV2Configuration {
                     RuleName = $rule.name
                     RuleDescription = $rule.description
                     RulePriority = $rule.priority
-                    RuleStatus = $rule.settings.status
+                    RuleStatus = ConvertTo-ExportState $rule.settings.status
                     RuleAction = $(if ($rule) { $actions[[string]$rule.action.'@odata.type'] } else { '' })
                     RuleType = $type
                     RuleDestinations = $(if ($rule) { $targets.values -join ';' } else { '' })
@@ -102,8 +112,8 @@ function Export-EIAV2Configuration {
                 SecurityProfileName = $profile.name
                 Description = $profile.description
                 Priority = $profile.priority
-                ProfileState = $profile.state
-                LinkState = $link.state
+                ProfileState = ConvertTo-ExportState $profile.state
+                LinkState = ConvertTo-ExportState $link.state
                 WebFilteringPolicyName = $policy.name
                 PolicyDefaultAction = $actions[[string]$policy.settings.defaultAction.'@odata.type']
                 CADisplayName = @($expanded.conditionalAccessPolicies.displayName) -join ';'

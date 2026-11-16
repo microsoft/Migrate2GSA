@@ -83,8 +83,16 @@ function Export-EntraInternetAccessConfig {
     )
 
     if ($PolicyModel -eq 'OMv2') {
-        Export-EIAV2Configuration -OutputPath $OutputPath -LogPath $LogPath `
-            -IncludeConditionalAccessPolicies:$IncludeConditionalAccessPolicies
+        try {
+            Export-EIAV2Configuration -OutputPath $OutputPath -LogPath $LogPath `
+                -IncludeConditionalAccessPolicies:$IncludeConditionalAccessPolicies
+        }
+        finally {
+            Send-UsageTelemetry -EventName 'Export-EntraInternetAccessConfig' -Properties @{
+                PolicyModel = 'OMv2'
+                IncludesCAPolicies = $IncludeConditionalAccessPolicies.IsPresent.ToString()
+            }
+        }
         return
     }
 
