@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "ruleId": "2001",
+      "ruleName": "Block Mixed Destinations",
+      "status": "Enabled ",
+      "accessMethod": "Gateway",
+      "user": "All",
+      "application": "Mixed Destinations",
+      "action": "Block",
+      "app_tags": "Any",
+      "groupOrder": "1"
+    },
+    {
+      "ruleId": "2002",
+      "ruleName": "Allow Regex Category",
+      "status": "Enabled",
+      "accessMethod": "Gateway",
+      "user": "analyst@example.com",
+      "application": "Regex Category",
+      "action": "Allow",
+      "app_tags": "Any",
+      "groupOrder": "2"
+    }
+  ]
+}
