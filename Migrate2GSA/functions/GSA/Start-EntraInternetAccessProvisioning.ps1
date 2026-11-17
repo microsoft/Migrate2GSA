@@ -37,6 +37,11 @@
 .PARAMETER Force
     Skip confirmation prompts for automated execution.
 
+.PARAMETER PolicyModel
+    OMv1 (default) uses the existing CSV workflow. OMv2 accepts reviewed EIA-OMv2/1.0
+    CSVs, preflights conflicts, creates missing objects, and reuses equivalent objects.
+    OMv2 never updates or deletes existing configuration.
+
 .EXAMPLE
     Start-EntraInternetAccessProvisioning -PoliciesCsvPath ".\policies.csv" -SecurityProfilesCsvPath ".\security_profiles.csv"
     
@@ -81,7 +86,11 @@ function Start-EntraInternetAccessProvisioning {
         [string]$LogPath,
         
         [Parameter(HelpMessage = "Skip confirmation prompts")]
-        [switch]$Force
+        [switch]$Force,
+
+        [Parameter()]
+        [ValidateSet('OMv1', 'OMv2')]
+        [string]$PolicyModel = 'OMv1'
     )
     
     BEGIN {
@@ -177,6 +186,22 @@ function Start-EntraInternetAccessProvisioning {
     }
     
     PROCESS {
+        if ($PolicyModel -eq 'OMv2') {
+            $v2Parameters = @{
+                PoliciesCsvPath = $PoliciesCsvPath
+                SecurityProfilesCsvPath = $SecurityProfilesCsvPath
+                PolicyName = $PolicyName
+                SkipCAPoliciesProvisioning = $SkipCAPoliciesProvisioning
+                LogPath = $script:LogPath
+                WhatIf = [bool]$WhatIfPreference
+            }
+            if ($Force -or ($PSBoundParameters.ContainsKey('Confirm') -and -not $PSBoundParameters['Confirm'])) {
+                $v2Parameters.Confirm = $false
+            }
+            Invoke-EIAV2Provisioning @v2Parameters
+            return
+        }
+
         # Track outcome for telemetry. Stays 'cancelled' if the script is
         # aborted (Ctrl+C / runspace termination) without entering the catch.
         $runOutcome = 'cancelled'
