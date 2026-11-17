@@ -178,7 +178,9 @@ It does not repeat the POST. Other errors and exhausted readback retries remain
 fatal; the policy may already exist, so inspect it with `-WhatIf` before retrying.
 
 `-WhatIf` performs authenticated read-only preflight; it makes no Graph writes
-and writes no retry CSVs. `-Force` suppresses confirmation, **not validation or
+and writes no retry CSVs. Declining confirmation or failing preflight also writes
+no retry CSVs; diagnostic logs remain available. Retry CSVs are written only after
+an approved provisioning attempt starts. `-Force` suppresses confirmation, **not validation or
 WhatIf**. Preflight is not a transaction or lock: concurrent portal edits and
 partial service failures can still occur. Re-run to discover and verify objects;
 there is no rollback or automatic overwrite mode.
@@ -214,7 +216,8 @@ or skip CA provisioning when importing.
 
 Export writes policies (including unlinked and default-only policies), all their
 rules, and profiles linked to OMv2 policies. All rows start review-required with
-`Provision=No`; runtime states are preserved. Supported configurations can be
+`Provision=No`; runtime states are preserved, with supported rule/profile/link
+states written as `Enabled` or `Disabled`. Supported configurations can be
 reviewed and imported without losing rule order, actions, defaults, or link state.
 Unknown rule features are retained in source JSON columns and marked with
 `UnsupportedDetails`, not silently flattened into less restrictive rules.

@@ -312,6 +312,9 @@ function ConvertTo-EntraInternetAccessV2Plan {
         $ruleRows | Export-Csv -LiteralPath $policiesPath -NoTypeInformation -Encoding utf8BOM -NoClobber -ErrorAction Stop
         $profileRows | Export-Csv -LiteralPath $profilesPath -NoTypeInformation -Encoding utf8BOM -NoClobber -ErrorAction Stop
         Write-LogMessage "Wrote $($ruleRows.Count) review rule rows and $($profileRows.Count) profile rows." -LogPath $logPath
+        Send-UsageTelemetry -EventName 'ConvertTo-EntraInternetAccessV2Plan' `
+            -Properties @{ PolicyModel = 'OMv2' } `
+            -Metrics @{ RuleCount = $ruleRows.Count; ProfileCount = $profileRows.Count }
         [pscustomobject]@{
             SchemaVersion = $schemaVersion
             PoliciesCsvPath = $policiesPath

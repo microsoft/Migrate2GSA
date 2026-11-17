@@ -131,6 +131,8 @@ function Start-EntraInternetAccessProvisioning {
         Write-LogMessage "WhatIf Mode: $($WhatIfPreference.IsPresent)" -Level INFO -Component "Main"
         Write-LogMessage "" -Level INFO
         #endregion
+
+        if ($PolicyModel -eq 'OMv2') { return }
         
         #region Global Variables
         $Global:ProvisioningStats = @{
@@ -198,7 +200,16 @@ function Start-EntraInternetAccessProvisioning {
             if ($Force -or ($PSBoundParameters.ContainsKey('Confirm') -and -not $PSBoundParameters['Confirm'])) {
                 $v2Parameters.Confirm = $false
             }
-            Invoke-EIAV2Provisioning @v2Parameters
+            try {
+                Invoke-EIAV2Provisioning @v2Parameters
+            }
+            finally {
+                Send-UsageTelemetry -EventName 'Start-EntraInternetAccessProvisioning' -Properties @{
+                    PolicyModel = 'OMv2'
+                    WhatIf = ([bool]$WhatIfPreference).ToString()
+                    IncludesSecurityProfiles = (-not [string]::IsNullOrWhiteSpace($SecurityProfilesCsvPath)).ToString()
+                }
+            }
             return
         }
 

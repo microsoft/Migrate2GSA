@@ -43,15 +43,16 @@ function Import-EIAV2Configuration {
         if (@($group.Group | Where-Object { $_.UnsupportedDetails }).Count -gt 0) {
             throw "Policy '$name' contains unsupported configuration. Resolve UnsupportedDetails before provisioning."
         }
+        # Provision=No can reference existing rules; it does not exclude them from the policy.
+        if (@($group.Group | Where-Object ReviewNeeded -NE No).Count -gt 0) {
+            throw "Policy '$name' still requires review. Review the complete policy before provisioning or linking it."
+        }
         $body = ConvertTo-EIAV2Body $group.Group[0] Policy
         $rules = @()
         $names = @{}
         $priorities = @{}
         foreach ($row in $group.Group) {
             Assert-EIAV2Equivalent -Expected $body -Actual (ConvertTo-EIAV2Body $row Policy) -Kind Policy -Name $name
-            # Unreviewed unsupported rows remain available for review, but cannot be selected.
-            if ($row.ReviewNeeded -eq 'Yes' -and $row.Provision -eq 'No') { continue }
-            if ($row.ReviewNeeded -ne 'No') { throw "Policy '$name' still requires review." }
             $ruleBody = ConvertTo-EIAV2Body $row Rule
             if ($ruleBody) {
                 if ($names.ContainsKey($ruleBody.name) -or $priorities.ContainsKey($ruleBody.priority)) {
@@ -90,12 +91,6 @@ function Import-EIAV2Configuration {
         $profiles += [pscustomobject]@{ Row = $row; Body = $body; Policy = $policy; Existing = $null; Link = $null; ConditionalAccess = @() }
     }
     foreach ($policy in ($policies.Values | Where-Object Selected)) {
-        if (@($policy.Rows | Where-Object ReviewNeeded -NE No).Count -gt 0) {
-            throw "Policy '$($policy.Name)' has unreviewed rows. Review the complete policy before provisioning or linking it."
-        }
-        if (@($policy.Rows | Where-Object { $_.UnsupportedDetails }).Count -gt 0) {
-            throw "Policy '$($policy.Name)' contains unsupported configuration. Resolve UnsupportedDetails before provisioning."
-        }
         if (-not $policy.Body.name.EndsWith('[Migrate2GSA]', [StringComparison]::OrdinalIgnoreCase)) {
             $policy.Body.name += '[Migrate2GSA]'
         }
